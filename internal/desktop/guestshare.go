@@ -17,6 +17,12 @@ const (
 	admitTimeout       = 5 * time.Minute
 	maxPendingPerShare = 8
 	maxPendingPerUser  = 2
+
+	// Knocks per user: a burst of knockBurst, then one per knockEvery. A
+	// re-knock costs one socket and a hello, and each fires the Admit sheet,
+	// the window and two audit lines, so it must not be free (WR-02).
+	knockBurst = 3
+	knockEvery = 2 * time.Second
 )
 
 // Errors of the admission queue.
@@ -105,6 +111,7 @@ type GuestShare struct {
 	seq       uint64
 	pending   map[string]*Request
 	denied    map[int64]struct{}
+	knockAt   map[int64]time.Time // per user: when the knock bucket is next full (knockAllowedLocked)
 	admitted  map[AdmissionKey]*admission
 	ended     bool
 	endReason string
@@ -138,6 +145,7 @@ func NewGuestShare(now func() time.Time, notify func(GuestEvent)) (*GuestShare, 
 		},
 		pending:  make(map[string]*Request),
 		denied:   make(map[int64]struct{}),
+		knockAt:  make(map[int64]time.Time),
 		admitted: make(map[AdmissionKey]*admission),
 		endedCh:  make(chan struct{}),
 	}, nil
@@ -178,10 +186,11 @@ func (r *Request) event(kind, reason string) GuestEvent {
 // Knock registers a guest at Admit. A key that was admitted before gets an
 // already-answered request carrying its stored grants, and its older live
 // connection is closed (one grant never serves two connections). A user denied
-// earlier is refused at once. The limits are applied here: a newer knock from
-// the same (user, node) replaces the older, a third from one user replaces that
-// user's oldest, and a ninth in the share is refused with ErrShareFull before
-// anything is replaced.
+// earlier is refused at once. The limits are applied here: a user knocking
+// faster than the knock rate is refused with ErrShareFull and no event, a newer
+// knock from the same (user, node) replaces the older, a third from one user
+// replaces that user's oldest, and a ninth in the share is refused with
+// ErrShareFull before anything is replaced.
 func (g *GuestShare) Knock(id Identity) (*Request, error) {
 	rid, err := randHex(8)
 	if err != nil {
@@ -197,6 +206,10 @@ func (g *GuestShare) Knock(id Identity) (*Request, error) {
 	if _, ok := g.denied[id.UserID]; ok {
 		g.mu.Unlock()
 		return nil, ErrDenied
+	}
+	if !g.knockAllowedLocked(id.UserID) {
+		g.mu.Unlock()
+		return nil, ErrShareFull
 	}
 	g.seq++
 	r := &Request{ID: rid, Ident: id, Seq: g.seq, Since: g.now(), done: make(chan struct{})}
@@ -243,6 +256,22 @@ func (g *GuestShare) Knock(id Identity) (*Request, error) {
 	g.mu.Unlock()
 	g.fire(evs)
 	return r, nil
+}
+
+// knockAllowedLocked is a per-user token bucket kept as one time (GCRA): the
+// bucket is full again at knockAt, and a knock is allowed while that is at most
+// knockBurst-1 intervals ahead of now.
+func (g *GuestShare) knockAllowedLocked(userID int64) bool {
+	now := g.now()
+	at := g.knockAt[userID]
+	if at.Before(now) {
+		at = now
+	}
+	if at.Sub(now) > (knockBurst-1)*knockEvery {
+		return false
+	}
+	g.knockAt[userID] = at.Add(knockEvery)
+	return true
 }
 
 // Await blocks until r is answered, times out (5 minutes from the knock, by

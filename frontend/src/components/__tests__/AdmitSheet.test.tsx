@@ -171,6 +171,22 @@ describe('AdmitSheet', () => {
     expect(admit).toHaveBeenLastCalledWith('b')
   })
 
+  it('a re-knock from the same person and device (a new request id) does not restart the guard (WR-02)', async () => {
+    await render([req({ id: 'r1' })])
+    await pass(ADMIT_GUARD_MS)
+    await render([req({ id: 'r2' })])
+    expect(btn('Admit').getAttribute('aria-disabled')).toBe('false')
+    await click(btn('Deny'))
+    expect(deny).toHaveBeenCalledWith('r2')
+  })
+
+  it('the same login on another device restarts the guard', async () => {
+    await render([req({ id: 'r1' })])
+    await pass(ADMIT_GUARD_MS)
+    await render([req({ id: 'r2', nodeName: 'pat-phone' })])
+    expect(btn('Admit').getAttribute('aria-disabled')).toBe('true')
+  })
+
   it('a failed answer shows one alert and the buttons return after the guard', async () => {
     admit.mockResolvedValueOnce({ errorCode: 'unavailable', detail: 'x' })
     await render([req()])

@@ -352,3 +352,28 @@ func TestGuestShare_EventsCarryTheSanitizedIdentity(t *testing.T) {
 		}
 	}
 }
+
+// WR-02: knocks are rate-limited per user (a burst of 3, then one per 2 s), so
+// someone holding the link cannot keep re-knocking to lock the Admit buttons,
+// pull the window forward or flood the audit log. Over the limit the knock is
+// refused like a full share, with no event (so no audit line, no window).
+func TestGuestShare_KnocksAreRateLimitedPerUser(t *testing.T) {
+	r := newShareRig(t)
+	for i := 0; i < 3; i++ {
+		mustKnock(t, r.gs, 1001, "nodeA")
+	}
+	before := len(r.kinds())
+	if _, err := r.gs.Knock(guestIdent(1001, "nodeB")); !errors.Is(err, desktop.ErrShareFull) {
+		t.Fatalf("fourth knock in the burst: err %v, want ErrShareFull", err)
+	}
+	if got := r.kinds(); len(got) != before {
+		t.Errorf("a rate-limited knock fired events: %v", got[before:])
+	}
+	// Another person is not held up by this one.
+	mustKnock(t, r.gs, 1002, "nodeA")
+	r.advance(2 * time.Second)
+	mustKnock(t, r.gs, 1001, "nodeA")
+	if _, err := r.gs.Knock(guestIdent(1001, "nodeA")); !errors.Is(err, desktop.ErrShareFull) {
+		t.Errorf("second knock inside the 2 s refill: err %v, want ErrShareFull", err)
+	}
+}

@@ -36,9 +36,10 @@ export function AdmitSheet({ pending }: AdmitSheetProps): React.ReactElement | n
 function AdmitSheetContent({ request, others }: { request: SharePending; others: number }): React.ReactElement {
   const dialogRef = useRef<HTMLDivElement>(null)
   const alive = useRef(true)
-  // The guard is per person and restarts after a failed answer: `run` bumps on failure.
+  // The guard is per person (login and device, not request id: a re-knock must not keep the buttons
+  // locked) and restarts after a failed answer: `run` bumps on failure.
   const [run, setRun] = useState(0)
-  const guardKey = `${request.id}:${run}`
+  const guardKey = `${request.loginName}\n${request.nodeName}:${run}`
   const [unlocked, setUnlocked] = useState('')
   const [busy, setBusy] = useState(false)
   // The id answered successfully: its buttons stay off until the state line moves on.
