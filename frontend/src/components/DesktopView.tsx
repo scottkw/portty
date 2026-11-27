@@ -101,6 +101,7 @@ const STATE_CARDS: Partial<Record<DesktopStateMsg['state'], CardKey>> = {
   capture_paused: 'capture_paused',
 }
 
+const HINT_ID = 'desktop-stage-hint'
 const CHIP_SHOW_MS = 3000
 const CHIP_FADE_MS = 150
 
@@ -132,6 +133,8 @@ export function DesktopView({ onVideoRect, onReload }: DesktopViewProps = {}): R
   const [hasFrame, setHasFrame] = useState(false)
   const [needsTap, setNeedsTap] = useState(false)
   const [chipPhase, setChipPhase] = useState<'gone' | 'shown' | 'fading'>('gone')
+  // Control is on for an own-account viewer that is not a phone; the keyboard is not captured until a click.
+  const [control, setControl] = useState(false)
 
   useEffect(() => {
     document.title = TITLE
@@ -190,6 +193,7 @@ export function DesktopView({ onVideoRect, onReload }: DesktopViewProps = {}): R
         })
         ctl.setControl(true)
         inputCtl.current = ctl
+        setControl(true)
       }),
       client.on('track', (stream) => {
         const v = videoRef.current
@@ -263,12 +267,22 @@ export function DesktopView({ onVideoRect, onReload }: DesktopViewProps = {}): R
 
   return (
     <div className="desktop-view">
-      <div className="desktop-stage" ref={stageRef}>
+      <div
+        className="desktop-stage"
+        ref={stageRef}
+        {...(control
+          ? { role: 'application', 'aria-label': 'Mac desktop', 'aria-describedby': HINT_ID, tabIndex: 0 }
+          : {})}
+      >
         {video}
+        <span id={HINT_ID} className="visually-hidden">
+          While this has focus, your keyboard and pointer control the Mac. To give the keyboard back, press Control, Option, Command and Return together.
+        </span>
         <textarea
           ref={inputRef}
           className="desktop-stage__input"
           aria-label="Mac desktop"
+          aria-describedby={HINT_ID}
           autoCapitalize="off"
           autoComplete="off"
           autoCorrect="off"
