@@ -1,0 +1,29 @@
+== attempt start 15:30:58 mode=press
+daemon_pids_after=
+gui_pids=42209  log_lines=       1
+found after 12s
+switch label=[Portty] value=0
+log lines before press: 30
+34 39962 STATS status=reconnecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+press: 0 value now=1
+45 49005 STATS status=unreachable state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+== pressed 15:32:02
+38 43917 PC new id=3
+53 57050 STATS status=unreachable state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+63 62933 PCSTATE id=4 connecting
+64 62990 ICE id=4 connected
+66 63144 PCSTATE id=4 connected
+71 68094 STATS status=streaming state=streaming viewers=1 fd=49 fw=2560 fh=1440 bytes=421764 csp=0
+81 78134 STATS status=streaming state=streaming viewers=1 fd=137 fw=2560 fh=1440 bytes=936618 csp=0
+93 90187 STATS status=streaming state=streaming viewers=1 fd=246 fw=2560 fh=1440 bytes=1645838 csp=0
+103 100239 STATS status=streaming state=streaming viewers=1 fd=344 fw=2560 fh=1440 bytes=2332305 csp=0
+116 113290 STATS status=streaming state=streaming viewers=1 fd=466 fw=2560 fh=1440 bytes=3070347 csp=0
+126 123330 STATS status=streaming state=streaming viewers=1 fd=551 fw=2560 fh=1440 bytes=3729916 csp=0
+137 134374 STATS status=streaming state=streaming viewers=1 fd=649 fw=2560 fh=1440 bytes=4258263 csp=0
+148 145435 STATS status=streaming state=streaming viewers=1 fd=748 fw=2560 fh=1440 bytes=4947157 csp=0
+159 156482 STATS status=streaming state=streaming viewers=1 fd=843 fw=2560 fh=1440 bytes=5627002 csp=0
+169 166524 STATS status=streaming state=streaming viewers=1 fd=933 fw=2560 fh=1440 bytes=6142153 csp=0
+180 178216 STATS status=streaming state=streaming viewers=1 fd=1022 fw=2560 fh=1440 bytes=6938379 csp=0
+192 190262 STATS status=streaming state=streaming viewers=1 fd=1126 fw=2560 fh=1440 bytes=7653999 csp=0
+202 200318 STATS status=streaming state=streaming viewers=1 fd=1214 fw=2560 fh=1440 bytes=8170237 csp=0
+switch label=[Portty] value=1
