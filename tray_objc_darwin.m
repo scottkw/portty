@@ -14,6 +14,8 @@ extern void onTrayShow(void);
 extern void onTrayQuit(void);
 extern void onTraySession(int idx);
 extern void onTrayUpdate(void);
+extern void onTrayShareDesktop(void);
+extern void onTrayStopSharing(void);
 extern void onNotificationClick(char *identifier);
 
 // Forward-declare hasValidBundleIdentifier (defined below, near sendNotification)
@@ -26,6 +28,8 @@ NSMutableArray *menuSessionIDs = nil;
 BOOL daemonConnected = YES;
 NSString *trayUpdateTitle = nil; // "Update Available…" while a newer version is known; nil or empty hides the item
 NSString *trayDesktopTitle = nil; // "Desktop: ..." line while always-available is on; nil or empty hides it
+BOOL trayShareActive = NO; // a click-to-share is active (Phase 22): the shared-with line and Stop Sharing replace Share Desktop…
+NSString *trayShareTitle = nil; // "Desktop shared with N people" while trayShareActive
 
 // PorttyMenuDelegate rebuilds the menu on every open so it always reflects
 // the current session list without a separate polling update path.
@@ -42,6 +46,34 @@ NSString *trayDesktopTitle = nil; // "Desktop: ..." line while always-available 
         keyEquivalent:@""];
     openItem.target = statusItem;
     [menu addItem:openItem];
+
+    // The share slot sits directly under Open Portty: Share Desktop… while no
+    // click-to-share is active, otherwise the shared-with line (enabled, it
+    // opens the sheet) and Stop Sharing directly under it.
+    if (trayShareActive) {
+        NSMenuItem *sharedItem = [[NSMenuItem alloc]
+            initWithTitle:(trayShareTitle.length > 0 ? trayShareTitle : @"Desktop shared")
+            action:@selector(shareDesktopClicked:)
+            keyEquivalent:@""];
+        sharedItem.target = statusItem;
+        [menu addItem:sharedItem];
+        [sharedItem release]; // MRC: the menu retains it
+        NSMenuItem *stopItem = [[NSMenuItem alloc]
+            initWithTitle:@"Stop Sharing"
+            action:@selector(stopShareClicked:)
+            keyEquivalent:@""];
+        stopItem.target = statusItem;
+        [menu addItem:stopItem];
+        [stopItem release]; // MRC: the menu retains it
+    } else {
+        NSMenuItem *shareItem = [[NSMenuItem alloc]
+            initWithTitle:@"Share Desktop…"
+            action:@selector(shareDesktopClicked:)
+            keyEquivalent:@""];
+        shareItem.target = statusItem;
+        [menu addItem:shareItem];
+        [shareItem release]; // MRC: the menu retains it
+    }
 
     if (trayUpdateTitle.length > 0) {
         NSMenuItem *updateItem = [[NSMenuItem alloc]
@@ -303,6 +335,20 @@ void setTrayDesktopTitle(const char *title) {
     }
 }
 
+// setTrayShareState sets the click-to-share slot for the menu delegate: active
+// swaps Share Desktop… for the shared-with line (title) and Stop Sharing.
+void setTrayShareState(int active, const char *title) {
+    @autoreleasepool {
+        // Copy synchronously — title is a Go pointer freed after cgo returns.
+        NSString *t = [NSString stringWithUTF8String:title];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            trayShareActive = active != 0;
+            [trayShareTitle release];
+            trayShareTitle = [t retain];
+        });
+    }
+}
+
 // hasValidBundleIdentifier reports whether the running process has a valid
 // app-bundle identifier. UNUserNotificationCenter requires one; an unbundled
 // process (e.g. `wails dev`, a `go test` binary) has none, and calling into
@@ -408,6 +454,8 @@ void sendNotification(const char *identifier, const char *title, const char *bod
 - (void)quitClicked:(id)sender;
 - (void)sessionClicked:(NSMenuItem *)sender;
 - (void)updateClicked:(id)sender;
+- (void)shareDesktopClicked:(id)sender;
+- (void)stopShareClicked:(id)sender;
 @end
 
 @implementation NSStatusItem (PorttyTray)
@@ -415,4 +463,6 @@ void sendNotification(const char *identifier, const char *title, const char *bod
 - (void)quitClicked:(id)sender { onTrayQuit(); }
 - (void)sessionClicked:(NSMenuItem *)sender { onTraySession((int)sender.tag); }
 - (void)updateClicked:(id)sender { onTrayUpdate(); }
+- (void)shareDesktopClicked:(id)sender { onTrayShareDesktop(); }
+- (void)stopShareClicked:(id)sender { onTrayStopSharing(); }
 @end

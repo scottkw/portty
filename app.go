@@ -130,6 +130,17 @@ type App struct {
 	// concurrent binding calls apply natively in the order they persisted.
 	appearanceMu sync.Mutex
 
+	// Click-to-share (Phase 22, app_desktop_share.go): the GUI's liveness stream, the view it feeds
+	// and the tray count read by trayIconBytesForState. The *Func fields are test seams; nil means
+	// the daemon client and the cgo setter.
+	shareLoopOnce    sync.Once
+	shareMu          sync.Mutex
+	shareView        desktopShareView
+	trayViewers      atomic.Int32 // connected viewers, guests and own devices; 0 clears the sharing icon
+	streamShareFunc  func(ctx context.Context, fn func(daemon.DesktopShareLine)) error
+	stopShareFunc    func() error
+	setTrayShareFunc func(active bool, title string)
+
 	// startupDone is closed once startup has the daemon up (or failed) and has
 	// applied the stored Appearance. Wails runs OnStartup on a goroutine that
 	// races domReady and the bindings, so they wait on it (WR-07).
@@ -358,6 +369,9 @@ func (a *App) startup(ctx context.Context) {
 
 	// Start tray state poller (updates icon, tooltip, session list every 5s).
 	a.startTrayPoller(ctx)
+
+	// Hold the click-to-share events stream: the daemon sees this GUI is alive, and the tray follows the share.
+	a.startDesktopShareEvents(ctx)
 
 	// Start Tailscale health check background poller.
 	a.startHealthPoller(ctx)

@@ -31,6 +31,8 @@ func TestTrayIconAsset(t *testing.T) {
 		{"tray_icon_progress_75@2x.png", trayIconProgress75Bytes2x, 36},
 		{"tray_icon_progress_100.png", trayIconProgress100Bytes, 18},
 		{"tray_icon_progress_100@2x.png", trayIconProgress100Bytes2x, 36},
+		{"tray_icon_sharing.png", trayIconSharingBytes, 18},
+		{"tray_icon_sharing@2x.png", trayIconSharingBytes2x, 36},
 	}
 	for _, c := range cases {
 		img, err := png.Decode(bytes.NewReader(c.data))
@@ -40,6 +42,54 @@ func TestTrayIconAsset(t *testing.T) {
 		}
 		if b := img.Bounds(); b.Dx() != c.size || b.Dy() != c.size {
 			t.Errorf("%s expected %dx%d, got %dx%d", c.file, c.size, c.size, b.Dx(), b.Dy())
+		}
+	}
+}
+
+// TestTrayIconSharing pins the sharing variant: it outranks progress, loses to
+// error, needs a connected viewer, and is distinct from every other glyph and
+// carries alpha (a template image is read from its alpha channel).
+func TestTrayIconSharing(t *testing.T) {
+	a := newTestApp(2, func() {})
+	check := func(desc string, connected bool, viewers int32, want1, want2 []byte) {
+		t.Helper()
+		a.trayViewers.Store(viewers)
+		x1, x2 := a.trayIconBytesForState(connected)
+		if &x1[0] != &want1[0] || &x2[0] != &want2[0] {
+			t.Errorf("trayIconBytesForState(%s): wrong pair", desc)
+		}
+	}
+	check("disconnected with viewers", false, 1, trayIconErrorBytes, trayIconErrorBytes2x)
+	check("viewers beat quartile 2", true, 1, trayIconSharingBytes, trayIconSharingBytes2x)
+	check("no viewers, quartile 2", true, 0, trayIconProgress50Bytes, trayIconProgress50Bytes2x)
+	a.lastTrayQuartile.Store(0)
+	check("no viewers, quartile 0", true, 0, trayIconBytes, trayIconBytes2x)
+
+	others := [][]byte{trayIconBytes, trayIconErrorBytes, trayIconProgress25Bytes, trayIconProgress50Bytes, trayIconProgress75Bytes, trayIconProgress100Bytes}
+	others2x := [][]byte{trayIconBytes2x, trayIconErrorBytes2x, trayIconProgress25Bytes2x, trayIconProgress50Bytes2x, trayIconProgress75Bytes2x, trayIconProgress100Bytes2x}
+	for i := range others {
+		if bytes.Equal(trayIconSharingBytes, others[i]) || bytes.Equal(trayIconSharingBytes2x, others2x[i]) {
+			t.Errorf("sharing icon is byte-identical to icon %d", i)
+		}
+	}
+	for _, d := range [][]byte{trayIconSharingBytes, trayIconSharingBytes2x} {
+		img, err := png.Decode(bytes.NewReader(d))
+		if err != nil {
+			t.Fatal(err)
+		}
+		b := img.Bounds()
+		var clear, ink bool
+		for y := b.Min.Y; y < b.Max.Y; y++ {
+			for x := b.Min.X; x < b.Max.X; x++ {
+				if _, _, _, al := img.At(x, y).RGBA(); al == 0 {
+					clear = true
+				} else {
+					ink = true
+				}
+			}
+		}
+		if !clear || !ink {
+			t.Errorf("sharing icon needs both transparent and inked pixels (clear=%v ink=%v)", clear, ink)
 		}
 	}
 }
