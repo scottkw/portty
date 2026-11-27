@@ -204,6 +204,15 @@ type Deps struct {
 	Pasteboard PasteboardBridge
 	// Notify posts the approval-lapse notification when the daemon is its sender; nil means log-only.
 	Notify func(id, title, body string)
+	// OnViewerJoin and OnViewerLeave fire once per viewer, own-account or guest,
+	// after the join succeeds and after the viewer is removed. Both run outside
+	// every Manager lock; nil means nothing.
+	OnViewerJoin, OnViewerLeave func(Viewer)
+	// PeerIdentity resolves a media peer address to the user ID and stable node
+	// ID that tailscaled reports for it. A guest's selected ICE pair is checked
+	// against the admitted identity through it (media_binding.go); nil closes
+	// every guest, an own-account viewer is never checked.
+	PeerIdentity func(ctx context.Context, addr string) (userID int64, stableID string, err error)
 
 	// The native reads and actions below default (when nil) to the screencap
 	// bridges and the real prober, so a host that does not care wires nothing;
@@ -268,6 +277,9 @@ type viewer struct {
 	inputCap int                 // the viewer's hello caps input, 1 when it can send input
 	in       *viewerInput        // its input state, guarded by Manager.in.mu
 	dc       *webrtc.DataChannel // its accepted input channel, guarded by Manager.vmu
+
+	gs       *GuestShare // the share a guest was admitted to; nil for an own-account viewer
+	mediaCut atomic.Bool // a media identity check already cut this guest
 }
 
 // Manager owns the media socket, the shared track, the capture source and the
@@ -559,6 +571,13 @@ func newViewerID() (string, error) {
 // admits nobody). Logs carry counts, viewer ID prefixes and error codes
 // only: never a token, SDP or address.
 func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn, admit func() bool) {
+	m.ServeDesktopViewerAs(ctx, c, admit, Identity{})
+}
+
+// ServeDesktopViewerAs is ServeDesktopViewer for a caller that knows who the
+// own-account viewer is; the identity is recorded on the Viewer. The wire is
+// the same as ServeDesktopViewer's.
+func (m *Manager) ServeDesktopViewerAs(ctx context.Context, c *websocket.Conn, admit func() bool, ident Identity) {
 	defer recoverLog()
 	defer func() { _ = c.CloseNow() }()
 	c.SetReadLimit(readLimit)
@@ -606,6 +625,22 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn, adm
 		return
 	}
 
+	v := &viewer{Viewer: Viewer{ID: ViewerID(id), Rights: rights, JoinedAt: m.d.Now(), Mode: ModeOwn, Identity: ident}, ws: c, inputCap: inputCap, in: &viewerInput{}}
+	m.serveAdmitted(ctx, c, v, admit, nil)
+}
+
+// readResult is one frame read off a viewer's socket on another goroutine.
+type readResult struct {
+	in  inbound
+	err error
+}
+
+// serveAdmitted is everything after the hello: the offer, the answer, the join
+// and the read loop. v is fully built (ID, rights, mode, identity). pend, when
+// not nil, is a read already in flight on c (a guest's wait loop leaves one
+// running); its result is taken before the socket is read again.
+func (m *Manager) serveAdmitted(ctx context.Context, c *websocket.Conn, v *viewer, admit func() bool, pend <-chan readResult) {
+	id := string(v.ID)
 	// offer: a ping before it is answered, anything else is refused.
 	offerDeadline := time.Now().Add(offerTimeout)
 	var offer string
@@ -614,7 +649,19 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn, adm
 		if rem <= 0 {
 			return // read treats a zero wait as unbounded: pings must not extend the handshake
 		}
-		in, err := read(ctx, c, rem)
+		var in inbound
+		var err error
+		if pend != nil {
+			select {
+			case r := <-pend:
+				in, err = r.in, r.err
+				pend = nil
+			case <-time.After(rem):
+				return
+			}
+		} else {
+			in, err = read(ctx, c, rem)
+		}
 		if err != nil {
 			if errors.Is(err, errBadMessage) {
 				reject(ctx, c, errCodeBadMessage)
@@ -638,7 +685,6 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn, adm
 		}
 	}
 
-	v := &viewer{Viewer: Viewer{ID: ViewerID(id), Rights: rights, JoinedAt: m.d.Now()}, ws: c, inputCap: inputCap, in: &viewerInput{}}
 	pc, answerSDP, err := m.answer(ctx, v, offer)
 	if err != nil {
 		slog.Warn("desktop: offer failed", "viewer", id[:8])
@@ -657,12 +703,19 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn, adm
 			v.ready = true
 			m.vmu.Unlock()
 			m.requestKeyframe("connected")
+			if v.Mode == ModeGuest {
+				m.checkSelectedPair(v)
+			}
 		case webrtc.PeerConnectionStateFailed:
 			// Close the socket so the viewer rebuilds from scratch, not a zombie
 			// that keeps capture running.
 			go func() { _ = c.Close(websocket.StatusGoingAway, "media failed") }()
 		}
 	})
+
+	if v.Mode == ModeGuest {
+		m.bindGuestMedia(v, pc)
+	}
 
 	// Capture starts only after a successful answer, so a refused offer never
 	// starts the source.
@@ -672,14 +725,31 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn, adm
 			return
 		}
 		if errors.Is(err, errRevoked) {
-			_ = c.Close(CloseTokenRejected, "token rejected")
+			reason := "token rejected"
+			if v.Mode == ModeGuest {
+				reason = guestReasonTokenInvalid // a fixed code the guest page reads
+			}
+			_ = c.Close(CloseTokenRejected, reason)
 			return
 		}
 		slog.Warn("desktop: join failed", "viewer", id[:8], "err", err)
 		_ = c.Close(websocket.StatusInternalError, "capture unavailable")
 		return
 	}
-	defer m.leave(v)
+	defer func() {
+		m.leave(v)
+		if m.d.OnViewerLeave != nil {
+			m.d.OnViewerLeave(v.Viewer)
+		}
+	}()
+	if v.gs != nil {
+		key := AdmissionKey{UserID: v.Identity.UserID, StableID: v.Identity.StableID}
+		v.gs.attach(key, v.ID, func() { _ = c.Close(websocket.StatusNormalClosure, guestReasonReplaced) })
+		defer v.gs.detach(key, v.ID)
+	}
+	if m.d.OnViewerJoin != nil {
+		m.d.OnViewerJoin(v.Viewer)
+	}
 
 	if err := send(ctx, c, msgAnswer{Type: typeAnswer, SDP: answerSDP}); err != nil {
 		return
