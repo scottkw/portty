@@ -45,12 +45,35 @@ type arbiter struct {
 	now  func() time.Time
 	phys PhysicalSource
 
-	mu     sync.Mutex
-	holder ViewerID
+	mu       sync.Mutex
+	holder   ViewerID
+	leaseEnd time.Time // the holder's lease is live while now is before this
+
+	// The current physical episode, for the state viewers see: it is reported
+	// until physEnd, which is the later of lastPhys+physicalHold and
+	// physStart+physicalDwell, so a single touch cannot make it flicker.
+	physStart, lastPhys, physEnd time.Time
 }
 
 func newArbiter(now func() time.Time, phys PhysicalSource) *arbiter {
 	return &arbiter{now: now, phys: phys}
+}
+
+// physicalActiveLocked reports whether r shows untagged input inside the hold,
+// and folds it into the physical episode.
+func (a *arbiter) physicalActiveLocked(r screencap.PhysicalReading, now time.Time) bool {
+	if !r.Healthy || !r.Seen || r.Idle >= physicalHold {
+		return false
+	}
+	if !now.Before(a.physEnd) {
+		a.physStart = now
+	}
+	a.lastPhys = now.Add(-r.Idle)
+	a.physEnd = a.lastPhys.Add(physicalHold)
+	if dwellEnd := a.physStart.Add(physicalDwell); dwellEnd.After(a.physEnd) {
+		a.physEnd = dwellEnd
+	}
+	return true
 }
 
 // takeHolderLocked clears the lease and returns who held it, for release.
@@ -75,8 +98,44 @@ func (a *arbiter) decide(v ViewerID, now time.Time) (ok bool, reason string, rel
 	if !r.Healthy {
 		return false, reasonPhysicalUnknown, a.takeHolderLocked()
 	}
-	if r.Seen && r.Idle < physicalHold {
+	if a.physicalActiveLocked(r, now) {
 		return false, reasonPhysical, a.takeHolderLocked()
 	}
-	return true, "", nil
+	// Any controlling viewer's input of any kind takes a free or expired lease,
+	// and the holder's input renews it; another viewer's is dropped meanwhile.
+	if a.holder == v {
+		a.leaseEnd = now.Add(leaseHold)
+		return true, "", nil
+	}
+	if a.holder != "" && now.Before(a.leaseEnd) {
+		return false, reasonLeaseHeld, nil
+	}
+	prev := a.takeHolderLocked() // a lease change releases what the old holder held
+	a.holder = v
+	a.leaseEnd = now.Add(leaseHold)
+	return true, "", prev
+}
+
+// forget drops v's claim to the lease (it left or lost its right to control)
+// and reports whether v held it, so the caller releases what v holds.
+func (a *arbiter) forget(v ViewerID) (released bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.holder != v {
+		return false
+	}
+	a.holder = ""
+	return true
+}
+
+// state is what viewers are told at now.
+func (a *arbiter) state(now time.Time) LeaseState {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.physicalActiveLocked(a.phys(), now)
+	s := LeaseState{Physical: now.Before(a.physEnd)}
+	if a.holder != "" && now.Before(a.leaseEnd) {
+		s.Holder = a.holder
+	}
+	return s
 }
