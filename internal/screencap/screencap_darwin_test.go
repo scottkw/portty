@@ -52,16 +52,24 @@ func TestCaptureStill_RefusesUnderTest(t *testing.T) {
 	}
 }
 
+// On a stopped source SelectSurface only records the surface (no native call);
+// a window and any display ID are accepted now, an unknown kind is not.
 func TestDisplaySource_SelectSurface(t *testing.T) {
 	src := NewDisplaySource()
-	if err := src.SelectSurface(Surface{Kind: SurfaceDisplay}); err != nil {
-		t.Errorf("main display: %v", err)
+	for _, s := range []Surface{{Kind: SurfaceDisplay}, {Kind: SurfaceWindow, ID: 7}, {Kind: SurfaceDisplay, ID: 3}} {
+		if err := src.SelectSurface(s); err != nil {
+			t.Errorf("SelectSurface(%+v) = %v, want it recorded", s, err)
+		}
 	}
-	if err := src.SelectSurface(Surface{Kind: SurfaceWindow, ID: 7}); !errors.Is(err, ErrSurfaceUnsupported) {
-		t.Errorf("window = %v, want ErrSurfaceUnsupported", err)
+	if err := src.SelectSurface(Surface{Kind: SurfaceKind(9)}); !errors.Is(err, ErrSurfaceUnsupported) {
+		t.Errorf("unknown kind = %v, want ErrSurfaceUnsupported", err)
 	}
-	if err := src.SelectSurface(Surface{Kind: SurfaceDisplay, ID: 3}); !errors.Is(err, ErrSurfaceUnsupported) {
-		t.Errorf("another display = %v, want ErrSurfaceUnsupported", err)
+}
+
+// ListSurfaces never asks ScreenCaptureKit for shareable content under go test.
+func TestListSurfaces_RefusesUnderTest(t *testing.T) {
+	if list, err := ListSurfaces(context.Background()); !errors.Is(err, ErrRefusedInTest) || list != nil {
+		t.Fatalf("ListSurfaces under test = %v, %v, want ErrRefusedInTest", list, err)
 	}
 }
 
