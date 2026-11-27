@@ -7,11 +7,13 @@
 //
 //	viewer to server: hello {v, caps} first, then offer {sdp} (complete,
 //	non-trickle), and ping {n} at any time.
-//	server to viewer: hello {v, viewer, caps}, answer {sdp}, state {state,
-//	viewers, locked}, size {w, h}, pong {n}, error {code}.
+//	server to viewer: hello {v, viewer, caps, rights}, answer {sdp}, state
+//	{state, viewers, locked}, size {w, h}, pong {n}, error {code}.
 //
 // Unknown caps keys and unknown message types after the offer are ignored, so
-// Phase 20 adds an "input" capability without a version bump. Close codes:
+// Phase 20 adds an "input" capability (and the rights map) without a version
+// bump; testdata/signal-v1.jsonl and input-v1.jsonl freeze the v1 additions.
+// Close codes:
 // 4401 token rejected, 4410 desktop off, 1012 server restarting.
 package desktop
 
@@ -111,6 +113,8 @@ type msgHello struct {
 	V      int            `json:"v"`
 	Viewer string         `json:"viewer,omitempty"`
 	Caps   map[string]int `json:"caps,omitempty"`
+	// Rights is what this viewer may do (control, clipboard, surface).
+	Rights map[string]bool `json:"rights,omitempty"`
 }
 
 type msgAnswer struct {
@@ -148,6 +152,9 @@ type inbound struct {
 	V    int    `json:"v"`
 	SDP  string `json:"sdp"`
 	N    int    `json:"n"`
+	// Caps is the viewer's hello capabilities; only the ones this server has are
+	// ever acted on or echoed.
+	Caps map[string]int `json:"caps"`
 }
 
 // Deps is what the Manager needs from its host.
@@ -161,6 +168,12 @@ type Deps struct {
 	// OnDataChannel receives a data channel a viewer created before its
 	// offer. nil means CloseDataChannel: Phase 19 is view-only.
 	OnDataChannel DataChannelHook
+	// Input posts remote input; nil means screencap.NewInputBridge(). Every real
+	// posting call refuses under tests, so tests inject a fake.
+	Input InputBridge
+	// DisplayBounds reads a display's global bounds in points (id 0 is the main
+	// display); nil means screencap.DisplayBounds.
+	DisplayBounds func(id uint32) (x, y, w, h float64, err error)
 	// Notify posts the approval-lapse notification when the daemon is its sender; nil means log-only.
 	Notify func(id, title, body string)
 
@@ -223,6 +236,10 @@ type viewer struct {
 	track *webrtc.TrackLocalStaticRTP
 	ready bool // the media path is up (PeerConnection Connected)
 	armed bool // a keyframe has been written to this viewer, deltas may follow
+
+	inputCap int                 // the viewer's hello caps input, 1 when it can send input
+	in       *viewerInput        // its input state, guarded by Manager.in.mu
+	dc       *webrtc.DataChannel // its accepted input channel, guarded by Manager.vmu
 }
 
 // Manager owns the media socket, the shared track, the capture source and the
@@ -247,6 +264,9 @@ type Manager struct {
 	src      screencap.Source
 	srcStop  context.CancelFunc
 	fanDone  chan struct{}
+
+	// in is the input path's state (input.go).
+	in inputState
 
 	vmu      sync.Mutex
 	viewers  map[ViewerID]*viewer
@@ -355,12 +375,34 @@ func NewManager(d Deps) (*Manager, error) {
 	if d.ApprovalStore == nil {
 		d.ApprovalStore = defaultApprovalStore
 	}
+	if d.Input == nil {
+		d.Input = screencap.NewInputBridge()
+	}
+	if d.DisplayBounds == nil {
+		d.DisplayBounds = screencap.DisplayBounds
+	}
 	m := &Manager{
 		d: d, ctx: context.Background(), viewers: make(map[ViewerID]*viewer),
 		reasons: make(map[string]string), kick: make(chan struct{}, 1), tickViewers: stateTickViewers, tickIdle: stateTickIdle,
 	}
+	m.in.epoch.Store(1)
+	m.in.counts = make(map[string]uint64)
+	m.in.wake = make(chan struct{}, 1)
+	if m.d.OnDataChannel == nil {
+		m.d.OnDataChannel = m.acceptDataChannel
+	}
 	m.loadRuntimeState()
 	return m, nil
+}
+
+// target is the surface input maps onto: the main display. An unreadable
+// display leaves the geometry unknown, and presses are dropped.
+func (m *Manager) target() inputTarget {
+	x, y, w, h, err := m.d.DisplayBounds(0)
+	if err != nil || w < 1 || h < 1 {
+		return inputTarget{epoch: m.currentEpoch()}
+	}
+	return inputTarget{epoch: m.currentEpoch(), x: x, y: y, w: w, h: h, ok: true}
 }
 
 // Start binds the media socket (tailnet address only, a busy port retried) and
@@ -399,6 +441,14 @@ func (m *Manager) Start(ctx context.Context) error {
 	}
 	m.refreshAC(m.d.Now().Round(0), true)
 	go m.stateLoop(lctx, wake, m.loopDone)
+
+	// The input goroutine outlives the state loop's context: Close drains the
+	// queued releases through it before it cancels this one.
+	ictx, icancel := context.WithCancel(ctx)
+	m.in.mu.Lock()
+	m.in.cancel, m.in.done = icancel, make(chan struct{})
+	m.in.mu.Unlock()
+	go m.inputLoop(ictx, m.in.done)
 	return nil
 }
 
@@ -494,7 +544,18 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn, adm
 		slog.Error("desktop: viewer id", "err", err)
 		return
 	}
-	if err := send(ctx, c, msgHello{Type: typeHello, V: ProtocolVersion, Viewer: id, Caps: map[string]int{"video": 1}}); err != nil {
+	inputCap := in.Caps["input"]
+	rights := RightsOwnAccount
+	hello := msgHello{
+		Type: typeHello, V: ProtocolVersion, Viewer: id,
+		Caps: map[string]int{"video": 1, "input": 1},
+		Rights: map[string]bool{
+			"control":   rights&RightsControl != 0,
+			"clipboard": rights&RightsClipboard != 0,
+			"surface":   rights&RightsSurface != 0,
+		},
+	}
+	if err := send(ctx, c, hello); err != nil {
 		return
 	}
 
@@ -530,7 +591,7 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn, adm
 		}
 	}
 
-	v := &viewer{Viewer: Viewer{ID: ViewerID(id), Rights: RightsViewOnly, JoinedAt: m.d.Now()}, ws: c}
+	v := &viewer{Viewer: Viewer{ID: ViewerID(id), Rights: rights, JoinedAt: m.d.Now()}, ws: c, inputCap: inputCap, in: &viewerInput{}}
 	pc, answerSDP, err := m.answer(ctx, v, offer)
 	if err != nil {
 		slog.Warn("desktop: offer failed", "viewer", id[:8])
@@ -704,6 +765,7 @@ func (m *Manager) restartSource() error {
 // leave unregisters v and stops capture when it was the last viewer (capture
 // only runs while someone is watching).
 func (m *Manager) leave(v *viewer) {
+	m.ReleaseViewer(v.ID, "left")
 	m.mu.Lock()
 	m.vmu.Lock()
 	delete(m.viewers, v.ID)
@@ -944,6 +1006,16 @@ func (m *Manager) Close() error {
 	// checks it under the state file's lock), so this stays false and the next
 	// process counts no abnormal exit. A real crash never reaches this line.
 	m.noteCaptureStopped()
+	// Everything a viewer holds is let go before anything else closes, so a
+	// handoff or quit never leaves input held on this process's behalf.
+	m.releaseAllViewers("closing")
+	m.in.mu.Lock()
+	icancel, idone := m.in.cancel, m.in.done
+	m.in.mu.Unlock()
+	if icancel != nil {
+		icancel()
+		<-idone
+	}
 	m.mu.Lock()
 	cancel, done := m.loopCancel, m.loopDone
 	m.mu.Unlock()

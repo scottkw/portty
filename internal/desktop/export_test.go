@@ -77,3 +77,6 @@ func NewProberForTest(now func() time.Time, run func(ctx context.Context, args .
 func (m *Manager) SetTicksForTest(viewers, idle time.Duration) {
 	m.tickViewers, m.tickIdle = viewers, idle
 }
+
+// BumpEpochForTest is what a surface change does to the input epoch.
+func (m *Manager) BumpEpochForTest() uint32 { return m.bumpEpoch() }
