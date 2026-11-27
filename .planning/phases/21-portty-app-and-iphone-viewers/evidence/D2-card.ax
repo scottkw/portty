@@ -1,0 +1,60 @@
+trusted: true
+AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690
+ AXGroup @40,30 1200x690
+  AXGroup @0,30 1200x690
+   AXScrollArea DOMClassList=( ) @40,30 1200x690
+    AXWebArea Description=Portty Desktop (debug fd=0 fw=0 csp=0 st=unreachable) DOMClassList=( ) @40,30 1200x690
+     AXGroup [AXEmptyGroup] DOMClassList=(     "visually-hidden" ) @39,29 1x1
+     AXGroup [AXLandmarkNavigation] Title=Sessions Description=Sessions DOMClassList=(     sidebar ) @40,30 248x690
+      AXButton Title=Hide Sidebar Description=Hide Sidebar DOMClassList=(     "sidebar__hide" ) @251,42 28x28
+      AXGroup [AXLandmarkRegion] Title=This Mac Description=This Mac DOMClassList=(     "sidebar__group",     "sidebar__group--empty" ) @48,86 231x52
+       AXHeading Title=This Mac Value=2 DOMIdentifier=sidebar-group-local DOMClassList=(     "sidebar__group-header" ) @56,88 191x16
+        AXStaticText Value=This Mac DOMClassList=( ) @80,89 50x14
+       AXButton Title=New Session Description=New Session DOMClassList=(     "sidebar__group-add" ) @251,86 20x20
+       AXList [AXContentList] DOMClassList=(     "sidebar__rows" ) @48,110 231x28
+        AXGroup DOMClassList=( ) @48,110 231x28
+         AXButton Title=New Session Description=New Session DOMClassList=(     "sidebar__row",     "sidebar__row--action" ) @48,110 231x28
+      AXGroup [AXLandmarkRegion] Title=Other Macs Description=Other Macs DOMClassList=(     "sidebar__group" ) @48,154 231x104
+       AXHeading Title=Other Macs Value=2 DOMIdentifier=sidebar-group-peers DOMClassList=(     "sidebar__group-header" ) @56,154 215x16
+        AXStaticText Value=Other Macs DOMClassList=( ) @80,155 64x14
+       AXList [AXContentList] DOMClassList=(     "sidebar__rows" ) @48,174 231x84
+        AXGroup Value=OFFICE Reachable DOMClassList=(     "sidebar__host-item" ) @48,174 231x84
+         AXGroup DOMClassList=(     "sidebar__host" ) @48,174 231x28
+          AXStaticText Value=OFFICE DOMClassList=( ) @80,180 102x16
+          AXImage Title=Reachable Description=Reachable DOMClassList=(     "sidebar__dot",     "sidebar__dot--on" ) @263,184 8x8
+         AXList [AXContentList] Title=OFFICE Description=OFFICE DOMClassList=(     "sidebar__rows",     "sidebar__rows--nested" ) @48,202 231x56
+          AXGroup DOMClassList=( ) @48,202 231x28
+           AXButton Title=Desktop DOMClassList=(     "sidebar__row" ) @48,202 231x28
+          AXGroup DOMClassList=( ) @48,230 231x28
+           AXButton Title=shell DOMClassList=(     "sidebar__row" ) @48,230 231x28
+      AXGroup [AXApplicationStatus] DOMClassList=(     "sidebar__footer" ) @40,692 247x28
+       AXStaticText Value=Tailscale connected · HOME DOMClassList=( ) @72,700 192x13
+     AXTabGroup Title=Open sessions Description=Open sessions DOMClassList=(     "tab-list" ) @300,30 652x51
+      AXGroup DOMClassList=(     tab,     "tab--active" ) @300,41 220x29
+       AXRadioButton Title=Desktop · OFFICE Value=1 DOMIdentifier=tab-desktop:TAILNET-NAME DOMClassList=(     "tab__label" ) @312,41 180x29
+       AXButton Title=Close Desktop · OFFICE Description=Close Desktop · OFFICE DOMClassList=(     "tab__close" ) @496,45 20x21
+       AXGroup [AXEmptyGroup] DOMClassList=(     "tab__progress" ) @300,41 220x10
+     AXButton Title=New Session Description=New Session DOMClassList=(     "tab-bar__icon-button" ) @960,41 28x29
+     AXGroup [AXApplicationStatus] Description=While you control OFFICE, every key goes to that Mac, including Cmd+Q, Cmd+W and Cmd+C. Press Ctrl+Option+Cmd+Shift+Return to get Portty's shortcuts back. DOMClassList=(     "toolbar-chip",     "toolbar-chip--desktop" ) @996,37 232x37
+      AXStaticText Value=On OFFICE DOMClassList=( ) @1008,39 123x17
+      AXStaticText Value=Not connected DOMClassList=( ) @1008,57 84x15
+     AXStaticText Value=While you control OFFICE, every key goes to that Mac, including Cmd+Q, Cmd+W and Cmd+C. Press Ctrl+Option+Cmd+Shift+Return to get Portty's shortcuts back. DOMClassList=( ) @299,56 1048x16
+     AXGroup [AXTabPanel] DOMIdentifier=tabpanel-desktop:TAILNET-NAME DOMClassList=(     "desktop-tab" ) @288,82 952x638
+      AXGroup DOMClassList=( ) @288,82 952x638
+       AXGroup [AXWebApplication] Title=Mac desktop Description=Mac desktop DOMClassList=(     "desktop-stage" ) @288,82 952x638
+        AXGroup [AXEmptyGroup] Title=Mac desktop Description=Mac desktop DOMClassList=(     "desktop-view__video" ) @288,82 952x638
+        AXStaticText Value=While this has focus, your keyboard and pointer control the Mac. To give the keyboard back, press Control, Option, Command, Shift and Return together. DOMClassList=( ) @287,718 1102x20
+        AXTextArea Title=Mac desktop Description=Mac desktop DOMClassList=(     "desktop-stage__input" ) @288,81 2x2
+       AXGroup [AXEmptyGroup] DOMClassList=(     "desktop-scrim" ) @288,82 952x638
+       AXGroup [AXApplicationStatus] DOMClassList=(     "desktop-status__text" ) @629,272 270x138
+        AXHeading Title=Portty needs Local Network access to show this desktop Value=1 DOMClassList=(     "desktop-card__heading" ) @629,304 270x44
+         AXStaticText Value=Portty needs Local Network access to show this desktop DOMClassList=( ) @651,304 226x44
+        AXGroup DOMClassList=(     "desktop-card__body" ) @629,356 270x54
+         AXStaticText Value=Open System Settings, go to Privacy & Security, then Local Network, and turn on Portty. Or open the desktop in your browser. DOMClassList=( ) @630,357 268x52
+       AXButton Title=Open System Settings DOMClassList=(     button,     "button--secondary",     "desktop-card__action" ) @679,426 170x44
+       AXButton Title=Open in Browser DOMClassList=(     button,     "button--secondary",     "desktop-card__action" ) @697,486 134x44
+       AXGroup [AXEmptyGroup] DOMClassList=(     "desktop-notice-slot" ) @288,82 952x10
+ AXButton [AXCloseButton] @58,48 16x16
+ AXButton [AXFullScreenButton] @104,48 16x16
+  AXGroup @105,49 14x14
+ AXButton [AXMinimizeButton] @81,48 16x16
