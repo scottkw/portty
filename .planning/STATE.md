@@ -6,16 +6,16 @@ current_phase: 20
 current_phase_name: Remote Control
 status: executing
 stopped_at: Phase 19 complete (real-Mac verification deferred, see 19-UAT.md), Phase 20 executing next
-last_updated: "2026-11-27T00:01:44.230Z"
+last_updated: "2026-11-27T00:21:12.139Z"
 last_activity: 2026-11-26
-last_activity_desc: "Phase 19 shipped as PR #12"
-state_head: fe8035c42967bf36631d15b13318704bd6d378c8
+last_activity_desc: Phase 20 execution started
+state_head: 1b1c40202ebb8523477cabb40325617d01516c12
 progress:
   total_phases: 8
   completed_phases: 4
-  total_plans: 21
-  completed_plans: 13
-  percent: 13
+  total_plans: 67
+  completed_plans: 43
+  percent: 50
 ---
 
 # Project State
@@ -29,9 +29,9 @@ See: .planning/PROJECT.md (updated 2026-11-24)
 
 ## Current Position
 
-Phase: 20 (Remote Control) — EXECUTING (next)
-Status: Phase 19 complete 2026-11-26 (verification human_needed 5/5, real-Mac items deferred; see Deferred Verification)
-Last activity: 2026-11-26 -- Phase 19 shipped as PR #12
+Phase: 20 (Remote Control) — EXECUTING
+Status: Executing Phase 20
+Last activity: 2026-11-26 — Phase 20 execution started
 
 ## Performance Metrics
 
