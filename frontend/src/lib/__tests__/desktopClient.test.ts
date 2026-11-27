@@ -7,7 +7,12 @@ import { describe, it, expect, afterEach, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
+  CLIP_CHUNK_BYTES,
+  CLIP_FRAME_MAX,
+  CLIP_MAX_BYTES,
+  CLIP_TIMEOUT_MS,
   RECONNECT,
+  chunkClipText,
   createDesktopClient,
   defaultDesktopWsUrl,
   fetchCheck,
@@ -771,6 +776,250 @@ describe('picture means ICE connected, not ontrack (Phase 19 review follow-up)',
     }
     expect(kinds(e)).toContain('unreachable')
     expect(kinds(e)).not.toContain('streaming')
+  })
+})
+
+describe('clipboard transfer (Phase 20-08)', () => {
+  const golden = () =>
+    readFileSync(resolve(__dirname, '../../../../internal/desktop/testdata/signal-v1.jsonl'), 'utf8')
+      .trim().split('\n').map((l) => JSON.parse(l) as { name: string; dir: string; wire: Record<string, unknown> })
+  const wire = (name: string) => golden().find((l) => l.name === name)!.wire
+  /** The golden server line, answering the transfer the client just started. */
+  const reply = (name: string, xid: string, over: object = {}) => ({ ...wire(name), xid, ...over })
+  const enc = (s: string) => new TextEncoder().encode(s).length
+
+  async function connected() {
+    const e = setup()
+    e.client.start()
+    await handshakeWithInput(e)
+    return e
+  }
+  const sentXid = (e: Env, type: string) => (lastT(e).last(type) as { xid: string }).xid
+
+  describe('copyFromMac', () => {
+    it('sends the golden clip_get shape and resolves ok with the assembled text (golden clip_data and clip_result lines)', async () => {
+      const e = await connected()
+      const p = e.client.copyFromMac()
+      const sent = lastT(e).last('clip_get') as Record<string, unknown>
+      expect(Object.keys(sent).sort()).toEqual(Object.keys(wire('clip-get')).sort())
+      expect(typeof sent.xid).toBe('string')
+      lastT(e).recv(reply('clip-data', sent.xid as string))
+      lastT(e).recv(reply('clip-result-ok', sent.xid as string))
+      await expect(p).resolves.toEqual({ outcome: 'ok', text: 'hello' })
+    })
+
+    it('joins several chunks in seq order', async () => {
+      const e = await connected()
+      const p = e.client.copyFromMac()
+      const xid = sentXid(e, 'clip_get')
+      lastT(e).recv({ type: 'clip_data', xid, seq: 0, total: 2, len: 7, text: 'hel' })
+      lastT(e).recv({ type: 'clip_data', xid, seq: 1, total: 2, len: 7, text: 'lo, ' })
+      lastT(e).recv(reply('clip-result-ok', xid))
+      await expect(p).resolves.toEqual({ outcome: 'ok', text: 'hello, ' })
+    })
+
+    it('counts bytes, not characters: a multi-byte text must match len', async () => {
+      const e = await connected()
+      const p = e.client.copyFromMac()
+      const xid = sentXid(e, 'clip_get')
+      lastT(e).recv({ type: 'clip_data', xid, seq: 0, total: 1, len: enc('é☃😀'), text: 'é☃😀' })
+      lastT(e).recv(reply('clip-result-ok', xid))
+      await expect(p).resolves.toEqual({ outcome: 'ok', text: 'é☃😀' })
+    })
+
+    it.each([
+      ['a gap (0 then 2 of 3)', [[0, 3], [2, 3]]],
+      ['a duplicate (0 then 0)', [[0, 2], [0, 2]]],
+      ['a changed total', [[0, 2], [1, 3]]],
+    ])('fails on %s', async (_n, seqs) => {
+      const e = await connected()
+      const p = e.client.copyFromMac()
+      const xid = sentXid(e, 'clip_get')
+      for (const [seq, total] of seqs) lastT(e).recv({ type: 'clip_data', xid, seq, total, len: 6, text: 'ab' })
+      lastT(e).recv(reply('clip-result-ok', xid))
+      await expect(p).resolves.toEqual({ outcome: 'failed' })
+    })
+
+    it('fails when len does not match the assembled bytes, or a changed len, or a missing chunk at the end', async () => {
+      for (const frames of [
+        [{ seq: 0, total: 1, len: 6, text: 'hello' }],
+        [{ seq: 0, total: 2, len: 5, text: 'he' }, { seq: 1, total: 2, len: 6, text: 'llo' }],
+        [{ seq: 0, total: 2, len: 5, text: 'hel' }],
+        [],
+      ]) {
+        const e = await connected()
+        const p = e.client.copyFromMac()
+        const xid = sentXid(e, 'clip_get')
+        for (const f of frames) lastT(e).recv({ type: 'clip_data', xid, ...f })
+        lastT(e).recv(reply('clip-result-ok', xid))
+        await expect(p).resolves.toEqual({ outcome: 'failed' })
+      }
+    })
+
+    it('fails on a chunk over 16384 bytes, over len, over the 1 MiB cap, or with a non-string text', async () => {
+      for (const f of [
+        { seq: 0, total: 1, len: CLIP_CHUNK_BYTES + 1, text: 'a'.repeat(CLIP_CHUNK_BYTES + 1) },
+        { seq: 0, total: 1, len: 3, text: 'abcd' },
+        { seq: 0, total: 1, len: CLIP_MAX_BYTES + 1, text: 'a' },
+        { seq: 0, total: 1, len: 1, text: 7 },
+      ]) {
+        const e = await connected()
+        const p = e.client.copyFromMac()
+        lastT(e).recv({ type: 'clip_data', xid: sentXid(e, 'clip_get'), ...f })
+        await expect(p).resolves.toEqual({ outcome: 'failed' })
+      }
+    })
+
+    it('answers concealed, empty, waiting_approval and too_large with no text (golden concealed and waiting lines)', async () => {
+      for (const [line, outcome] of [['clip-result-concealed', 'concealed'], ['clip-result-waiting', 'waiting_approval']] as const) {
+        const e = await connected()
+        const p = e.client.copyFromMac()
+        lastT(e).recv(reply(line, sentXid(e, 'clip_get')))
+        await expect(p).resolves.toEqual({ outcome })
+      }
+      for (const outcome of ['empty', 'too_large', 'failed', 'forbidden', 'busy']) {
+        const e = await connected()
+        const p = e.client.copyFromMac()
+        lastT(e).recv({ type: 'clip_result', xid: sentXid(e, 'clip_get'), outcome })
+        await expect(p).resolves.toEqual({ outcome })
+      }
+    })
+
+    it('an unknown outcome is a failure, and a message for another xid is ignored', async () => {
+      const e = await connected()
+      const p = e.client.copyFromMac()
+      const xid = sentXid(e, 'clip_get')
+      lastT(e).recv({ type: 'clip_data', xid: 'other', seq: 0, total: 1, len: 5, text: 'hello' })
+      lastT(e).recv({ type: 'clip_result', xid: 'other', outcome: 'concealed' })
+      lastT(e).recv({ type: 'clip_result', xid, outcome: 'whatever' })
+      await expect(p).resolves.toEqual({ outcome: 'failed' })
+    })
+
+    it('a text that arrived is dropped when the result is not ok', async () => {
+      const e = await connected()
+      const p = e.client.copyFromMac()
+      const xid = sentXid(e, 'clip_get')
+      lastT(e).recv({ type: 'clip_data', xid, seq: 0, total: 1, len: 5, text: 'hello' })
+      lastT(e).recv({ type: 'clip_result', xid, outcome: 'failed' })
+      await expect(p).resolves.toEqual({ outcome: 'failed' })
+    })
+
+    it('times out as failed after CLIP_TIMEOUT_MS, and a late answer does nothing', async () => {
+      const e = await connected()
+      const p = e.client.copyFromMac()
+      const xid = sentXid(e, 'clip_get')
+      const done = vi.fn()
+      void p.then(done)
+      await e.clock.advance(CLIP_TIMEOUT_MS - 1)
+      expect(done).not.toHaveBeenCalled()
+      await e.clock.advance(1)
+      await expect(p).resolves.toEqual({ outcome: 'failed' })
+      lastT(e).recv(reply('clip-result-ok', xid))
+      // a new transfer is free to start
+      void e.client.copyFromMac()
+      expect(lastT(e).sent.filter((m) => m.type === 'clip_get')).toHaveLength(2)
+    })
+
+    it('a dropped connection resolves failed at once', async () => {
+      const e = await connected()
+      const p = e.client.copyFromMac()
+      lastT(e).dropWith(1006)
+      await expect(p).resolves.toEqual({ outcome: 'failed' })
+    })
+
+    it('is failed with nothing sent when there is no connection', async () => {
+      const e = setup()
+      await expect(e.client.copyFromMac()).resolves.toEqual({ outcome: 'failed' })
+    })
+
+    it('answers busy at once, sending nothing, while another transfer is in flight', async () => {
+      const e = await connected()
+      void e.client.copyFromMac()
+      await expect(e.client.copyFromMac()).resolves.toEqual({ outcome: 'busy' })
+      await expect(e.client.pasteToMac('x')).resolves.toEqual({ outcome: 'busy' })
+      expect(lastT(e).sent.filter((m) => m.type === 'clip_get' || m.type === 'clip_put')).toHaveLength(1)
+    })
+  })
+
+  describe('pasteToMac', () => {
+    it('sends clip_put in the golden shape, one xid, seq from 0, total and len on every chunk, and resolves on clip_result', async () => {
+      const e = await connected()
+      const p = e.client.pasteToMac('hello, ')
+      const puts = lastT(e).sent.filter((m) => m.type === 'clip_put')
+      expect(puts).toHaveLength(1)
+      expect(Object.keys(puts[0]).sort()).toEqual(Object.keys(wire('clip-put-0')).sort())
+      expect(puts[0]).toMatchObject({ seq: 0, total: 1, len: 7, text: 'hello, ' })
+      lastT(e).recv({ type: 'clip_result', xid: puts[0].xid, outcome: 'ok' })
+      await expect(p).resolves.toEqual({ outcome: 'ok' })
+    })
+
+    it('splits a long text: contiguous seq, the same xid, total and len, texts that join back, every chunk at most 16384 bytes', async () => {
+      const e = await connected()
+      const text = 'é☃😀 abc'.repeat(6000)
+      void e.client.pasteToMac(text)
+      const puts = lastT(e).sent.filter((m) => m.type === 'clip_put') as { xid: string; seq: number; total: number; len: number; text: string }[]
+      expect(puts.length).toBeGreaterThan(1)
+      expect(new Set(puts.map((m) => m.xid)).size).toBe(1)
+      expect(puts.map((m) => m.seq)).toEqual(puts.map((_, i) => i))
+      expect(new Set(puts.map((m) => m.total))).toEqual(new Set([puts.length]))
+      expect(new Set(puts.map((m) => m.len))).toEqual(new Set([enc(text)]))
+      expect(puts.map((m) => m.text).join('')).toBe(text)
+      for (const m of puts) {
+        expect(enc(m.text)).toBeLessThanOrEqual(CLIP_CHUNK_BYTES)
+        expect(enc(JSON.stringify(m))).toBeLessThanOrEqual(CLIP_FRAME_MAX)
+      }
+    })
+
+    it('sends nothing for an empty text (empty) or one over 1 MiB (too_large); exactly 1 MiB is sent', async () => {
+      const e = await connected()
+      await expect(e.client.pasteToMac('')).resolves.toEqual({ outcome: 'empty' })
+      await expect(e.client.pasteToMac('a'.repeat(CLIP_MAX_BYTES + 1))).resolves.toEqual({ outcome: 'too_large' })
+      await expect(e.client.pasteToMac('é'.repeat(CLIP_MAX_BYTES / 2 + 1))).resolves.toEqual({ outcome: 'too_large' })
+      expect(lastT(e).sent.filter((m) => m.type === 'clip_put')).toHaveLength(0)
+      void e.client.pasteToMac('a'.repeat(CLIP_MAX_BYTES))
+      expect(lastT(e).sent.filter((m) => m.type === 'clip_put').length).toBeGreaterThan(60)
+    })
+
+    it('resolves the daemon outcome, a timeout, and a dropped connection as failed', async () => {
+      const e = await connected()
+      const p1 = e.client.pasteToMac('abc')
+      lastT(e).recv({ type: 'clip_result', xid: sentXid(e, 'clip_put'), outcome: 'forbidden' })
+      await expect(p1).resolves.toEqual({ outcome: 'forbidden' })
+      const p2 = e.client.pasteToMac('abc')
+      await e.clock.advance(CLIP_TIMEOUT_MS)
+      await expect(p2).resolves.toEqual({ outcome: 'failed' })
+      const p3 = e.client.pasteToMac('abc')
+      lastT(e).dropWith(1006)
+      await expect(p3).resolves.toEqual({ outcome: 'failed' })
+    })
+  })
+
+  describe('chunkClipText', () => {
+    it('gives 1 chunk for 16384 ASCII bytes and 2 for 16385', () => {
+      expect(chunkClipText('a'.repeat(16384))).toHaveLength(1)
+      expect(chunkClipText('a'.repeat(16385))).toHaveLength(2)
+      expect(chunkClipText('')).toEqual([])
+    })
+
+    it('never splits a code point: 16383 a then é (2 bytes) moves é to the next chunk, and an astral pair stays whole', () => {
+      const c = chunkClipText('a'.repeat(16383) + 'é')
+      expect(c).toEqual(['a'.repeat(16383), 'é'])
+      const emoji = 'a'.repeat(16382) + '😀'
+      expect(chunkClipText(emoji)).toEqual(['a'.repeat(16382), '😀'])
+    })
+
+    it('keeps every encoded frame at most 30000 bytes: 20000 double quotes, and control characters that escape to six', () => {
+      for (const t of ['"'.repeat(20000), '\u0001'.repeat(16000), '\n'.repeat(20000), 'x"'.repeat(30000)]) {
+        const chunks = chunkClipText(t)
+        expect(chunks.join('')).toBe(t)
+        for (const [seq, text] of chunks.entries()) {
+          const frame = JSON.stringify({ type: 'clip_put', xid: 'x999999', seq, total: chunks.length, len: enc(t), text })
+          expect(enc(frame)).toBeLessThanOrEqual(CLIP_FRAME_MAX)
+          expect(enc(text)).toBeLessThanOrEqual(CLIP_CHUNK_BYTES)
+        }
+      }
+      expect(chunkClipText('"'.repeat(20000)).length).toBeGreaterThan(1)
+    })
   })
 })
 

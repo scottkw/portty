@@ -2591,6 +2591,8 @@ html:has(.desktop-view) body {
   left: 0;
   right: 0;
   width: fit-content;
+  /* Long chip text wraps at 480px and is never truncated. */
+  max-width: min(480px, calc(100% - 48px));
   margin: 0 auto;
   min-height: 32px;
   padding: 8px 12px;
@@ -2720,10 +2722,10 @@ html:has(.desktop-view) body {
 .desktop-dot[hidden] {
   display: none;
 }
-/* The notice chip: the Phase 19 chip metrics, one slot below the state chip, wrapping and never truncating. */
+/* The notice chip: the Phase 19 chip metrics, one slot below the state chip, wrapping and never truncating.
+   --desktop-chip-h is the state chip's measured height (set by the view when it wraps past one line). */
 .desktop-chip--notice {
-  top: calc(48px + env(safe-area-inset-top));
-  max-width: min(480px, calc(100% - 48px));
+  top: calc(8px + var(--desktop-chip-h, 32px) + 8px + env(safe-area-inset-top));
 }
 @media (prefers-reduced-motion: reduce) {
   .desktop-chip--notice {
@@ -2895,5 +2897,73 @@ html:has(.desktop-view) body {
   top: calc(52px + env(safe-area-inset-top));
 }
 .desktop-view--bar .desktop-chip--notice {
-  top: calc(92px + env(safe-area-inset-top));
+  top: calc(52px + var(--desktop-chip-h, 32px) + 8px + env(safe-area-inset-top));
+}
+
+/* ─── Desktop clipboard popovers (Phase 20-08, 20-UI-SPEC Surface D) ──
+   The Copy fallback and the Paste popover: a non-modal dialog 4px under the Clipboard
+   button. Portaled to the body (or the full-screen element), so it sets its own selection
+   and sits above the bar. Tokens only. */
+.desktop-popover {
+  position: fixed;
+  z-index: 1100;
+  box-sizing: border-box;
+  width: 320px;
+  max-width: calc(100% - 48px);
+  padding: 16px;
+  border: 1px solid var(--color-control-border);
+  border-radius: 10px;
+  background: var(--color-popover);
+  box-shadow: var(--shadow-popover);
+  color: var(--color-text);
+  -webkit-user-select: text;
+  user-select: text;
+}
+.desktop-popover__title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
+.desktop-popover__text {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-text-secondary);
+}
+/* Long clipboard text scrolls inside the box, from 160px. */
+.desktop-popover__textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 96px;
+  max-height: 160px;
+  margin-top: 12px;
+  padding: 8px;
+  overflow-y: auto;
+  resize: none;
+  border: 1px solid var(--color-control-border);
+  border-radius: 6px;
+  background: var(--color-field);
+  color: var(--color-text);
+  font-size: 13px;
+  line-height: 18px;
+}
+.desktop-popover__textarea:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+.desktop-popover__error {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-error-text);
+}
+.desktop-popover__buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+.desktop-popover .button[aria-disabled='true'] {
+  opacity: var(--opacity-disabled);
 }

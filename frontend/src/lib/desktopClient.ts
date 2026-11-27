@@ -149,6 +149,68 @@ export interface DesktopEvents {
   cursor: DesktopCursorMsg
 }
 
+/** What the daemon answered for a clipboard transfer (20-01 clip_result outcomes). */
+export type ClipOutcome = 'ok' | 'concealed' | 'empty' | 'too_large' | 'waiting_approval' | 'failed' | 'forbidden' | 'busy'
+export interface ClipResult {
+  outcome: ClipOutcome
+  /** The Mac's text, only with outcome ok on a copy. Held in memory for the caller; never logged. */
+  text?: string
+}
+
+/** Clipboard limits (20-CONTEXT [Limits]): a chunk's text, an encoded frame (under the 32768-byte read limit), the whole text, the wait. */
+export const CLIP_CHUNK_BYTES = 16384
+export const CLIP_FRAME_MAX = 30000
+export const CLIP_MAX_BYTES = 1048576
+export const CLIP_TIMEOUT_MS = 20000
+// A sane bound on `total` from the wire: 1 MiB in the smallest chunks a JSON-escaped frame allows is about 210.
+const CLIP_MAX_CHUNKS = 1024
+// What a clip_put frame carries besides its text (type, xid, seq, total, len), rounded up.
+const CLIP_FRAME_OVERHEAD = 256
+const CLIP_OUTCOMES: ReadonlySet<string> = new Set<ClipOutcome>([
+  'ok', 'concealed', 'empty', 'too_large', 'waiting_approval', 'failed', 'forbidden', 'busy',
+])
+
+const utf8Encoder = new TextEncoder()
+/** UTF-8 length of a string as the daemon counts it. */
+export const clipByteLength = (s: string): number => utf8Encoder.encode(s).length
+
+const utf8Of = (cp: number) => (cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4)
+/** Bytes this code point takes inside a JSON string as JSON.stringify writes it. */
+function jsonBytes(cp: number): number {
+  if (cp === 0x22 || cp === 0x5c) return 2
+  if (cp < 0x20) return cp === 8 || cp === 9 || cp === 10 || cp === 12 || cp === 13 ? 2 : 6
+  if (cp >= 0xd800 && cp <= 0xdfff) return 6 // a lone surrogate is written as \udXXX
+  return utf8Of(cp)
+}
+
+/**
+ * Cuts text for clip_put: at code-point boundaries, at most CLIP_CHUNK_BYTES of UTF-8 per chunk,
+ * and few enough JSON-escaped bytes that each encoded frame stays at most CLIP_FRAME_MAX.
+ */
+export function chunkClipText(s: string): string[] {
+  const escBudget = CLIP_FRAME_MAX - CLIP_FRAME_OVERHEAD
+  const out: string[] = []
+  let cur = ''
+  let raw = 0
+  let esc = 0
+  for (const ch of s) {
+    const cp = ch.codePointAt(0)!
+    const r = utf8Of(cp)
+    const e = jsonBytes(cp)
+    if (cur !== '' && (raw + r > CLIP_CHUNK_BYTES || esc + e > escBudget)) {
+      out.push(cur)
+      cur = ''
+      raw = 0
+      esc = 0
+    }
+    cur += ch
+    raw += r
+    esc += e
+  }
+  if (cur !== '') out.push(cur)
+  return out
+}
+
 export interface DesktopClient {
   start(): void
   stop(): void
@@ -168,6 +230,14 @@ export interface DesktopClient {
   requestSurfaces(): Promise<DesktopSurfacesMsg>
   /** Picks a surface; the answer is a `surface` event for every viewer, or `selectFailed` for this one. Display id 0 is the main display. */
   selectSurface(kind: SurfaceKind, id: number): void
+  /**
+   * Asks the Mac for its clipboard text (clip_get) and collects the chunks in order. Never rejects:
+   * a gap, a duplicate, a length mismatch, a dropped connection or CLIP_TIMEOUT_MS is outcome failed;
+   * a transfer already in flight is busy. Call it only inside the user's own click.
+   */
+  copyFromMac(): Promise<ClipResult>
+  /** Sends text to the Mac's clipboard as clip_put chunks. Empty is `empty` and over CLIP_MAX_BYTES is `too_large`, with nothing sent. Never rejects. */
+  pasteToMac(text: string): Promise<{ outcome: ClipOutcome }>
   on<K extends keyof DesktopEvents>(event: K, cb: (v: DesktopEvents[K]) => void): () => void
 }
 
@@ -273,6 +343,47 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
     return null
   }
 
+  // One clipboard transfer at a time (the daemon allows one per viewer and answers busy otherwise).
+  interface ClipXfer {
+    xid: string
+    kind: 'get' | 'put'
+    resolve: (r: ClipResult) => void
+    timer: unknown
+    // Assembly of a copy: the next expected seq, the announced total and len, bytes so far, the pieces.
+    next: number
+    total: number
+    len: number
+    bytes: number
+    parts: string[]
+  }
+  let clipXfer: ClipXfer | null = null
+  let xidN = 0
+  function endClip(outcome: ClipOutcome, text?: string) {
+    const x = clipXfer
+    if (!x) return
+    clipXfer = null
+    clock.clearTimeout(x.timer)
+    x.resolve(text === undefined ? { outcome } : { outcome, text })
+  }
+  function startClip(kind: 'get' | 'put', go: (xid: string, t: SignalTransport) => void): Promise<ClipResult> {
+    if (clipXfer) return Promise.resolve({ outcome: 'busy' })
+    const t = transport
+    if (!t || !hadHello) return Promise.resolve({ outcome: 'failed' })
+    return new Promise<ClipResult>((resolve) => {
+      const xid = `x${++xidN}`
+      const x: ClipXfer = {
+        xid, kind, resolve, next: 0, total: 0, len: 0, bytes: 0, parts: [],
+        timer: clock.setTimeout(() => endClip('failed'), CLIP_TIMEOUT_MS),
+      }
+      clipXfer = x
+      try {
+        go(xid, t)
+      } catch {
+        endClip('failed')
+      }
+    })
+  }
+
   interface ListWait {
     resolve: (m: DesktopSurfacesMsg) => void
     reject: (e: Error) => void
@@ -300,6 +411,7 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
     iceUp = false
     epoch = null
     settleLists(new Error('not connected'))
+    endClip('failed')
     // The viewer must release what it holds when its channel goes, so say so now: a closed
     // peer connection reports its channel only after the generation has moved on.
     if (inputChannel) {
@@ -588,6 +700,49 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
         case 'select_failed':
           emit('selectFailed', { code: typeof m.code === 'string' ? m.code : '' })
           break
+        case 'clip_data': {
+          const x = clipXfer
+          if (!x || x.kind !== 'get' || m.xid !== x.xid) break
+          const { seq, total, len, text } = m
+          if (!Number.isInteger(seq) || !Number.isInteger(total) || !Number.isInteger(len) || typeof text !== 'string') {
+            endClip('failed')
+            break
+          }
+          if ((total as number) < 1 || (total as number) > CLIP_MAX_CHUNKS || (len as number) < 1 || (len as number) > CLIP_MAX_BYTES) {
+            endClip('failed')
+            break
+          }
+          // Every chunk must agree with the first on total and len, and arrive as the next seq.
+          if (x.next === 0) {
+            x.total = total as number
+            x.len = len as number
+          } else if (total !== x.total || len !== x.len) {
+            endClip('failed')
+            break
+          }
+          const n = clipByteLength(text)
+          if (seq !== x.next || (seq as number) >= x.total || n > CLIP_CHUNK_BYTES || x.bytes + n > x.len) {
+            endClip('failed')
+            break
+          }
+          x.parts.push(text)
+          x.next++
+          x.bytes += n
+          break
+        }
+        case 'clip_result': {
+          const x = clipXfer
+          if (!x || m.xid !== x.xid) break
+          const outcome: ClipOutcome = typeof m.outcome === 'string' && CLIP_OUTCOMES.has(m.outcome) ? (m.outcome as ClipOutcome) : 'failed'
+          if (x.kind === 'get' && outcome === 'ok') {
+            // ok means every chunk came, in order, and add up to the announced length.
+            if (x.next === 0 || x.next !== x.total || x.bytes !== x.len) endClip('failed')
+            else endClip('ok', x.parts.join(''))
+            break
+          }
+          endClip(outcome)
+          break
+        }
         case 'size':
           if (Number.isInteger(m.w) && Number.isInteger(m.h)) emit('size', { w: m.w as number, h: m.h as number })
           break
@@ -728,6 +883,18 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
     },
     selectSurface(kind, id) {
       transport?.send({ type: 'select', kind, id })
+    },
+    copyFromMac() {
+      return startClip('get', (xid, t) => t.send({ type: 'clip_get', xid }))
+    },
+    pasteToMac(text) {
+      const len = clipByteLength(text)
+      if (len === 0) return Promise.resolve({ outcome: 'empty' })
+      if (len > CLIP_MAX_BYTES) return Promise.resolve({ outcome: 'too_large' })
+      const chunks = chunkClipText(text)
+      return startClip('put', (xid, t) => {
+        chunks.forEach((c, seq) => t.send({ type: 'clip_put', xid, seq, total: chunks.length, len, text: c }))
+      })
     },
     on(event, cb) {
       const set = listeners[event] as Set<typeof cb>

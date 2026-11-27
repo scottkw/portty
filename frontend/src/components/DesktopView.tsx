@@ -1,12 +1,15 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   ArrowPathIcon,
+  ClipboardDocumentCheckIcon,
+  ClipboardIcon,
   ClockIcon,
   ArrowsPointingOutIcon,
   ArrowsRightLeftIcon,
   ComputerDesktopIcon,
   CursorArrowRaysIcon,
   ExclamationTriangleIcon,
+  EyeSlashIcon,
   HandRaisedIcon,
   InformationCircleIcon,
   LockClosedIcon,
@@ -16,8 +19,11 @@ import {
   WindowIcon,
 } from '@heroicons/react/24/outline'
 import {
+  CLIP_MAX_BYTES,
+  clipByteLength,
   createDesktopClient,
   type ClientStatus,
+  type ClipOutcome,
   type DesktopControlMsg,
   type DesktopClient,
   type DesktopStateMsg,
@@ -26,6 +32,7 @@ import {
 import { HINT_KEY, createDesktopInput, type DesktopInput, type ReleaseReason } from '../lib/desktopInput'
 import { isPhone } from '../lib/phoneQuery'
 import { UserRefused } from './UserRefused'
+import { DesktopCopyPopover, DesktopPastePopover } from './DesktopClipboardPopover'
 import { DesktopControlBar, SWITCH_TIMEOUT_MS, type ControlMode, type SurfacePick } from './DesktopControlBar'
 
 const TITLE = 'Portty Desktop'
@@ -122,6 +129,8 @@ const SURFACE_FALLBACKS: Record<string, string | undefined> = {
 }
 const CHIP_SHOW_MS = 3000
 const CHIP_FADE_MS = 150
+/** A transfer that takes longer than this shows Copying from the Mac… or Sending to the Mac… until it ends. */
+export const CLIP_SLOW_MS = 400
 
 // Notice copy is 20-UI-SPEC Surface C word for word. Every string is fixed here; the wire only picks one.
 const RELEASE_CHORD_HINT = 'Typing goes to the Mac. To give the keyboard back, press Ctrl+Option+Cmd+Return.'
@@ -142,7 +151,34 @@ interface Notice {
   text: string
   dwell: number
   alert?: boolean
+  /** Stays until a newer notice replaces it (a transfer in flight); dwell is ignored. */
+  persistent?: boolean
 }
+
+// Clipboard notices are 20-UI-SPEC Surface B and C word for word. Every string is fixed here.
+type NoticeSpec = Omit<Notice, 'id'>
+const COPY_NOTICES: Partial<Record<ClipOutcome, NoticeSpec>> = {
+  ok: { Icon: ClipboardDocumentCheckIcon, text: 'Copied from Mac', dwell: 3000 },
+  concealed: {
+    Icon: EyeSlashIcon,
+    text: "The Mac's clipboard holds a hidden item (password manager); not copied",
+    dwell: 5000,
+  },
+  empty: { Icon: ClipboardIcon, text: "The Mac's clipboard has no text", dwell: 3000 },
+  waiting_approval: {
+    Icon: ClockIcon,
+    text: "Waiting for approval at the Mac. macOS is asking before Portty reads its clipboard.",
+    dwell: 5000,
+  },
+  too_large: { Icon: ExclamationTriangleIcon, text: "The Mac's clipboard text is too large to copy (limit 1 MB)", dwell: 5000 },
+}
+const COPY_FAILED: NoticeSpec = { Icon: ExclamationTriangleIcon, text: "Couldn't copy from the Mac. Try again.", dwell: 5000, alert: true }
+const PASTE_NOTICES: Partial<Record<ClipOutcome, NoticeSpec>> = {
+  ok: { Icon: ClipboardDocumentCheckIcon, text: "Sent to the Mac's clipboard; press ⌘V", dwell: 5000 },
+  empty: { Icon: ClipboardIcon, text: 'Your clipboard has no text', dwell: 3000 },
+  too_large: { Icon: ExclamationTriangleIcon, text: 'Your clipboard text is too large to send (limit 1 MB)', dwell: 5000 },
+}
+const PASTE_FAILED: NoticeSpec = { Icon: ExclamationTriangleIcon, text: "Couldn't send to the Mac. Try again.", dwell: 5000, alert: true }
 
 export type { ControlMode }
 
@@ -236,6 +272,17 @@ export function DesktopView({
   useEffect(() => setMode(controlMode), [controlMode])
   const [swapOn, setSwapOn] = useState(false)
   const [canSurface, setCanSurface] = useState(false)
+  const [canClipboard, setCanClipboard] = useState(false)
+  // A clipboard transfer is in flight: both Clipboard items are greyed so two never overlap.
+  const [clipBusy, setClipBusy] = useState(false)
+  const clipBusyRef = useRef(false)
+  // The one open popover. The Copy popover holds the Mac's text for as long as it is open: memory only, never logged.
+  const [popover, setPopover] = useState<{ kind: 'copy'; text: string } | { kind: 'paste' } | null>(null)
+  const clipboardBtnRef = useRef<HTMLButtonElement>(null)
+  const chipRef = useRef<HTMLDivElement>(null)
+  const [chipH, setChipH] = useState(0)
+  const showBarRef = useRef(false)
+  const barMenuOpenRef = useRef(false)
   const [fullscreen, setFullscreen] = useState(false)
   // Whether the stage had the keyboard when the pointer went down on the bar (the press itself blurs it).
   const stageHadFocus = useRef(false)
@@ -274,7 +321,7 @@ export function DesktopView({
 
   // A notice dwells, then fades, then goes; a newer one replaces it and restarts the clock.
   useEffect(() => {
-    if (!notice) return
+    if (!notice || notice.persistent) return
     const fade = setTimeout(() => setNoticeFading(true), notice.dwell)
     const gone = setTimeout(() => setNotice(null), notice.dwell + CHIP_FADE_MS)
     return () => {
@@ -384,6 +431,7 @@ export function DesktopView({
         inputCtl.current = ctl
         setSwapOn(ctl.swap())
         setCanSurface(r.surface)
+        setCanClipboard(r.clipboard)
         setCanControl(true)
       }),
       client.on('input', ({ open }) => {
@@ -494,7 +542,12 @@ export function DesktopView({
   }, [status.kind, canControl])
 
   // Opening a bar menu or dialog is a user action: release, hand the keyboard back, say so.
-  const anyMenuOpen = menuOpen || barMenuOpen
+  const anyMenuOpen = menuOpen || barMenuOpen || popover !== null
+  // At most one menu, popover or dialog: opening a bar menu closes a popover.
+  useEffect(() => {
+    if (barMenuOpen) setPopover(null)
+  }, [barMenuOpen])
+
   useEffect(() => {
     const ctl = inputCtl.current
     if (!anyMenuOpen || !ctl) return
@@ -559,7 +612,108 @@ export function DesktopView({
     })
   }
 
-  if (status.kind === 'other_account') return <UserRefused />
+  /** Marks a transfer in flight; the slow notice shows only if it outlasts CLIP_SLOW_MS. Returns the end of the transfer. */
+  function beginTransfer(slowText: string): () => void {
+    clipBusyRef.current = true
+    setClipBusy(true)
+    const slow = setTimeout(() => pushNotice({ Icon: ClipboardIcon, text: slowText, dwell: 0, persistent: true }), CLIP_SLOW_MS)
+    return () => {
+      clearTimeout(slow)
+      clipBusyRef.current = false
+      setClipBusy(false)
+    }
+  }
+
+  /** Opens a popover unless something else is in the way (a bar menu, or no bar). The popover is the feedback, so a Copying… notice goes. */
+  function openPopover(p: NonNullable<typeof popover>): boolean {
+    if (!showBarRef.current || barMenuOpenRef.current) return false
+    setNotice((n) => (n?.persistent ? null : n))
+    setPopover(p)
+    return true
+  }
+
+  /** Copy from Mac. Runs inside the click: the browser write starts now, with a promise for the text (Safari's gesture rule). */
+  function copyFromMac() {
+    const client = clientRef.current
+    if (!client || clipBusyRef.current) return
+    const end = beginTransfer('Copying from the Mac…')
+    const result = client.copyFromMac()
+    const clip = navigator.clipboard
+    let written: Promise<boolean>
+    if (typeof ClipboardItem !== 'undefined' && clip?.write) {
+      // Rejects on any outcome but ok, so a refused copy writes nothing.
+      const blob = result.then((r) => {
+        if (r.outcome !== 'ok' || !r.text) throw new Error(r.outcome)
+        return new Blob([r.text], { type: 'text/plain' })
+      })
+      blob.catch(() => {})
+      try {
+        written = clip.write([new ClipboardItem({ 'text/plain': blob })]).then(() => true, () => false)
+      } catch {
+        written = Promise.resolve(false)
+      }
+    } else {
+      written = result.then(async (r) => {
+        if (r.outcome !== 'ok' || !r.text || !clip?.writeText) return false
+        try {
+          await clip.writeText(r.text)
+          return true
+        } catch {
+          return false
+        }
+      })
+    }
+    void (async () => {
+      const r = await result
+      const ok = await written
+      end()
+      if (r.outcome === 'ok' && r.text) {
+        if (ok) pushNotice(COPY_NOTICES.ok!)
+        else if (!openPopover({ kind: 'copy', text: r.text })) pushNotice(COPY_FAILED)
+      } else {
+        pushNotice(r.outcome === 'ok' ? COPY_NOTICES.empty! : (COPY_NOTICES[r.outcome] ?? COPY_FAILED))
+      }
+    })()
+  }
+
+  async function sendToMac(text: string) {
+    const client = clientRef.current
+    if (!client) return
+    const n = clipByteLength(text)
+    if (n === 0) return pushNotice(PASTE_NOTICES.empty!)
+    if (n > CLIP_MAX_BYTES) return pushNotice(PASTE_NOTICES.too_large!)
+    if (clipBusyRef.current) return
+    const end = beginTransfer('Sending to the Mac…')
+    const { outcome } = await client.pasteToMac(text)
+    end()
+    pushNotice(PASTE_NOTICES[outcome] ?? PASTE_FAILED)
+  }
+
+  /** Paste to Mac. The read of the viewer's clipboard starts inside the click; it is sent at once. */
+  async function pasteToMac() {
+    if (!clientRef.current || clipBusyRef.current) return
+    const clip = navigator.clipboard
+    if (!clip?.readText) {
+      // Still inside the menu item's own handler, where the Clipboard menu counts as open until it closes just after.
+      await Promise.resolve()
+      if (!openPopover({ kind: 'paste' })) pushNotice(PASTE_FAILED)
+      return
+    }
+    clipBusyRef.current = true
+    setClipBusy(true)
+    let text: string
+    try {
+      text = await clip.readText()
+    } catch {
+      clipBusyRef.current = false
+      setClipBusy(false)
+      if (!openPopover({ kind: 'paste' })) pushNotice(PASTE_FAILED)
+      return
+    }
+    clipBusyRef.current = false
+    setClipBusy(false)
+    await sendToMac(text)
+  }
 
   // One card or one chip at a time; the first that applies wins.
   const stateCard = desk ? STATE_CARDS[desk.state] : undefined
@@ -578,6 +732,24 @@ export function DesktopView({
   }
   // The bar is for a viewer that may control the Mac, while a picture is up and no card covers it.
   const showBar = canControl && cardKey === null && (status.kind === 'streaming' || status.kind === 'reconnecting')
+  showBarRef.current = showBar
+  // A popover belongs to the bar: when the bar goes (a card covers the picture), so does it.
+  useEffect(() => {
+    if (!showBar) setPopover(null)
+  }, [showBar])
+
+  // The notice chip sits below the state chip, so it needs the state chip's height once that wraps.
+  const measureChip = useCallback(() => {
+    const h = chipRef.current?.offsetHeight ?? 0
+    setChipH((prev) => (prev === h ? prev : h))
+  }, [])
+  useLayoutEffect(measureChip)
+  useEffect(() => {
+    window.addEventListener('resize', measureChip)
+    return () => window.removeEventListener('resize', measureChip)
+  }, [measureChip])
+
+  if (status.kind === 'other_account') return <UserRefused />
   const scrim = (cardKey !== null && cardKey !== 'connecting') || chip?.Icon === ArrowPathIcon
   const card = cardKey ? CARDS[cardKey] : null
 
@@ -609,14 +781,17 @@ export function DesktopView({
         />
       </div>
       {scrim && <div className="desktop-scrim" onClick={needsTap ? startPlay : undefined} />}
-      <div className="desktop-status">
+      <div
+        className="desktop-status"
+        style={chipH > 32 ? ({ '--desktop-chip-h': `${chipH}px` } as React.CSSProperties) : undefined}
+      >
         {/* The wrapper and the live region stay mounted, so every change is announced.
             The region holds text only; the card's buttons sit beside it, so an update
             never re-reads a control and focus is never inside the region. */}
         <div className={card ? 'desktop-card' : undefined}>
           <div role="status" aria-live="polite" className="desktop-status__text">
             {chip && (
-              <div className={chip.fading ? 'desktop-chip desktop-chip--fading' : 'desktop-chip'}>
+              <div ref={chipRef} className={chip.fading ? 'desktop-chip desktop-chip--fading' : 'desktop-chip'}>
                 {chip.Icon && <chip.Icon className="desktop-chip__icon" aria-hidden="true" />}
                 {chip.text}
               </div>
@@ -677,6 +852,7 @@ export function DesktopView({
               mode,
               canSurface,
               fullscreenAvailable: document.fullscreenEnabled === true,
+              canClipboard,
             }}
             surface={surf ? { kind: surf.kind, id: surf.id, name: surf.name } : null}
             requestSurfaces={() => clientRef.current?.requestSurfaces() ?? Promise.reject(new Error('not connected'))}
@@ -688,7 +864,10 @@ export function DesktopView({
               clientRef.current?.selectSurface(pick.kind, pick.id)
             }}
             sendChord={(codes) => inputCtl.current?.sendChord(codes)}
-            onMenuOpenChange={setBarMenuOpen}
+            onMenuOpenChange={(open) => {
+                barMenuOpenRef.current = open // eagerly, for a popover that opens before the next render
+                setBarMenuOpen(open)
+              }}
             onSendKeysDone={() => { if (stageHadFocus.current) inputRef.current?.focus({ preventScroll: true }) }}
             swapOn={swapOn}
             onSwapChange={toggleSwap}
@@ -696,8 +875,23 @@ export function DesktopView({
             fullscreen={fullscreen}
             onFullscreen={() => void toggleFullscreen()}
             controlRef={controlSegRef}
+            onCopy={copyFromMac}
+            onPaste={() => void pasteToMac()}
+            clipBusy={clipBusy}
+            clipboardRef={clipboardBtnRef}
+            popoverOpen={popover !== null}
           />
         </div>
+      )}
+      {showBar && popover?.kind === 'copy' && (
+        <DesktopCopyPopover text={popover.text} anchor={clipboardBtnRef.current} onClose={() => setPopover(null)} />
+      )}
+      {showBar && popover?.kind === 'paste' && (
+        <DesktopPastePopover
+          anchor={clipboardBtnRef.current}
+          onSend={(text) => void sendToMac(text)}
+          onClose={() => setPopover(null)}
+        />
       )}
     </div>
   )
