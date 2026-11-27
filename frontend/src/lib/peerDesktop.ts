@@ -170,6 +170,9 @@ export type DesktopTabLabelInput = {
   controlAllowed: boolean
 }
 
+/** The app's release chord (CONTEXT, after the 21-02 probe): Ctrl+Option+Cmd+Return is taken by the system in the Portty app. */
+export const APP_RELEASE_CHORD = 'Ctrl+Option+Cmd+Shift+Return'
+
 /** The toolbar label's two lines: who owns the keyboard (UI-SPEC toolbar label table). */
 export function desktopTabLabel(i: DesktopTabLabelInput): { line1: string; line2: string; controlling: boolean } {
   const host = shortHost(i.host)
@@ -177,7 +180,7 @@ export function desktopTabLabel(i: DesktopTabLabelInput): { line1: string; line2
   // Control mode is off whenever the stream is not connected (UI-SPEC), so the
   // captured flag only counts while connected.
   if (connected && i.captured) {
-    return { line1: `Controlling ${host}`, line2: 'Release: Ctrl+Option+Cmd+Return', controlling: true }
+    return { line1: `Controlling ${host}`, line2: `Release: ${APP_RELEASE_CHORD}`, controlling: true }
   }
   let line2: string
   if (!connected) line2 = 'Not connected'
@@ -188,7 +191,7 @@ export function desktopTabLabel(i: DesktopTabLabelInput): { line1: string; line2
 }
 
 export function LABEL_TOOLTIP(host: string): string {
-  return `While you control ${shortHost(host)}, every key goes to that Mac, including Cmd+Q, Cmd+W and Cmd+C. Press Ctrl+Option+Cmd+Return to get Portty's shortcuts back.`
+  return `While you control ${shortHost(host)}, every key goes to that Mac, including Cmd+Q, Cmd+W and Cmd+C. Press ${APP_RELEASE_CHORD} to get Portty's shortcuts back.`
 }
 
 /** UI-SPEC Copywriting Contract, word for word. */

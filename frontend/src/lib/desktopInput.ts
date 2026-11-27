@@ -112,7 +112,8 @@ const MODIFIER_KEY: Record<string, string> = {
   AltLeft: 'Alt', AltRight: 'Alt', MetaLeft: 'Meta', MetaRight: 'Meta',
 }
 
-/** Ctrl+Option+Cmd+Return on the physical keys, read before the Swap. */
+/** Ctrl+Option+Cmd+Return on the physical keys, read before the Swap. Shift is not checked, so the Portty app's
+ *  Ctrl+Option+Cmd+Shift+Return (the system takes the one without Shift there) ends control mode as well. */
 export function isReleaseChord(e: Pick<KeyboardEvent, 'ctrlKey' | 'altKey' | 'metaKey' | 'code'>): boolean {
   return e.ctrlKey && e.altKey && e.metaKey && e.code === 'Enter'
 }

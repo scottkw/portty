@@ -186,6 +186,15 @@ export interface PeerDesktopResult {
 }
 export function ConnectPeerDesktop(host: string): Promise<PeerDesktopResult>
 
+// Portty 21-09: the Mac's own clipboard text for a Cmd+V typed in control mode. Never rejects. outcome
+// is ok (text set), concealed (a password manager item: text is empty), empty (no plain text),
+// too_large (over 1 MB: text is empty) or failed (a refused read). Call it only from that Cmd+V.
+export interface HomeClipboardResult {
+  outcome: string
+  text: string
+}
+export function ReadHomeClipboard(): Promise<HomeClipboardResult>
+
 // Portty 21-07: open the peer's desktop link in the default browser from Go (the link carries the
 // token and never reaches the web view). Resolves '' or an error code; call it only from a click.
 export function OpenPeerDesktopInBrowser(host: string): Promise<string>

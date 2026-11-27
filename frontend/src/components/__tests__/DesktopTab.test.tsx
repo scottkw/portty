@@ -15,6 +15,8 @@ interface MockClient {
   start: ReturnType<typeof vi.fn>
   stop: ReturnType<typeof vi.fn>
   wake: ReturnType<typeof vi.fn>
+  sendInput: ReturnType<typeof vi.fn>
+  pasteToMac: ReturnType<typeof vi.fn>
   emit: <K extends keyof DesktopEvents>(ev: K, v: DesktopEvents[K]) => void
 }
 
@@ -25,12 +27,14 @@ const h = vi.hoisted(() => ({
   connect: vi.fn(),
   openSettings: vi.fn(),
   openBrowser: vi.fn(),
+  readHome: vi.fn(),
 }))
 
 vi.mock('../../wailsjs/go/main/App', () => ({
   ConnectPeerDesktop: (host: string) => h.connect(host),
   OpenLocalNetworkSettings: () => h.openSettings(),
   OpenPeerDesktopInBrowser: (host: string) => h.openBrowser(host),
+  ReadHomeClipboard: () => h.readHome(),
 }))
 
 vi.mock('../../lib/peerDesktop', async (importOriginal) => {
@@ -107,6 +111,23 @@ const setVisibility = (v: DocumentVisibilityState) => {
 const advance = async (ms: number) => { await act(async () => { await vi.advanceTimersByTimeAsync(ms) }) }
 const press = async (b: HTMLButtonElement) => { await act(async () => { b.click() }) }
 
+const last = () => onLabel.mock.calls[onLabel.mock.calls.length - 1][0] as
+  | { line1: string; line2: string; controlling: boolean; tooltip: string }
+  | null
+/** Control is allowed: the viewer owns the desktop, rights arrive, and the picture is sized so a click lands on it. */
+const ownAccount = () => {
+  const video = container.querySelector('video')!
+  for (const [a, b] of [['clientWidth', 1000], ['clientHeight', 500], ['videoWidth', 1600], ['videoHeight', 1000]] as const) {
+    Object.defineProperty(video, a, { configurable: true, value: b })
+  }
+  emit('rights', { control: true, clipboard: true, surface: true })
+}
+async function picture() {
+  emit('status', { kind: 'streaming' })
+  emit('track', {} as MediaStream)
+  await act(async () => { container.querySelector('video')!.dispatchEvent(new Event('playing')) })
+}
+
 beforeEach(() => {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   vi.useFakeTimers()
@@ -118,6 +139,7 @@ beforeEach(() => {
   h.openSettings.mockResolvedValue(undefined)
   h.openBrowser.mockReset()
   h.openBrowser.mockResolvedValue('')
+  h.readHome.mockReset()
   onDesktopState.mockReset()
   onLabel.mockReset()
   visibility = 'visible'
@@ -291,22 +313,6 @@ describe('closing the tab', () => {
 })
 
 describe('the toolbar label feed (Task 3)', () => {
-  const last = () => onLabel.mock.calls[onLabel.mock.calls.length - 1][0] as
-    | { line1: string; line2: string; controlling: boolean; tooltip: string }
-    | null
-  const ownAccount = () => {
-    const video = container.querySelector('video')!
-    for (const [a, b] of [['clientWidth', 1000], ['clientHeight', 500], ['videoWidth', 1600], ['videoHeight', 1000]] as const) {
-      Object.defineProperty(video, a, { configurable: true, value: b })
-    }
-    emit('rights', { control: true, clipboard: true, surface: true })
-  }
-  async function picture() {
-    emit('status', { kind: 'streaming' })
-    emit('track', {} as MediaStream)
-    await act(async () => { container.querySelector('video')!.dispatchEvent(new Event('playing')) })
-  }
-
   it('says Not connected before a picture, then Click the picture to control once one shows and control is allowed', async () => {
     render()
     expect(last()).toMatchObject({ line1: 'On office-air', line2: 'Not connected', controlling: false })
@@ -334,5 +340,237 @@ describe('the toolbar label feed (Task 3)', () => {
     expect(last()).toMatchObject({ line2: 'View only' })
     render({ active: false })
     expect(last()).toBeNull()
+  })
+})
+
+describe('control mode (21-09): a click captures the keyboard and every way out lets go first', () => {
+  const stage = () => container.querySelector('.desktop-stage') as HTMLElement
+  const input = () => container.querySelector('textarea') as HTMLTextAreaElement
+  const click = () => act(() => stage().dispatchEvent(new PointerEvent('pointerdown', { clientX: 500, clientY: 250, bubbles: true, button: 0, pointerId: 1 })))
+  // The key and release messages the viewer sent, in order (moves, buttons and heartbeats are not under test).
+  const sent = () =>
+    (client().sendInput.mock.calls as [{ t: string; code?: string; d?: boolean }][])
+      .map(([m]) => m)
+      .filter((m) => m.t === 'key' || m.t === 'release')
+      .map((m) => (m.t === 'key' ? `${m.code} ${m.d ? 'down' : 'up'}` : 'release'))
+  const chord = (init: KeyboardEventInit) => {
+    const ev = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init })
+    act(() => { input().dispatchEvent(ev) })
+    return ev
+  }
+  async function controlling() {
+    render()
+    ownAccount()
+    await picture()
+    click()
+    expect(document.activeElement).toBe(input())
+  }
+
+  it('tracer: Cmd+W goes to the Mac as a tap with the local default stopped, and leaving the tab releases everything and gives the keyboard back', async () => {
+    await controlling()
+    const ev = chord({ code: 'KeyW', key: 'w', metaKey: true })
+    expect(ev.defaultPrevented).toBe(true)
+    expect(sent()).toEqual(['KeyW down', 'KeyW up'])
+    render({ active: false })
+    expect(sent()[sent().length - 1]).toBe('release')
+    expect(document.activeElement).not.toBe(input())
+  })
+
+  it('a click outside the picture (the keyboard leaves the stage) sends release', async () => {
+    await controlling()
+    act(() => input().blur())
+    expect(sent()).toContain('release')
+    expect(last()?.controlling).toBe(false)
+  })
+
+  it('Portty losing active-app status sends release and the stage input is blurred, so coming back is not control mode', async () => {
+    await controlling()
+    act(() => { window.dispatchEvent(new Event('blur')) })
+    expect(sent()).toContain('release')
+    expect(document.activeElement).not.toBe(input())
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    expect(last()?.controlling).toBe(false)
+  })
+
+  it('a hidden window releases', async () => {
+    await controlling()
+    setVisibility('hidden')
+    expect(sent()).toContain('release')
+    expect(document.activeElement).not.toBe(input())
+  })
+
+  it('the stream leaving Streaming releases and blurs the stage input', async () => {
+    await controlling()
+    emit('status', { kind: 'reconnecting' })
+    expect(sent()).toContain('release')
+    expect(document.activeElement).not.toBe(input())
+  })
+
+  it('closing the tab sends release before the client is torn down', async () => {
+    await controlling()
+    const c = client()
+    act(() => root.render(<div />))
+    const calls = c.sendInput.mock.calls as [{ t: string }][]
+    const lastRelease = calls.map(([m]) => m.t).lastIndexOf('release')
+    expect(lastRelease).toBeGreaterThanOrEqual(0)
+    expect(c.sendInput.mock.invocationCallOrder[lastRelease]).toBeLessThan(c.stop.mock.invocationCallOrder[0])
+  })
+
+  it('a Mac that locks keeps control mode on', async () => {
+    await controlling()
+    emit('state', { state: 'locked', viewers: 1, locked: true })
+    expect(document.activeElement).toBe(input())
+    expect(last()).toMatchObject({ line1: 'Controlling office-air', controlling: true })
+  })
+
+  it('the app\'s release chord Ctrl+Option+Cmd+Shift+Return is never forwarded, releases, and gives the keyboard back', async () => {
+    await controlling()
+    const ev = chord({ code: 'Enter', key: 'Enter', ctrlKey: true, altKey: true, metaKey: true, shiftKey: true })
+    expect(ev.defaultPrevented).toBe(true)
+    // Only releases went out (the tab's own exit repeats the chord's, which is harmless), never a key.
+    expect(sent().length).toBeGreaterThan(0)
+    expect(sent().every((m) => m === 'release')).toBe(true)
+    expect(document.activeElement).not.toBe(input())
+    expect(last()?.controlling).toBe(false)
+  })
+
+  it('the Control segment names the same chord in its tooltip', async () => {
+    render()
+    ownAccount()
+    await picture()
+    const seg = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent === 'Control')
+    expect(seg?.title).toContain('press Ctrl+Option+Cmd+Shift+Return.')
+  })
+
+  it('Cmd+C goes out as a tap and nothing reads the home clipboard', async () => {
+    await controlling()
+    const ev = chord({ code: 'KeyC', key: 'c', metaKey: true })
+    expect(ev.defaultPrevented).toBe(true)
+    expect(sent()).toEqual(['KeyC down', 'KeyC up'])
+    expect(h.readHome).not.toHaveBeenCalled()
+  })
+
+  describe('Cmd+V pastes the home clipboard text, then the key', () => {
+    const keys = () =>
+      (client().sendInput.mock.calls as [{ t: string; code?: string; d?: boolean; m?: number }][])
+        .map(([m]) => m)
+        .filter((m) => m.t === 'key')
+    const paste = async (init: KeyboardEventInit = {}) => {
+      const ev = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, code: 'KeyV', key: 'v', metaKey: true, ...init })
+      await act(async () => { input().dispatchEvent(ev) })
+      return ev
+    }
+    const home = (outcome: string, text = '') => h.readHome.mockResolvedValue({ outcome, text })
+
+    it('different text: pasteToMac with it, then KeyV down and up with the keydown\'s modifier mask', async () => {
+      await controlling()
+      home('ok', 'hello')
+      client().pasteToMac.mockResolvedValue({ outcome: 'ok' })
+      const ev = await paste()
+      expect(ev.defaultPrevented).toBe(true)
+      expect(h.readHome).toHaveBeenCalledTimes(1)
+      expect(client().pasteToMac).toHaveBeenCalledWith('hello')
+      expect(keys().map((m) => [m.code, m.d, m.m])).toEqual([['KeyV', true, 8], ['KeyV', false, 8]])
+      const firstKey = client().sendInput.mock.calls.findIndex(([m]) => (m as { t: string }).t === 'key')
+      expect(client().pasteToMac.mock.invocationCallOrder[0]).toBeLessThan(client().sendInput.mock.invocationCallOrder[firstKey])
+    })
+
+    it('the same text again sends only the key, so copy then paste on the Mac keeps working', async () => {
+      await controlling()
+      home('ok', 'hello')
+      client().pasteToMac.mockResolvedValue({ outcome: 'ok' })
+      await paste()
+      await paste()
+      expect(client().pasteToMac).toHaveBeenCalledTimes(1)
+      expect(keys()).toHaveLength(4)
+      home('ok', 'other')
+      await paste()
+      expect(client().pasteToMac).toHaveBeenCalledTimes(2)
+      expect(client().pasteToMac).toHaveBeenLastCalledWith('other')
+    })
+
+    it('no text sends only the key', async () => {
+      await controlling()
+      home('empty')
+      await paste()
+      expect(client().pasteToMac).not.toHaveBeenCalled()
+      expect(sent()).toEqual(['KeyV down', 'KeyV up'])
+    })
+
+    it.each([
+      ['concealed', 'Your clipboard holds a hidden item (password manager); not sent'],
+      ['too_large', 'Your clipboard text is too large to send (limit 1 MB)'],
+      ['failed', "Couldn't send to the Mac. Try again."],
+    ])('%s sends nothing and no key, and says so', async (outcome, notice) => {
+      await controlling()
+      home(outcome, outcome === 'concealed' ? 'secret' : '')
+      await paste()
+      expect(client().pasteToMac).not.toHaveBeenCalled()
+      expect(keys()).toHaveLength(0)
+      expect(chip()).toBe(notice)
+    })
+
+    it('a refused or rejected read fails closed', async () => {
+      await controlling()
+      h.readHome.mockRejectedValue(new Error('boom'))
+      await paste()
+      expect(client().pasteToMac).not.toHaveBeenCalled()
+      expect(keys()).toHaveLength(0)
+      expect(chip()).toBe("Couldn't send to the Mac. Try again.")
+    })
+
+    it('a failed send sends no key, says so, and the text is not remembered as sent', async () => {
+      await controlling()
+      home('ok', 'hello')
+      client().pasteToMac.mockResolvedValue({ outcome: 'failed' })
+      await paste()
+      expect(keys()).toHaveLength(0)
+      expect(chip()).toBe("Couldn't send to the Mac. Try again.")
+      client().pasteToMac.mockResolvedValue({ outcome: 'ok' })
+      await paste()
+      expect(client().pasteToMac).toHaveBeenCalledTimes(2)
+      expect(keys()).toHaveLength(2)
+    })
+
+    it('a second Cmd+V while the first is in flight is ignored, and still never reaches the Mac as a plain key', async () => {
+      await controlling()
+      let resolve!: (v: { outcome: string; text: string }) => void
+      h.readHome.mockReturnValue(new Promise((r) => { resolve = r }))
+      client().pasteToMac.mockResolvedValue({ outcome: 'ok' })
+      await paste()
+      const second = await paste()
+      expect(second.defaultPrevented).toBe(true)
+      await act(async () => { resolve({ outcome: 'ok', text: 'hello' }) })
+      expect(h.readHome).toHaveBeenCalledTimes(1)
+      expect(client().pasteToMac).toHaveBeenCalledTimes(1)
+      expect(keys()).toHaveLength(2)
+    })
+
+    it('leaving control mode while the paste is in flight sends no key', async () => {
+      await controlling()
+      let resolve!: (v: { outcome: string; text: string }) => void
+      h.readHome.mockReturnValue(new Promise((r) => { resolve = r }))
+      client().pasteToMac.mockResolvedValue({ outcome: 'ok' })
+      await paste()
+      act(() => { window.dispatchEvent(new Event('blur')) })
+      await act(async () => { resolve({ outcome: 'ok', text: 'hello' }) })
+      expect(keys()).toHaveLength(0)
+    })
+
+    it('Cmd+Shift+V is a plain key and reads nothing', async () => {
+      await controlling()
+      await paste({ shiftKey: true })
+      expect(h.readHome).not.toHaveBeenCalled()
+      expect(sent()).toEqual(['KeyV down', 'KeyV up'])
+    })
+
+    it('Cmd+V while not controlling is Portty\'s own paste: nothing is read or sent here', async () => {
+      render()
+      ownAccount()
+      await picture()
+      await paste()
+      expect(h.readHome).not.toHaveBeenCalled()
+      expect(client().pasteToMac).not.toHaveBeenCalled()
+    })
   })
 })

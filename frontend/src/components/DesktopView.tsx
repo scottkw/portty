@@ -34,7 +34,7 @@ import { HINT_KEY, createDesktopInput, type DesktopInput, type ReleaseReason } f
 import { isPhone } from '../lib/phoneQuery'
 import { UserRefused } from './UserRefused'
 import { DesktopCopyPopover, DesktopPastePopover } from './DesktopClipboardPopover'
-import { DesktopControlBar, SWITCH_TIMEOUT_MS, type ControlMode, type SurfacePick } from './DesktopControlBar'
+import { DEFAULT_RELEASE_CHORD, DesktopControlBar, SWITCH_TIMEOUT_MS, type ControlMode, type SurfacePick } from './DesktopControlBar'
 
 const TITLE = 'Portty Desktop'
 
@@ -120,7 +120,7 @@ const CARDS: Record<CardKey, { Icon: Icon; heading: string; body: string }> = {
 export interface DesktopControlHandle {
   releaseAll(): void
   releaseKeyboard(): void
-  notify(text: string, kind: 'status' | 'alert'): void
+  notify(text: string, kind: 'status' | 'alert', dwell?: number): void
 }
 
 /** What a host may replace on a card: its words, and the label of its one action. */
@@ -158,6 +158,11 @@ const CHIP_FADE_MS = 150
 export const CLIP_SLOW_MS = 400
 
 // Notice copy is 20-UI-SPEC Surface C word for word. Every string is fixed here; the wire only picks one.
+/** "Ctrl+Option+Cmd+Return" as the screen reader hears it: "Control, Option, Command and Return". */
+const chordWords = (chord: string): string => {
+  const w = chord.split('+').map((k) => ({ Ctrl: 'Control', Cmd: 'Command' })[k as 'Ctrl' | 'Cmd'] ?? k)
+  return `${w.slice(0, -1).join(', ')} and ${w[w.length - 1]}`
+}
 const RELEASE_CHORD_HINT = 'Typing goes to the Mac. To give the keyboard back, press Ctrl+Option+Cmd+Return.'
 const WINDOW_CHIPS = {
   raise_failed: { Icon: ExclamationTriangleIcon, text: "Couldn't bring the window to the front. Click the picture to try again." },
@@ -268,6 +273,8 @@ export interface DesktopViewProps {
   controlRef?: React.Ref<DesktopControlHandle>
   /** The host shows who owns the keyboard itself, so the two capture notices (Typing goes to the Mac, Typing stays on this device) never render. */
   hideCaptureNotices?: boolean
+  /** The release chord the page names in its hint and the Control tooltip; the app's differs from the browser viewer's. */
+  releaseChord?: string
 }
 
 /**
@@ -297,6 +304,7 @@ export function DesktopView({
   onModeChange,
   controlRef,
   hideCaptureNotices = false,
+  releaseChord = DEFAULT_RELEASE_CHORD,
 }: DesktopViewProps = {}): React.ReactElement {
   const rootRef = useRef<HTMLDivElement>(null)
   const controlSegRef = useRef<HTMLButtonElement>(null)
@@ -667,7 +675,7 @@ export function DesktopView({
       // The user's own doing (a tab switch, a click away), so no Held keys notice.
       releaseAll: () => inputCtl.current?.releaseAll('blur'),
       releaseKeyboard: () => inputRef.current?.blur(),
-      notify: (text, kind) => pushNotice({ Icon: InformationCircleIcon, text, dwell: 3000, alert: kind === 'alert' }),
+      notify: (text, kind, dwell = 3000) => pushNotice({ Icon: InformationCircleIcon, text, dwell, alert: kind === 'alert' }),
     }),
     [pushNotice],
   )
@@ -901,7 +909,7 @@ export function DesktopView({
         {canControl && captured && <div className="desktop-ring" aria-hidden="true" />}
         {canControl && <div className="desktop-dot" ref={dotRef} aria-hidden="true" hidden />}
         <span id={HINT_ID} className="visually-hidden">
-          While this has focus, your keyboard and pointer control the Mac. To give the keyboard back, press Control, Option, Command and Return together.
+          While this has focus, your keyboard and pointer control the Mac. To give the keyboard back, press {chordWords(releaseChord)} together.
         </span>
         <textarea
           ref={inputRef}
@@ -1020,6 +1028,7 @@ export function DesktopView({
             clipBusy={clipBusy}
             clipboardRef={clipboardBtnRef}
             popoverOpen={popover !== null}
+            releaseChord={releaseChord}
           />
         </div>
       )}
