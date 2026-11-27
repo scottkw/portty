@@ -2,6 +2,7 @@ package webserver
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"net/http"
 	"strings"
@@ -165,6 +166,21 @@ func (ws *WebServer) setupDesktopRoutes(mux *http.ServeMux) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.WriteHeader(http.StatusNoContent)
 	}))
+}
+
+// LookupPeer asks tailscaled who owns addr (host:port), for the media binding of
+// a guest's selected ICE pair (desktop.Deps.PeerIdentity). It returns the numeric
+// user ID and the stable node ID, and passes an error through unchanged: the
+// caller fails closed on any error.
+func (ws *WebServer) LookupPeer(ctx context.Context, addr string) (userID int64, stableID string, err error) {
+	who, err := ws.whois.WhoIs(ctx, addr)
+	if err != nil {
+		return 0, "", err
+	}
+	if who == nil || who.Node == nil {
+		return 0, "", errors.New("webserver: whois answered no node")
+	}
+	return int64(who.Node.User), string(who.Node.StableID), nil
 }
 
 // handleDesktopWS checks the token and the viewer cap, then upgrades and hands

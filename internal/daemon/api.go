@@ -66,6 +66,15 @@ type API struct {
 	desktopPollOnce  sync.Once
 	desktopPollEvery time.Duration
 
+	// --- Phase 22 click-to-share (desktop_share_api.go), guarded by mu -----
+	// guestShare is the one active guest share, nil when there is none; it lives
+	// in memory only. guestIAT is the issued-at of its link. guiStream is the
+	// GUI's events stream, held by one GUI at a time: its end is the liveness
+	// signal that ends the share.
+	guestShare *desktop.GuestShare
+	guestIAT   int64
+	guiStream  *shareStream
+
 	// --- Phase 87 capability state (D-04/D-06/D-14/D-15/D-16) -----------
 	// signingKey is the 32-byte HMAC-SHA256 key used to Sign capabilities.
 	// Bootstrapped from disk in BootstrapCapabilityState; replaced atomically
@@ -173,13 +182,12 @@ func NewAPI(engine *SessionEngine) *API {
 //
 // WR-01 (it2): the drain is short, so no slow route may hold the gate.
 // /peers/connect and /peers/desktop only cache a peer's token, which no handoff
-// moves; PUT share
-// and PUT /desktop take the gate themselves after their slow health check and
+// moves; PUT share, PUT /desktop and POST /desktop/share take the gate themselves after their slow health check and
 // cert warm-up.
 func (a *API) freezeGate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet || r.Method == http.MethodHead || r.URL.Path == "/handoff" ||
-			r.URL.Path == "/peers/connect" || r.URL.Path == "/peers/desktop" || r.Method == http.MethodPut && (strings.HasSuffix(r.URL.Path, "/share") || r.URL.Path == "/desktop") {
+			r.URL.Path == "/peers/connect" || r.URL.Path == "/peers/desktop" || r.Method == http.MethodPost && r.URL.Path == "/desktop/share" || r.Method == http.MethodPut && (strings.HasSuffix(r.URL.Path, "/share") || r.URL.Path == "/desktop") {
 			next.ServeHTTP(w, r)
 			return
 		}
