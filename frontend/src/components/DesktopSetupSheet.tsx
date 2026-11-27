@@ -108,7 +108,7 @@ function DesktopSetupSheetContent({ onClose, returnFocusTo }: Omit<DesktopSetupS
         <h2 className="dialog__title" id="desktop-setup-title">Set Up Desktop Sharing</h2>
         <div className="dialog__body">
           <p className="settings-row__description">
-            Portty needs two permissions to show this Mac&apos;s screen. Grant them here, once, while you are at the Mac.
+            Portty needs two permissions to show and control this Mac&apos;s screen. Grant them here, once, while you are at the Mac.
           </p>
 
           <div className="settings-group">
@@ -121,7 +121,7 @@ function DesktopSetupSheetContent({ onClose, returnFocusTo }: Omit<DesktopSetupS
             <PermissionRow
               label="Accessibility"
               granted={ax}
-              howTo="Open System Settings, go to Privacy & Security, then Device Control and Data Access (called Accessibility on earlier macOS), and turn on Portty. Portty uses it to tell a still screen from an unapproved one. Asked now so a later update does not need another trip to this Mac."
+              howTo="Open System Settings, go to Privacy & Security, then Device Control and Data Access (called Accessibility on earlier macOS), and turn on Portty. Portty uses it to let your other devices control this Mac, and to tell a still screen from an unapproved one."
               onOpen={() => openPane('accessibility')}
             />
           </div>

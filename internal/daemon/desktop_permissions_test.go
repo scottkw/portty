@@ -95,6 +95,19 @@ func TestDesktopPermissions_EndToEnd(t *testing.T) {
 	}
 }
 
+// 20-10: 20-VM-CHECKS says PASTE_ROW: none (the launchd daemon raised no
+// paste-privacy alert), so the permissions answer stays exactly sr and ax.
+func TestDesktopPermissions_NoPasteField(t *testing.T) {
+	api, _ := shareTestDaemon(t)
+	var spawns atomic.Int32
+	t.Cleanup(SetDesktopPermsForTest(desktop.NewProberWithRunner(probeRunnerAnswering(&spawns, `{"sr":true,"ax":true,"pe":true}`))))
+	rec := doDesktop(api, http.MethodGet, "/desktop/permissions")
+	var got map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || len(got) != 2 || got["sr"] == nil || got["ax"] == nil {
+		t.Fatalf("GET /desktop/permissions = %s (%v); want exactly sr and ax", rec.Body.String(), err)
+	}
+}
+
 // DPRM-01 / T-19-41: overlapping asks (the sheet polling, the state loop, a
 // second window) share one child spawn.
 func TestDesktopPermissions_SharedSpawn(t *testing.T) {

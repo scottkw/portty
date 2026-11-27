@@ -104,7 +104,8 @@ func TestOpenDesktopPermissionPane(t *testing.T) {
 			t.Errorf("OpenDesktopPermissionPane(%q) = %v, opened %v; want %q", kind, err, opened, want)
 		}
 	}
-	for _, kind := range []string{"files", "full_disk", "", "Screen", "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles", "https://example.com"} {
+	// "paste" is refused too: 20-VM-CHECKS PASTE_ROW is none, so that pane never ships.
+	for _, kind := range []string{"paste", "files", "full_disk", "", "Screen", "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles", "https://example.com"} {
 		opened = nil
 		if err := a.OpenDesktopPermissionPane(kind); err == nil || len(opened) != 0 {
 			t.Errorf("OpenDesktopPermissionPane(%q) = %v, opened %v; want an error and nothing opened", kind, err, opened)
