@@ -1,0 +1,11 @@
+== baseline
+p19-breaker epoch=1795735207 {"captureActive":true,"abnormalExits":0}
+p19-desk epoch=1795735208 {"state":"streaming","viewers":1}
+== quit-all
+daemon_pids_after=
+p19-breaker epoch=1795735214 {"captureActive":false,"abnormalExits":0}
+== start-gui
+{"status":"ok","version":"v19.4.0","api":5,"handoff":1,"launchd":true,"pid":86500}
+
+p19-breaker epoch=1795735251 {"captureActive":true,"abnormalExits":0}
+p19-desk epoch=1795735251 {"state":"streaming","viewers":1}

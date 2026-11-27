@@ -1,0 +1,528 @@
+import { readWebModeParams } from './webMode'
+
+/**
+ * Phase 19-06 — the /desktop/ viewer's connection. One signalling WebSocket
+ * (protocol v1, 19-01) plus one RTCPeerConnection that receives the Mac's
+ * screen as a video track. View only: no data channel, no input, no key
+ * listeners (control is Phase 20).
+ *
+ * Pure TypeScript with no React and no Wails imports, so the Phase 21 Wails
+ * Desktop tab can reuse it: the transport, the liveness check, the pre-redial
+ * hook, the peer-connection factory and the clock are all injectable.
+ */
+
+export type DesktopState =
+  | 'off'
+  | 'needs_permission'
+  | 'awaiting_approval'
+  | 'display_asleep'
+  | 'locked'
+  | 'idle'
+  | 'streaming'
+  | 'capture_paused'
+
+export type WakeReason = 'visibility' | 'pageshow' | 'online' | 'server-restart' | 'external'
+
+export type ClientStatus =
+  | { kind: 'connecting' }
+  | { kind: 'streaming' }
+  | { kind: 'reconnecting' }
+  | { kind: 'unreachable' }
+  | { kind: 'token_rejected' }
+  | { kind: 'desktop_off' }
+  | { kind: 'other_account' }
+
+export interface SignalTransport {
+  send(msg: object): void
+  close(code?: number): void
+  onOpen(cb: () => void): void
+  onMessage(cb: (msg: unknown) => void): void
+  onClose(cb: (code: number) => void): void
+}
+
+export type TransportFactory = () => SignalTransport
+export type CheckVerdict = 'ok' | 'token' | 'off' | 'other_account' | 'retry'
+
+export interface DesktopClock {
+  now(): number
+  setTimeout(fn: () => void, ms: number): unknown
+  clearTimeout(id: unknown): void
+}
+
+export interface DesktopClientOptions {
+  transport?: TransportFactory
+  check?: () => Promise<CheckVerdict>
+  /** Awaited before every redial (never before the first connect); 'stop' ends the loop. */
+  beforeRedial?: () => Promise<void | 'stop'>
+  createPeerConnection?: () => RTCPeerConnection
+  clock?: DesktopClock
+  doc?: Document
+  win?: Window
+}
+
+export interface DesktopStateMsg {
+  state: DesktopState
+  viewers: number
+  locked: boolean
+}
+
+export interface DesktopSizeMsg {
+  w: number
+  h: number
+}
+
+export interface DesktopEvents {
+  track: MediaStream
+  state: DesktopStateMsg
+  size: DesktopSizeMsg
+  status: ClientStatus
+  wake: WakeReason
+}
+
+export interface DesktopClient {
+  start(): void
+  stop(): void
+  /** Lets a host shell inject its own wake (Phase 21 calls wake('external') from its tab). */
+  wake(reason: WakeReason): void
+  on<K extends keyof DesktopEvents>(event: K, cb: (v: DesktopEvents[K]) => void): () => void
+}
+
+export const RECONNECT = {
+  delaysMs: [1000, 2000, 4000, 8000, 10000],
+  unreachableAfterMs: 30000,
+  pingTimeoutMs: 3000,
+  helloTimeoutMs: 10000,
+  gatherTimeoutMs: 3000,
+  iceDisconnectedMs: 2000,
+}
+
+/** wss://<same host>/desktop/ws?cap=<token from the page URL>. */
+export function defaultDesktopWsUrl(loc: Location = window.location): string {
+  const { capToken } = readWebModeParams(loc)
+  return `wss://${loc.host}/desktop/ws?cap=${encodeURIComponent(capToken ?? '')}`
+}
+
+export function webSocketTransport(url: string): SignalTransport {
+  const ws = new WebSocket(url)
+  return {
+    send: (msg) => ws.send(JSON.stringify(msg)),
+    close: (code) => ws.close(code ?? 1000),
+    onOpen: (cb) => ws.addEventListener('open', () => cb()),
+    onMessage: (cb) =>
+      ws.addEventListener('message', (e) => {
+        if (typeof e.data !== 'string') return
+        try {
+          cb(JSON.parse(e.data))
+        } catch {
+          // Not JSON: protocol v1 is JSON text frames only. Drop it.
+        }
+      }),
+    onClose: (cb) => ws.addEventListener('close', (e) => cb(e.code)),
+  }
+}
+
+const STATES: ReadonlySet<string> = new Set<DesktopState>([
+  'off', 'needs_permission', 'awaiting_approval', 'display_asleep', 'locked', 'idle', 'streaming', 'capture_paused',
+])
+
+const realClock: DesktopClock = {
+  now: () => Date.now(),
+  setTimeout: (fn, ms) => setTimeout(fn, ms),
+  clearTimeout: (id) => clearTimeout(id as ReturnType<typeof setTimeout>),
+}
+
+export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopClient {
+  const win = opts.win ?? window
+  const doc = opts.doc ?? document
+  const clock = opts.clock ?? realClock
+  const makeTransport = opts.transport ?? (() => webSocketTransport(defaultDesktopWsUrl(win.location)))
+  const makePC = opts.createPeerConnection ?? (() => new RTCPeerConnection({ iceServers: [] }))
+  const check = opts.check ?? (() => fetchCheck(win.location))
+
+  const listeners: { [K in keyof DesktopEvents]: Set<(v: DesktopEvents[K]) => void> } = {
+    track: new Set(), state: new Set(), size: new Set(), status: new Set(), wake: new Set(),
+  }
+  function emit<K extends keyof DesktopEvents>(event: K, v: DesktopEvents[K]) {
+    for (const cb of [...listeners[event]]) cb(v)
+  }
+
+  let status: ClientStatus = { kind: 'connecting' }
+  function setStatus(s: ClientStatus) {
+    if (s.kind === status.kind) return
+    status = s
+    emit('status', s)
+  }
+
+  let running = false
+  // Every connection attempt takes the next generation; callbacks from a
+  // superseded socket or peer connection compare theirs and drop out
+  // (relayClient's stale-socket rule).
+  let gen = 0
+  let transport: SignalTransport | null = null
+  let pc: RTCPeerConnection | null = null
+  let hadHello = false
+  let hasPicture = false
+  let attempt = 0
+  let pingN = 0
+  let pendingPing: number | null = null
+  let redialInFlight = false
+  let redialTimer: unknown = null
+  let helloTimer: unknown = null
+  let iceTimer: unknown = null
+  let pingTimer: unknown = null
+  let unreachableTimer: unknown = null
+  let debugTimer: unknown = null
+  let lastViewers = 0
+  let lastState = ''
+
+  const cancel = (id: unknown): null => {
+    if (id !== null) clock.clearTimeout(id)
+    return null
+  }
+
+  /** Close the current socket and peer connection and their timers. Never redials. */
+  function teardown() {
+    helloTimer = cancel(helloTimer)
+    iceTimer = cancel(iceTimer)
+    pingTimer = cancel(pingTimer)
+    pendingPing = null
+    const t = transport
+    const p = pc
+    transport = null
+    pc = null
+    try { t?.close() } catch { /* already closed */ }
+    try { p?.close() } catch { /* already closed */ }
+  }
+
+  function armUnreachable() {
+    if (unreachableTimer !== null || status.kind === 'unreachable') return
+    unreachableTimer = clock.setTimeout(() => {
+      unreachableTimer = null
+      if (running && !hasPicture) setStatus({ kind: 'unreachable' })
+    }, RECONNECT.unreachableAfterMs)
+  }
+
+  /** The picture is gone (or never came): Reconnecting, and the 30 s clock to unreachable runs. */
+  function markLost() {
+    hasPicture = false
+    armUnreachable()
+    if (status.kind !== 'unreachable') setStatus({ kind: 'reconnecting' })
+  }
+
+  function retry() {
+    if (!running) return
+    markLost()
+    const delay = RECONNECT.delaysMs[Math.min(attempt, RECONNECT.delaysMs.length - 1)]
+    attempt++
+    redialTimer = cancel(redialTimer)
+    redialTimer = clock.setTimeout(() => {
+      redialTimer = null
+      void redial()
+    }, delay)
+  }
+
+  async function redial() {
+    if (!running || redialInFlight) return
+    redialInFlight = true
+    try {
+      if (opts.beforeRedial) {
+        let verdict: void | 'stop'
+        try {
+          verdict = await opts.beforeRedial()
+        } catch {
+          // A re-auth that could not answer is a failed attempt, not the end.
+          if (running) retry()
+          return
+        }
+        if (!running) return
+        if (verdict === 'stop') {
+          shutdown()
+          return
+        }
+      }
+      connect()
+    } finally {
+      redialInFlight = false
+    }
+  }
+
+  function redialNow() {
+    redialTimer = cancel(redialTimer)
+    void redial()
+  }
+
+  /** A rebuild from scratch: socket and peer connection both new. */
+  function failConnection() {
+    teardown()
+    retry()
+  }
+
+  /** The end of the loop on a fixed code: no retry, no wake listeners. */
+  function final(kind: 'token_rejected' | 'desktop_off' | 'other_account') {
+    shutdown()
+    setStatus({ kind })
+  }
+
+  function connect() {
+    teardown()
+    const g = ++gen
+    hadHello = false
+    let t: SignalTransport
+    try {
+      t = makeTransport()
+    } catch {
+      retry()
+      return
+    }
+    transport = t
+    t.onOpen(() => {
+      if (g === gen) t.send({ type: 'hello', v: 1, caps: { video: 1 } })
+    })
+    t.onMessage((m) => {
+      if (g === gen) void handle(g, m)
+    })
+    t.onClose((code) => {
+      if (g === gen) onClose(code)
+    })
+    helloTimer = clock.setTimeout(() => {
+      helloTimer = null
+      if (g === gen && !hadHello) failConnection()
+    }, RECONNECT.helloTimeoutMs)
+  }
+
+  function onClose(code: number) {
+    const hello = hadHello
+    teardown()
+    if (code === 4401) return final('token_rejected')
+    if (code === 4410) return final('desktop_off')
+    if (code === 1012) {
+      emit('wake', 'server-restart')
+      attempt = 0
+      markLost()
+      redialNow()
+      return
+    }
+    if (hello) return retry()
+    void classify()
+  }
+
+  /** A failed handshake hides its HTTP status from the page, so ask the check endpoint. */
+  async function classify() {
+    const g = gen
+    let verdict: CheckVerdict
+    try {
+      verdict = await check()
+    } catch {
+      verdict = 'retry'
+    }
+    if (g !== gen || !running) return
+    if (verdict === 'token') return final('token_rejected')
+    if (verdict === 'off') return final('desktop_off')
+    if (verdict === 'other_account') return final('other_account')
+    retry()
+  }
+
+  async function gathered(conn: RTCPeerConnection) {
+    if (conn.iceGatheringState === 'complete') return
+    await new Promise<void>((resolve) => {
+      const id = clock.setTimeout(resolve, RECONNECT.gatherTimeoutMs)
+      conn.onicegatheringstatechange = () => {
+        if (conn.iceGatheringState !== 'complete') return
+        clock.clearTimeout(id)
+        resolve()
+      }
+    })
+  }
+
+  function onTrack(e: RTCTrackEvent) {
+    hasPicture = true
+    attempt = 0
+    unreachableTimer = cancel(unreachableTimer)
+    emit('track', e.streams[0] ?? new MediaStream([e.track]))
+    setStatus({ kind: 'streaming' })
+  }
+
+  function onIceState(g: number, s: RTCPeerConnectionState) {
+    if (g !== gen) return
+    if (s === 'connected') iceTimer = cancel(iceTimer)
+    else if (s === 'failed') failConnection()
+    else if (s === 'disconnected' && iceTimer === null) {
+      iceTimer = clock.setTimeout(() => {
+        iceTimer = null
+        if (g === gen) failConnection()
+      }, RECONNECT.iceDisconnectedMs)
+    }
+  }
+
+  async function handle(g: number, raw: unknown) {
+    if (typeof raw !== 'object' || raw === null) return
+    const m = raw as Record<string, unknown>
+    try {
+      switch (m.type) {
+        case 'hello': {
+          if (hadHello) return
+          hadHello = true
+          helloTimer = cancel(helloTimer)
+          const conn = makePC()
+          pc = conn
+          conn.ontrack = (e) => {
+            if (g === gen) onTrack(e)
+          }
+          conn.onconnectionstatechange = () => onIceState(g, conn.connectionState)
+          conn.addTransceiver('video', { direction: 'recvonly' })
+          await conn.setLocalDescription(await conn.createOffer())
+          await gathered(conn)
+          if (g !== gen) return
+          transport?.send({ type: 'offer', sdp: conn.localDescription?.sdp ?? '' })
+          break
+        }
+        case 'answer':
+          if (typeof m.sdp === 'string' && pc) await pc.setRemoteDescription({ type: 'answer', sdp: m.sdp })
+          break
+        case 'state':
+          // Only an enum value and integers are taken from the wire; anything else is dropped.
+          if (typeof m.state === 'string' && STATES.has(m.state)) {
+            lastState = m.state
+            lastViewers = Number.isInteger(m.viewers) ? (m.viewers as number) : 0
+            emit('state', { state: m.state as DesktopState, viewers: lastViewers, locked: m.locked === true })
+          }
+          break
+        case 'size':
+          if (Number.isInteger(m.w) && Number.isInteger(m.h)) emit('size', { w: m.w as number, h: m.h as number })
+          break
+        case 'pong':
+          if (m.n === pendingPing) {
+            pendingPing = null
+            pingTimer = cancel(pingTimer)
+          }
+          break
+        case 'error':
+          // version, bad_message or offer_failed: rebuild and try again.
+          failConnection()
+          break
+      }
+    } catch {
+      if (g === gen) failConnection()
+    }
+  }
+
+  function onWake(reason: WakeReason) {
+    emit('wake', reason)
+    if (!running) return
+    if (status.kind === 'streaming' && transport) {
+      // A dead iOS socket can still read OPEN, so ask and wait for the answer.
+      if (pendingPing !== null) return
+      const g = gen
+      const n = ++pingN
+      pendingPing = n
+      transport.send({ type: 'ping', n })
+      pingTimer = clock.setTimeout(() => {
+        pingTimer = null
+        if (g !== gen || pendingPing !== n) return
+        teardown()
+        attempt = 0
+        markLost()
+        redialNow()
+      }, RECONNECT.pingTimeoutMs)
+      return
+    }
+    // The first attempt is still in flight: a pageshow at load must not kill it.
+    if (status.kind === 'connecting' && transport) return
+    attempt = 0
+    redialNow()
+  }
+
+  const onVisibility = () => {
+    if (doc.visibilityState === 'visible') onWake('visibility')
+  }
+  const onPageShow = () => onWake('pageshow')
+  const onOnline = () => onWake('online')
+
+  function shutdown() {
+    running = false
+    teardown()
+    redialTimer = cancel(redialTimer)
+    unreachableTimer = cancel(unreachableTimer)
+    debugTimer = cancel(debugTimer)
+    doc.removeEventListener('visibilitychange', onVisibility)
+    win.removeEventListener('pageshow', onPageShow)
+    win.removeEventListener('online', onOnline)
+  }
+
+  function startDebug() {
+    let flag = false
+    try {
+      flag = win.localStorage?.getItem('portty:desktop-debug') === '1'
+    } catch {
+      // storage blocked: the fragment still works
+    }
+    if (win.location.hash !== '#debug' && !flag) return
+    // Counts only: no token, no SDP. Read by TestDesktopCSP_E2E and the VM rows.
+    let cspViolations = 0
+    doc.addEventListener('securitypolicyviolation', () => { cspViolations++ })
+    const tick = async () => {
+      let framesDecoded = 0, frameWidth = 0, frameHeight = 0, bytesReceived = 0
+      if (pc) {
+        const report = await pc.getStats()
+        report.forEach((s) => {
+          if (s.type === 'inbound-rtp' && s.kind === 'video') {
+            framesDecoded = s.framesDecoded ?? 0
+            frameWidth = s.frameWidth ?? 0
+            frameHeight = s.frameHeight ?? 0
+            bytesReceived = s.bytesReceived ?? 0
+          }
+        })
+      }
+      ;(win as unknown as { __desktopStats: object }).__desktopStats = {
+        status: status.kind, state: lastState, viewers: lastViewers,
+        framesDecoded, frameWidth, frameHeight, bytesReceived, cspViolations,
+      }
+      doc.title = `Portty Desktop (debug fd=${framesDecoded} fw=${frameWidth} csp=${cspViolations} st=${status.kind})`
+      if (running) debugTimer = clock.setTimeout(() => void tick(), 1000)
+    }
+    void tick()
+  }
+
+  return {
+    start() {
+      if (running) return
+      running = true
+      doc.addEventListener('visibilitychange', onVisibility)
+      win.addEventListener('pageshow', onPageShow)
+      win.addEventListener('online', onOnline)
+      armUnreachable()
+      connect()
+      startDebug()
+    },
+    stop: shutdown,
+    wake: onWake,
+    on(event, cb) {
+      const set = listeners[event] as Set<typeof cb>
+      set.add(cb)
+      return () => set.delete(cb)
+    },
+  }
+}
+
+export async function fetchCheck(loc: Location = window.location): Promise<CheckVerdict> {
+  const { capToken } = readWebModeParams(loc)
+  // A hung check would stall the classification (and so the redial) forever.
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 5000)
+  try {
+    const res = await fetch(`/desktop/check?cap=${encodeURIComponent(capToken ?? '')}`, {
+      cache: 'no-store',
+      credentials: 'same-origin',
+      signal: ctrl.signal,
+    })
+    if (res.status === 204) return 'ok'
+    if (res.status === 401) return 'token'
+    if (res.status === 410) return 'off'
+    if (res.status === 403 && res.headers.has('X-Portty')) return 'other_account'
+    return 'retry'
+  } catch {
+    return 'retry'
+  } finally {
+    clearTimeout(timer)
+  }
+}

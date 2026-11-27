@@ -327,15 +327,54 @@ describe('Security pane', () => {
   it('Session keys: "Regenerate…" opens the confirm with a destructive "Invalidate All Links"', async () => {
     await renderSheet()
     const security = panel('security')
-    expect(security.textContent).toContain('Regenerating signs out every browser and Mac attached to your sessions.')
+    // 19-13: Regenerate also stops the saved desktop links, so both strings say so (changed on purpose).
+    expect(security.textContent).toContain('Regenerating signs out every browser and Mac attached to your sessions, and stops every saved desktop link.')
     const regen = Array.from(security.querySelectorAll('button')).find((b) => b.textContent === 'Regenerate…')!
     await act(async () => regen.click())
     const confirm = container.querySelector('[aria-labelledby="regen-key-title"]')!
     expect(confirm.textContent).toContain('Regenerate Signing Key?')
+    expect(confirm.textContent).toContain('You will need to re-share sessions, and copy a new desktop link, to give access again.')
     const invalidate = Array.from(confirm.querySelectorAll('button')).find((b) => b.textContent === 'Invalidate All Links')!
     expect(invalidate.className).toContain('button--destructive')
     // Cancel first (T-02-36), and the confirm sits after the sheet so it owns Esc.
     expect(document.activeElement?.textContent).toBe('Keep Links')
+  })
+})
+
+describe('19-13: Desktop group and setup sheet styles use tokens and the specified sizes', () => {
+  const rule = (selector: string): string => {
+    const m = css.match(new RegExp(`(?:^|\\n)${selector.replace(/[.\-]/g, '\\$&')}\\s*\\{([^}]*)\\}`))
+    expect(m, `rule ${selector}`).not.toBeNull()
+    return m![1]
+  }
+
+  it('the warn dot is the warn token', () => {
+    expect(rule('.ts-status__dot--warn')).toMatch(/background:\s*var\(--color-status-warn\)/)
+  })
+
+  it('.dialog--setup sets only the width: 560px, at most the window less 24px a side', () => {
+    const body = rule('.dialog--setup')
+    expect(body).toMatch(/width:\s*560px/)
+    expect(body).toMatch(/max-width:\s*calc\(100% - 48px\)/)
+    expect(body.split(';').filter((d) => d.trim() && !/^\s*(width|max-width):/.test(d))).toEqual([])
+  })
+
+  it('the test-capture box is 256x160, object-fit contain, on tokens', () => {
+    const thumb = rule('.desktop-setup__thumb')
+    expect(thumb).toMatch(/width:\s*256px/)
+    expect(thumb).toMatch(/height:\s*160px/)
+    expect(thumb).toMatch(/object-fit:\s*contain/)
+    expect(thumb).toMatch(/border:\s*1px solid var\(--color-control-border\)/)
+    expect(rule('.desktop-setup__placeholder')).toMatch(/width:\s*256px[^}]*height:\s*160px|height:\s*160px[^}]*width:\s*256px/)
+  })
+
+  it('Copy Link keeps its width so Copied! does not make it jump', () => {
+    expect(css).toMatch(/\.settings-row \.button\.button--copy\s*\{[^}]*min-width:\s*76px/)
+  })
+
+  it('the granted word and the second CT line use tokens', () => {
+    expect(css).toMatch(/\.ts-status__text--granted\s*\{[^}]*var\(--color-success-text\)/)
+    expect(css).toMatch(/\.settings-row__note\s*\{[^}]*display:\s*block/)
   })
 })
 

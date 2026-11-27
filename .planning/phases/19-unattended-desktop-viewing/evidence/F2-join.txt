@@ -1,0 +1,17 @@
+# F2-join: a fresh join of each viewer while the other two stay open; ms since the page finished loading
+## Safari, home VM (twice)
+p19-join +3290ms ["streaming",3,0]
+p19-join +3578ms ["streaming",3,13]
+p19-join first_frame_ms=3578
+p19-join +1797ms ["streaming",3,0]
+p19-join +2152ms ["streaming",3,13]
+p19-join first_frame_ms=2152
+## Safari, office VM (the capturing VM, twice)
+p19-join +2146ms ["streaming",3,0]
+p19-join +2469ms ["streaming",3,9]
+p19-join first_frame_ms=2469
+p19-join +853ms ["connecting",0,0]
+p19-join +1095ms ["streaming",3,3]
+p19-join first_frame_ms=1095
+## after the joins
+GET /desktop: {"state":"streaming","viewers":3}

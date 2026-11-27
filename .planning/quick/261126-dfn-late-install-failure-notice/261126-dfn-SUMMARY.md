@@ -81,7 +81,12 @@ it opens Script Editor. The text and the "Portty" title still say what happened.
 - `go test -race -count=1 ./internal/updater/ .`: ok (updater 3.8 s, main 24.0 s)
 - `bash tests/check-brand.sh`: clean
 - `bash tests/check-traceability-paths.sh`: OK (236 paths)
-- QT-WR02: PENDING. portty-test had the soak's Portty installed in `/Applications` and running (GUI and daemon, no sessions). A first-install row would have to remove it. Nothing of the soak was touched. The mechanism probe was removed from the VM and unregistered from LaunchServices afterwards.
+- QT-WR02: PASS (2026-11-26 16:43-16:47 UTC, portty-test). It ran on a 1.8.1 rig build of `65925382`, executable sha256 `778bd91d75024767...`, ad-hoc, `verify-mode` `adhoc`. The earlier PENDING was wrong about a soak: the copy in `/Applications` was the RC-WR02 end state, and the soak never ran. That copy was backed up, removed, and restored afterwards (same sha256 `f6a9cb6c...`, GUI and daemon running, no sessions, config files put back, Downloads consent reset, `~/p18` removed). The method is RC-WR02's: a first install from `~/Downloads` with no installed copy. `verify-mode` flips to `off` once the installer exists, so the installer's re-verify fails.
+  - **Notice:** `installer: failed reverify` at 16:43:47. At 16:43:48.186 usernoted logged `Presenting <NotificationRecord app:"com.apple.ScriptEditor2" ... alertStyle:"banner"> as banner`. Notification Center then listed `Script Editor, Portty, Portty couldn't install version 1.8.1.` (axdump and screenshot). There was no `failure notice not posted` line. The Finder reveal of the DMG in `Downloads` is unchanged.
+  - **Caveat:** the VM already had a Focus (Do Not Disturb) on, so NotificationCenter muted the on-screen banner (`muted by DND suppression: delay`) and put it straight into the history. The Focus was left as it was.
+  - **Re-open:** opening the DMG's app again (T0 16:45:47.8) showed the alert `Portty couldn't install version 1.8.1.` with one `OK` button by 16:45:50.2. At that point nothing had been staged: 0 staging dirs, 0 run dirs, no installer, no `/Applications/Portty.app`. update.log held `mover: earlier result failed  to 1.8.1 reverify`. After OK the move ran: `installer: updated` at 16:46:22, then the Downloads prompt, answered Allow, then the DMG went to the Trash. The installed copy showed no second alert.
+  - **Clock:** no clock step in the row window (timed's last NTP receipt, at 16:40:55, was in step).
+  - Evidence: `evidence/QT-WR02.log`, `evidence/QT-WR02-before.state`, `evidence/QT-WR02.state`, `evidence/QT-WR02-alert.png`, `evidence/QT-WR02-nc-history.png`, `evidence/QT-WR02-reveal.png`.
 
 ## Commits
 

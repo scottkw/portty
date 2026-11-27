@@ -128,7 +128,7 @@ func flagFirstArgs(args []string) ([]string, error) {
 // with no session handoff. UPGR-03: a failed handoff is reported first.
 func ensureCLIDaemon(ensure func(context.Context, string, daemon.EnsureOptions) error, socketPath string, force, keep bool) error {
 	var refused error
-	err := ensure(context.Background(), socketPath, daemon.EnsureOptions{NoHandoff: keep, Restart: func(q daemon.RestartQuestion) bool {
+	err := ensure(context.Background(), socketPath, daemon.EnsureOptions{NoHandoff: keep, Start: daemon.StartCLI, Restart: func(q daemon.RestartQuestion) bool {
 		ver, n := q.DaemonVersion, q.Sessions
 		if q.MoveFailed != "" {
 			fmt.Fprintf(os.Stderr, "portty: couldn't move the running sessions to version %s (%s); they are still running on version %s.\n", daemon.BuildVersion, q.MoveFailed, ver)

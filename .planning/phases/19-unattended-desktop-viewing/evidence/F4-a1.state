@@ -1,0 +1,82 @@
+p19-state row=F4-a1 vm_utc=2026-11-26T21:10:49Z epoch=1795727449
+installed_version=19.2.3
+--- launchd app.portty.Portty.daemon
+plist_exists=yes
+{   "AbandonProcessGroup" => true   "KeepAlive" => {     "SuccessfulExit" => false   }   "Label" => "app.portty.Portty.daemon"   "ProgramArguments" => [     0 => "/Applications/Portty.app/Contents/MacOS/Portty"     1 => "daemon"   ]   "RunAtLoad" => true } 
+	state = running
+	runs = 15
+	pid = 95419
+	last exit code = 0
+		state = active
+		state = active
+--- launchd portty-daemon
+plist_exists=no
+Could not find service "portty-daemon" in domain for user gui: 501
+--- launchctl print-disabled (portty labels)
+		"app.portty.Portty.daemon" => enabled
+		"portty-daemon" => enabled
+--- processes (pid ppid etime args)
+94489     1       21:24 /Applications/Portty.app/Contents/MacOS/Portty
+95419     1       20:49 /Applications/Portty.app/Contents/MacOS/Portty daemon
+--- health
+{"status":"ok","version":"v19.2.3","api":5,"handoff":1,"launchd":true,"pid":95419}
+
+daemon_pids=95419
+daemon 95419 ppid=1 xpc_service_name=app.portty.Portty.daemon
+--- sessions (id, shell pid, alive, ticks, last file tick age, max gap s, last pty tick age)
+session debd9ff3982e6a8e5774146e13ea900e shell_pid=78233 alive=yes ticks=2231 last_age=1 max_gap=8 pty_last_tick="TICK 2231 1795727449" pty_age=1
+session ce15270732920c77774657b70635f4d8 shell_pid=78295 alive=yes ticks=2239 last_age=1 max_gap=7 pty_last_tick="TICK 2239 1795727449" pty_age=1
+--- daemon.log.1 / daemon.log (mtime, size) and daemon.log tail
+daemon.log 3675 bytes mtime 21:10:03
+daemon.log.1 1797 bytes mtime 20:50:04
+2026/11/26 20:57:38.131642 INFO desktop: viewer left viewer=e74913a1 viewers=2
+2026/11/26 20:57:40.089836 INFO desktop: viewer joined viewer=a1b52cea viewers=3
+2026/11/26 20:57:54.437929 INFO desktop: viewer left viewer=d6149ee6 viewers=2
+2026/11/26 20:57:57.836541 INFO desktop: viewer joined viewer=74abd62c viewers=3
+2026/11/26 20:58:07.818850 INFO desktop: viewer left viewer=74abd62c viewers=2
+2026/11/26 20:58:09.035614 INFO desktop: viewer joined viewer=27f84f34 viewers=3
+2026/11/26 20:59:20.960558 viewer-diag: input total session=debd9ff3 conn=2 frames=0 bytes=0 resizes=1
+2026/11/26 20:59:20.963401 viewer-diag: heartbeat timeout session=debd9ff3 conn=2
+2026/11/26 20:59:20.974021 viewer-diag: leave session=debd9ff3 conn=2 origin=web client="" viewers=1
+2026/11/26 20:59:21.821997 INFO desktop: viewer left viewer=c7aa4e2d viewers=2
+2026/11/26 20:59:21.886111 INFO desktop: viewer left viewer=a1b52cea viewers=1
+2026/11/26 20:59:22.686188 viewer-diag: join session=debd9ff3 conn=3 origin=web from=100.x.x.N client="" viewers=2 web=1
+2026/11/26 20:59:22.692136 viewer-diag: replay session=debd9ff3 conn=3 mode=delta bytes=621 resume=true
+2026/11/26 20:59:22.758675 viewer-diag: web resize session=debd9ff3 conn=3 cols=56 rows=8 claim=false
+2026/11/26 20:59:31.085257 INFO desktop: viewer joined viewer=45881f43 viewers=2
+2026/11/26 20:59:32.056054 INFO desktop: viewer joined viewer=babe2eff viewers=3
+2026/11/26 21:01:40.144744 INFO desktop: viewer left viewer=27f84f34 viewers=2
+2026/11/26 21:01:45.531291 INFO desktop: viewer left viewer=babe2eff viewers=1
+2026/11/26 21:03:17.751877 INFO desktop: viewer left viewer=45881f43 viewers=0
+2026/11/26 21:03:17.760788 WARN desktop: probe failed err="perm-probe: signal: killed"
+daemon: desktop permission probe failed: perm-probe: signal: killed
+2026/11/26 21:09:09.755585 INFO desktop: viewer joined viewer=4e14611a viewers=1
+2026/11/26 21:10:03.446690 viewer-diag: revoke session=debd9ff3 reason="share stopped" web=1 input-dropped frames=0 bytes=0
+2026/11/26 21:10:03.632649 viewer-diag: input total session=debd9ff3 conn=3 frames=0 bytes=0 resizes=1
+2026/11/26 21:10:03.633140 viewer-diag: leave session=debd9ff3 conn=3 origin=web client="" viewers=1
+--- gui.log tail (open --stderr, from start-gui; update-check noise dropped)
+2026/11/26 19:47:54 daemon: launchd agent: ready (state 0)
+2026/11/26 19:48:05 update: up to date
+2026/11/26 20:11:44 daemon: launchd agent: ready (state 0)
+EnsureDaemon: version mismatch (daemon="v19.1.0", binary="v19.1.2"), restarting
+2026/11/26 20:11:55 update: up to date
+2026/11/26 20:13:51 daemon: launchd agent: ready (state 0)
+2026/11/26 20:14:01 notification: dispatching native notification for identifier portty.desktop-approval-lapse
+2026-11-26 20:14:01.456 Portty[71188:1405705] Portty: dispatching native notification for identifier portty.desktop-approval-lapse (main queue: 1)
+2026-11-26 20:14:01.475 Portty[71188:1405761] Portty: notification delivery accepted for identifier portty.desktop-approval-lapse
+2026/11/26 20:14:01 update: up to date
+2026/11/26 20:14:50 daemon: launchd agent: ready (state 0)
+2026/11/26 20:27:48 daemon: launchd agent: ready (state 0)
+2026/11/26 20:27:59 update: up to date
+2026/11/26 20:38:49 daemon: launchd agent: ready (state 0)
+2026/11/26 20:38:53 daemon: re-home requested
+2026/11/26 20:39:03 update: up to date
+2026/11/26 20:39:23 daemon: re-home requested
+2026/11/26 20:45:09 daemon: launchd agent: ready (state 0)
+2026/11/26 20:45:11 daemon: re-home requested
+2026/11/26 20:45:21 update: up to date
+2026/11/26 20:45:41 daemon: re-home requested
+2026/11/26 20:49:28 daemon: launchd agent: ready (state 0)
+2026/11/26 20:49:31 daemon: re-home requested
+2026/11/26 20:49:42 update: up to date
+2026/11/26 20:50:01 daemon: re-home requested

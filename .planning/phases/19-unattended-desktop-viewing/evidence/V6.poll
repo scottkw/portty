@@ -1,0 +1,25 @@
+# V6 run 2 (GUI quit, launchd daemon only): GET /desktop/permissions every 2 s while Screen Recording for Portty was toggled in System Settings. Guest epoch seconds. Toggle off: password accepted (the flip) at epoch=1795721510. Toggle on: clicked at epoch=1795721516 (no password prompt that time).
+p19-perm epoch=1795721496 {"sr":true,"ax":true}
+p19-perm epoch=1795721498 {"sr":true,"ax":true}
+p19-perm epoch=1795721500 {"sr":true,"ax":true}
+p19-perm epoch=1795721502 {"sr":true,"ax":true}
+p19-perm epoch=1795721504 {"sr":true,"ax":true}
+p19-perm epoch=1795721506 {"sr":true,"ax":true}
+p19-perm epoch=1795721509 {"sr":true,"ax":true}
+p19-perm epoch=1795721511 {"sr":false,"ax":true}
+p19-perm epoch=1795721513 {"sr":false,"ax":true}
+p19-perm epoch=1795721515 {"sr":false,"ax":true}
+p19-perm epoch=1795721517 {"sr":true,"ax":true}
+p19-perm epoch=1795721519 {"sr":true,"ax":true}
+p19-perm epoch=1795721521 {"sr":true,"ax":true}
+p19-perm epoch=1795721523 {"sr":true,"ax":true}
+p19-perm epoch=1795721525 {"sr":true,"ax":true}
+p19-perm epoch=1795721527 {"sr":true,"ax":true}
+p19-perm epoch=1795721529 {"sr":true,"ax":true}
+p19-perm epoch=1795721531 {"sr":true,"ax":true}
+p19-perm epoch=1795721533 {"sr":true,"ax":true}
+p19-perm epoch=1795721535 {"sr":true,"ax":true}
+p19-perm epoch=1795721537 {"sr":true,"ax":true}
+p19-perm epoch=1795721539 {"sr":true,"ax":true}
+p19-perm epoch=1795721542 {"sr":true,"ax":true}
+p19-perm epoch=1795721544 {"sr":true,"ax":true}

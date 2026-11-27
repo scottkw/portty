@@ -1,0 +1,66 @@
+p19-state row=F5b-b vm_utc=2026-11-26T22:06:22Z epoch=1795730782
+installed_version=19.3.1
+--- launchd app.portty.Portty.daemon
+plist_exists=yes
+{   "AbandonProcessGroup" => true   "KeepAlive" => {     "SuccessfulExit" => false   }   "Label" => "app.portty.Portty.daemon"   "ProgramArguments" => [     0 => "/Applications/Portty.app/Contents/MacOS/Portty"     1 => "daemon"   ]   "RunAtLoad" => true } 
+	state = running
+	runs = 26
+	pid = 82347
+	last exit code = 0
+		state = active
+		state = active
+--- launchd portty-daemon
+plist_exists=no
+Could not find service "portty-daemon" in domain for user gui: 501
+--- launchctl print-disabled (portty labels)
+		"app.portty.Portty.daemon" => enabled
+		"portty-daemon" => enabled
+--- processes (pid ppid etime args)
+82297     1       02:16 /Applications/Portty.app/Contents/MacOS/Portty
+82347     1       02:13 /Applications/Portty.app/Contents/MacOS/Portty daemon
+--- health
+{"status":"ok","version":"v19.3.1","api":5,"handoff":1,"launchd":true,"pid":82347}
+
+daemon_pids=82347
+daemon 82347 ppid=1 xpc_service_name=app.portty.Portty.daemon
+--- sessions (id, shell pid, alive, ticks, last file tick age, max gap s, last pty tick age)
+session 3262b0fc6ab262be6626cf9fc699f59a shell_pid=81648 alive=yes ticks=229 last_age=0 max_gap=2 pty_last_tick="TICK 229 1795730782" pty_age=0
+session 049d645baca7025ec92029c6aa95ba2a shell_pid=81676 alive=yes ticks=223 last_age=0 max_gap=2 pty_last_tick="TICK 223 1795730782" pty_age=0
+--- daemon.log.1 / daemon.log (mtime, size) and daemon.log tail
+daemon.log 885 bytes mtime 22:04:15
+daemon.log.1 1821 bytes mtime 22:04:13
+daemon: desktop not started: port_in_use
+2026/11/26 22:04:14.102419 viewer-diag: join session=049d645b conn=1 origin=local from= client="" viewers=1 web=0
+2026/11/26 22:04:14.104899 viewer-diag: replay session=049d645b conn=1 mode=delta bytes=22 resume=true
+2026/11/26 22:04:14.108095 viewer-diag: join session=3262b0fc conn=1 origin=local from= client="" viewers=1 web=0
+2026/11/26 22:04:14.109960 viewer-diag: replay session=3262b0fc conn=1 mode=delta bytes=0 resume=true
+2026/11/26 22:04:15.145721 INFO desktop: viewer joined viewer=e8a8027d viewers=1
+2026/11/26 22:04:15.542247 viewer-diag: join session=3262b0fc conn=2 origin=web from=100.x.x.N client="" viewers=2 web=1
+2026/11/26 22:04:15.544959 viewer-diag: replay session=3262b0fc conn=2 mode=delta bytes=44 resume=true
+2026/11/26 22:04:15.627837 viewer-diag: web resize session=3262b0fc conn=2 cols=56 rows=8 claim=false
+--- gui.log tail (open --stderr, from start-gui; update-check noise dropped)
+2026/11/26 21:16:55 update: up to date
+2026/11/26 21:18:02 daemon: launchd agent: Portty's background service is turned off in Login Items. Turn on Portty in System Settings, General, Login Items, then try again.
+2026/11/26 21:18:02 daemon: started without launchd: Portty's background service is turned off in Login Items. Turn on Portty in System Settings, General, Login Items, then try again.
+2026/11/26 21:18:13 update: up to date
+2026/11/26 21:24:02 daemon: launchd agent: ready (state 0)
+2026/11/26 21:24:02 daemon: re-home requested
+2026/11/26 21:24:13 update: up to date
+2026-11-26 21:28:31.866 Portty[45958:1583540] NSSpellServer dataFromGeneratingCandidatesForSelectedRange timed out, index is 0
+2026/11/26 21:43:16 daemon: launchd agent: ready (state 0)
+2026/11/26 21:43:27 update: up to date
+2026/11/26 21:43:32 notification: dispatching native notification for identifier portty.desktop-approval-lapse
+2026-11-26 21:43:32.427 Portty[75220:1649620] Portty: dispatching native notification for identifier portty.desktop-approval-lapse (main queue: 1)
+2026-11-26 21:43:32.456 Portty[75220:1649694] Portty: notification delivery accepted for identifier portty.desktop-approval-lapse
+2026/11/26 21:44:55 daemon: launchd agent: ready (state 0)
+2026/11/26 21:58:14 daemon: launchd agent: ready (state 0)
+2026/11/26 21:58:25 update: up to date
+2026/11/26 21:59:39 daemon: launchd agent: ready (state 0)
+2026/11/26 21:59:50 update: up to date
+2026/11/26 22:00:27 daemon: launchd agent: ready (state 0)
+2026/11/26 22:00:38 update: up to date
+2026/11/26 22:01:17 daemon: launchd agent: ready (state 0)
+2026/11/26 22:01:27 update: up to date
+2026/11/26 22:04:07 daemon: launchd agent: ready (state 0)
+2026/11/26 22:04:09 daemon: re-home requested
+2026/11/26 22:04:19 update: up to date

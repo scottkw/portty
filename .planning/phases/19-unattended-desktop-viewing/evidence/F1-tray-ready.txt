@@ -1,0 +1,6 @@
+status items: 1
+tray-item: Open Portty enabled=yes
+tray-item: shell enabled=yes
+tray-item: shell enabled=yes
+tray-item: Desktop: Ready enabled=no
+tray-item: Quit Portty enabled=yes

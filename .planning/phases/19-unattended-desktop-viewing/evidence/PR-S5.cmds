@@ -1,0 +1,22 @@
+== quit GUI, one ticking shell
+sent SIGTERM to: 86486
+session abd47e98ec9e1a26d8a2435944e94868 started
+p19-hist before epoch=1795735508 first=15 last=18 count=4 breaks=0
+p19-mon epoch=1795735508 health={"version":"v19.4.0","launchd":true} breaker={"captureActive":true,"abnormalExits":0}
+== upgrade: viewer poll starts, deploy --keep-daemon N+1, GUI start
+deploy: 19.4.1
+{"status":"ok","version":"v19.4.0","api":5,"handoff":1,"launchd":true,"pid":86754}
+
+p19-mon epoch=1795735527 health={"version":"v19.4.0","launchd":true} breaker={"captureActive":true,"abnormalExits":0}
+p19-mon epoch=1795735534 health={"version":"v19.4.1","launchd":true} breaker={"captureActive":false,"abnormalExits":0}
+p19-mon epoch=1795735542 health={"version":"v19.4.1","launchd":true} breaker={"captureActive":true,"abnormalExits":0}
+p19-mon epoch=1795735549 health={"version":"v19.4.1","launchd":true} breaker={"captureActive":true,"abnormalExits":0}
+p19-mon epoch=1795735557 health={"version":"v19.4.1","launchd":true} breaker={"captureActive":true,"abnormalExits":0}
+p19-mon epoch=1795735564 health={"version":"v19.4.1","launchd":true} breaker={"captureActive":true,"abnormalExits":0}
+p19-mon epoch=1795735572 health={"version":"v19.4.1","launchd":true} breaker={"captureActive":true,"abnormalExits":0}
+p19-mon epoch=1795735579 health={"version":"v19.4.1","launchd":true} breaker={"captureActive":true,"abnormalExits":0}
+p19-mon epoch=1795735587 health={"version":"v19.4.1","launchd":true} breaker={"captureActive":true,"abnormalExits":0}
+p19-mon epoch=1795735594 health={"version":"v19.4.1","launchd":true} breaker={"captureActive":true,"abnormalExits":0}
+p19-mon epoch=1795735602 health={"version":"v19.4.1","launchd":true} breaker={"captureActive":true,"abnormalExits":0}
+p19-mon epoch=1795735609 health={"version":"v19.4.1","launchd":true} breaker={"captureActive":true,"abnormalExits":0}
+p19-hist after epoch=1795735617 first=113 last=116 count=4 breaks=0

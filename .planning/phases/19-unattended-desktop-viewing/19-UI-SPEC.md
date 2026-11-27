@@ -205,10 +205,11 @@ First enable with a missing permission: the switch turns on and persists. If eit
 | `locked`, N viewers | Locked, streaming to N viewers | off | Desktop: Locked, streaming to N viewers | chip, Locked |
 | `idle` | Ready. Nobody is watching. | on | Desktop: Ready | (Connecting until the first frame) |
 | `streaming(n)` | Streaming to 1 viewer / Streaming to N viewers | on | Desktop: Streaming to N viewers | the picture; a chip for 3 s |
+| `capture_paused` (amendment 2026-11-26: the crash-loop breaker, accepted as shipped) | Paused after repeated errors. Run Test Capture to resume. | warn | Desktop: Paused after repeated errors | card, Desktop paused |
 | (GUI-derived, not a daemon state) Tailscale not connected | Waiting for Tailscale | warn | Desktop: Waiting for Tailscale | not reachable (see Unreachable) |
 | (no reply from the daemon yet) | Checking… (no dot) | none | no line | not applicable |
 
-Precedence, from RESEARCH Pattern 2: `needs_permission` > `display_asleep` > `awaiting_approval` > `locked` / `streaming` / `idle`. "Waiting for Tailscale" wins over all of them in the Settings row and the tray line because nothing else can be reached. Singular and plural: "1 viewer", "2 viewers", never "1 viewer(s)".
+Precedence, from RESEARCH Pattern 2: `capture_paused` (amendment 2026-11-26) > `needs_permission` > `display_asleep` > `awaiting_approval` > `locked` / `streaming` / `idle`. "Waiting for Tailscale" wins over all of them in the Settings row and the tray line because nothing else can be reached. Singular and plural: "1 viewer", "2 viewers", never "1 viewer(s)".
 
 When the state is `needs_permission`, row 2 gets a Caption description under the label: **Choose Set Up Permissions below to turn on Screen Recording.** (a pointer to row 4, not a button). When the state is `awaiting_approval`, the description reads: **macOS is asking for approval on this Mac's screen. Someone at the Mac needs to click Allow, or approve Portty in System Settings.** When the own 30-day timer (signal b) is within 3 days of the lapse and the state is otherwise fine, the description reads: **macOS will ask for approval again soon. Someone needs to approve it at the Mac.** **[default]** The 3-day threshold is the planner's to tune.
 
@@ -394,6 +395,7 @@ Messages sit on a `--color-popover` surface (chip or card), never on the video i
 | Needs permission | Card, centered, scrim over the last frame if any | `ExclamationTriangleIcon` | **Needs permission** | **Portty doesn't have permission to show this Mac's screen. On the Mac, open Portty, go to Settings, then Sharing, and choose Set Up Permissions.** | none |
 | Waiting for approval at the Mac | Card, centered, scrim | `ClockIcon` | **Waiting for approval at the Mac** | **macOS is asking someone at the Mac to approve Portty's screen access. The picture comes back once it is approved.** | none |
 | Display asleep | Card, centered, scrim | `MoonIcon` | **Display asleep** | **The Mac's display is off. The picture comes back when it wakes.** | none |
+| Desktop paused (`capture_paused`, amendment 2026-11-26) | Card, centered, scrim | `ExclamationTriangleIcon` | **Desktop paused** | **Portty stopped showing this Mac's screen after repeated errors. On the Mac, open Portty, go to Settings, then Sharing, and run Test Capture.** | none |
 | Reconnecting | Chip, top-center, scrim over the frozen last frame, stays until the picture is back | `ArrowPathIcon` 16px (static, no rotation) | **Reconnecting…** | | none |
 | Tap to start (the browser blocked autoplay; always on iPhone Safari, Home Screen and Chrome iOS, R14) | Card, centered, scrim over the first frame if any | `PlayIcon` | **Tap to start** | **Your browser needs a tap to start the picture.** | Button **Tap to Start** (accent fill, 44px). A tap on the scrim also starts it. The button takes focus on mount so Space and Enter work |
 
@@ -436,7 +438,7 @@ Writing rules (Phase 2, 4, 14): sentence case for descriptions, headings and chi
 | CT disclosure (off, until acknowledged) | **The first time, this gets an HTTPS certificate for <host>.ts.net. That name is published in public Certificate Transparency logs.** |
 | Userspace-networking refusal | **Tailscale is running in userspace-networking mode, so Portty can't open a desktop connection. Switch Tailscale to its standard mode, then try again.** |
 | Starting | **Getting a link…** |
-| Status texts | **Needs permission** / **Waiting for approval at the Mac** / **Display asleep** / **Locked** / **Locked, streaming to N viewers** / **Ready. Nobody is watching.** / **Streaming to 1 viewer** / **Streaming to N viewers** / **Waiting for Tailscale** / **Checking…** |
+| Status texts | **Needs permission** / **Waiting for approval at the Mac** / **Display asleep** / **Locked** / **Locked, streaming to N viewers** / **Ready. Nobody is watching.** / **Streaming to 1 viewer** / **Streaming to N viewers** / **Waiting for Tailscale** / **Checking…** / **Paused after repeated errors. Run Test Capture to resume.** (amendment 2026-11-26) |
 | Link row description | **Open it in Chrome or Safari on a device signed in to your Tailscale account. Treat it like a password.** |
 | Copy button | **Copy Link** then **Copied!** (2 s) |
 | Permissions row | **Permissions** / **Screen Recording and Accessibility.** / **Granted** / **Needs permission** / **Review Permissions…** / **Set Up Permissions…** |
@@ -446,7 +448,7 @@ Writing rules (Phase 2, 4, 14): sentence case for descriptions, headings and chi
 | Setup intro | **Portty needs two permissions to show this Mac's screen. Grant them here, once, while you are at the Mac.** |
 | Setup rows | **Screen Recording** / **Accessibility**; **Granted** / **Not granted**; button **Open System Settings** |
 | Screen Recording how-to | **Open System Settings, go to Privacy & Security, then Screen & System Audio Recording, and turn on Portty.** |
-| Accessibility how-to | **Open System Settings, go to Privacy & Security, then Accessibility, and turn on Portty. Portty uses it to tell a still screen from an unapproved one. Asked now so a later update does not need another trip to this Mac.** |
+| Accessibility how-to | **Open System Settings, go to Privacy & Security, then Device Control and Data Access (called Accessibility on earlier macOS), and turn on Portty. Portty uses it to tell a still screen from an unapproved one. Asked now so a later update does not need another trip to this Mac.** |
 | Test Capture | **Test Capture** / **Capturing…** / **Test Again**; blocked line **Turn on Screen Recording first.**; success **Capture works. This is what viewers will see.** |
 | Test Capture failure (error state) | **Couldn't capture the screen. Check that Screen Recording is on above. If a macOS dialog is waiting on the screen, choose Allow, then try again.** |
 | Setup notes | The two notes under Surface 2 (macOS 27.2 dialog, Login Items) |
@@ -457,10 +459,11 @@ Writing rules (Phase 2, 4, 14): sentence case for descriptions, headings and chi
 | Error: tailnet HTTPS certificates off | **Couldn't turn on desktop sharing: HTTPS certificates are off for your tailnet. Turn on HTTPS on the DNS page of the Tailscale admin console, then try again.** |
 | Error: stop failed | **Couldn't turn off desktop sharing: <detail>. Try again.** |
 | Error: copy failed | **Couldn't copy the link. Try again.** |
-| Tray lines | **Desktop: Needs permission** / **Desktop: Waiting for approval at the Mac** / **Desktop: Display asleep** / **Desktop: Locked** / **Desktop: Locked, streaming to N viewers** / **Desktop: Ready** / **Desktop: Streaming to N viewers** / **Desktop: Waiting for Tailscale** |
+| Tray lines | **Desktop: Needs permission** / **Desktop: Waiting for approval at the Mac** / **Desktop: Display asleep** / **Desktop: Locked** / **Desktop: Locked, streaming to N viewers** / **Desktop: Ready** / **Desktop: Streaming to N viewers** / **Desktop: Waiting for Tailscale** / **Desktop: Paused after repeated errors** (amendment 2026-11-26) |
 | Lapse notification | Title **Portty**, body **Portty desktop needs approval at the Mac.** |
 | Viewer: connecting | **Connecting…** / **Waiting for the first picture from your Mac. If your browser asks to find devices nearby, choose Allow.** |
 | Viewer: states | The viewer column of the Surface 5 states table |
+| Capture paused (amendment 2026-11-26) | Viewer card **Desktop paused** / **Portty stopped showing this Mac's screen after repeated errors. On the Mac, open Portty, go to Settings, then Sharing, and run Test Capture.**; Settings status and tray line in the Surface 1 state table. Added by 19-06, accepted as shipped after 19-UI-REVIEW |
 | Viewer: error, rejected token | **This desktop link no longer works** / **The link is incomplete or has been replaced. On the Mac, open Portty, go to Settings, then Sharing, and use Copy Link under Desktop.** |
 | Viewer: error, desktop off | **Desktop sharing is off on this Mac** / **Turn on Always-available desktop in Portty's Settings, under Sharing, then copy the link from there.** |
 | Viewer: error, unreachable | **Can't reach this Mac** / **Check that it's awake and on your tailnet. This page keeps trying.** |

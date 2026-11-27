@@ -1,0 +1,37 @@
+== before
+p19-notif-count=2
+{
+  "viewer_stats": "{\"status\":\"streaming\",\"state\":\"streaming\",\"viewers\":1,\"framesDecoded\":24,\"frameWidth\":2560,\"frameHeight\":1440,\"bytesReceived\":912968,\"cspViolations\":0}"
+}
+== POST lapse
+POST /desktop/debug/lapse http=204 guest_epoch=1795722374
+== +3 s: viewer card and stats
+{"text":"Waiting for approval at the Mac\n\nmacOS is asking someone at the Mac to approve Portty's screen access. The picture comes back once it is approved.","live":["Waiting for approval at the MacmacOS is asking someone at the Mac to approve Portty's screen access. The picture comes back once it is approved."]}
+{
+  "viewer_stats": "{\"status\":\"streaming\",\"state\":\"awaiting_approval\",\"viewers\":1,\"framesDecoded\":24,\"frameWidth\":2560,\"frameHeight\":1440,\"bytesReceived\":912968,\"cspViolations\":0}"
+}
+rec=32 app=app.portty.portty delivered_utc=2026-11-26 05:31:01 id=[portty.update-available] title=[Portty] body=[Version 1.8.1 is available.]
+rec=35 app=app.portty.portty delivered_utc=2026-11-26 07:04:00 id=[portty.update-result] title=[Portty] body=[The update to Portty 1.8.1 didn't take. Portty 1.8.0 is still installed.]
+p19-notif-count=2
+== second POST
+POST /desktop/debug/lapse http=204 guest_epoch=1795722379
+p19-notif-count=2
+{"alwaysAvailable":true,"state":"awaiting_approval","viewers":1,"locked":false,"approachingLapse":false,"lapseSeq":2,"tailscale":"ok","launchd":true,"reason":"nudge: the pointer did not move and return"}
+
+== DELETE
+DELETE /desktop/debug/lapse http=204 guest_epoch=1795722383
+{
+  "viewer_stats": "{\"status\":\"streaming\",\"state\":\"awaiting_approval\",\"viewers\":1,\"framesDecoded\":24,\"frameWidth\":2560,\"frameHeight\":1440,\"bytesReceived\":912968,\"cspViolations\":0}"
+}
+{"text":"Streaming","live":["Streaming"]}
+{"alwaysAvailable":true,"state":"streaming","viewers":1,"locked":false,"approachingLapse":false,"lapseSeq":2,"tailscale":"ok","launchd":true}
+
+== daemon.log
+2026/11/26 19:44:46.145623 INFO desktop: lapse claimed lapse=1 by=daemon
+2026/11/26 19:44:46.145650 notification: dispatching native notification for identifier portty.desktop-approval-lapse
+2026/11/26 19:45:50.413492 INFO desktop: stall recovered
+2026/11/26 19:45:55.867830 WARN desktop: nudge failed err="the pointer did not move and return"
+2026/11/26 19:46:15.087018 WARN desktop: waiting for approval at the Mac lapse=2 detector=simulated gui=false
+2026/11/26 19:46:15.087249 INFO desktop: lapse claimed lapse=2 by=daemon
+2026/11/26 19:46:15.087345 notification: dispatching native notification for identifier portty.desktop-approval-lapse
+2026/11/26 19:46:23.780438 INFO desktop: stall recovered

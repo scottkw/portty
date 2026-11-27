@@ -1,0 +1,8 @@
+## button at y=183
+AXStaticText Value=Screen & System Audio Recording @232,110 215x18
+AXStaticText Value=Portty @230,179 69x24
+AXStaticText Value=Screen & System Audio Recording @287,46 411x52
+## button at y=242
+AXWindow [AXStandardWindow] Title=Device Control and Data Access @-30,46 740x625
+AXStaticText Value=Portty @230,185 69x24
+AXStaticText Value=Device Control and Data Access @287,46 411x52

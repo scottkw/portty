@@ -403,6 +403,113 @@ func (c *DaemonClient) SetSessionShared(id string, shared bool) (ShareResponse, 
 	return out, nil
 }
 
+// DesktopStatus reads the always-available desktop's state.
+func (c *DaemonClient) DesktopStatus() (DesktopStatusResponse, error) {
+	var resp DesktopStatusResponse
+	err := c.doJSON(http.MethodGet, "/desktop", nil, &resp)
+	return resp, err
+}
+
+// DesktopStatusAsGUI is DesktopStatus from the running GUI: it also tells the
+// daemon the GUI is present, which makes the GUI the lapse notification's sender.
+func (c *DaemonClient) DesktopStatusAsGUI() (DesktopStatusResponse, error) {
+	var resp DesktopStatusResponse
+	err := c.doJSON(http.MethodGet, "/desktop?gui=1", nil, &resp)
+	return resp, err
+}
+
+// ClaimDesktopLapse asks to be the sender of lapse seq's notification; true
+// means this caller won and must post it.
+func (c *DaemonClient) ClaimDesktopLapse(seq int) (bool, error) {
+	var resp LapseClaimResponse
+	err := c.doJSON(http.MethodPost, "/desktop/lapse-claim", lapseClaimRequest{LapseSeq: seq}, &resp)
+	return resp.Claimed, err
+}
+
+// SetDesktopAlwaysAvailable turns the desktop link on or off. Refusals come
+// back as *ShareError carrying a stable code (tailscale_off, https_off,
+// tailscale_userspace, port_in_use, start_failed).
+func (c *DaemonClient) SetDesktopAlwaysAvailable(on bool) (DesktopResponse, error) {
+	b, err := json.Marshal(DesktopRequest{AlwaysAvailable: on})
+	if err != nil {
+		return DesktopResponse{}, err
+	}
+	resp, err := c.doRetrying(c.http, time.Now().Add(frozenRetryBudget), func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(c.reqCtx(), http.MethodPut, c.base+"/desktop", bytes.NewReader(b))
+		if err == nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		return req, err
+	})
+	if err != nil {
+		return DesktopResponse{}, fmt.Errorf("do request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		var e ShareErrorResponse
+		if json.Unmarshal(body, &e) == nil && e.Error != "" {
+			return DesktopResponse{}, &ShareError{Code: e.Error, Detail: e.Detail}
+		}
+		return DesktopResponse{}, fmt.Errorf("daemon API PUT desktop: status %d: %s", resp.StatusCode, body)
+	}
+	var out DesktopResponse
+	if err := json.Unmarshal(body, &out); err != nil {
+		return DesktopResponse{}, fmt.Errorf("decode response: %w", err)
+	}
+	return out, nil
+}
+
+// DesktopLink returns the always-available link; an error while the desktop is
+// off or its server is not running.
+func (c *DaemonClient) DesktopLink() (string, error) {
+	var out struct {
+		URL string `json:"url"`
+	}
+	if err := c.doJSON(http.MethodGet, "/desktop/link", nil, &out); err != nil {
+		return "", err
+	}
+	return out.URL, nil
+}
+
+// DesktopPermissions reads the live Screen Recording and Accessibility grants
+// from the daemon's fresh-process probe. A failed probe is an error, never
+// false, false.
+func (c *DaemonClient) DesktopPermissions() (sr, ax bool, err error) {
+	var out DesktopPermissionsResponse
+	if err := c.doJSON(http.MethodGet, "/desktop/permissions", nil, &out); err != nil {
+		return false, false, err
+	}
+	return out.SR, out.AX, nil
+}
+
+// DesktopTestCapture asks the daemon for one still of the main display. A
+// refusal the daemon words (needs_permission, timeout, capture_failed) comes
+// back as code with a nil error; err is for a call that did not complete.
+func (c *DaemonClient) DesktopTestCapture() (jpeg []byte, code string, err error) {
+	resp, err := c.doRetrying(c.http, time.Now().Add(frozenRetryBudget), func() (*http.Request, error) {
+		return http.NewRequestWithContext(c.reqCtx(), http.MethodPost, c.base+"/desktop/test-capture", nil)
+	})
+	if err != nil {
+		return nil, "", fmt.Errorf("do request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if err != nil {
+		return nil, "", fmt.Errorf("read response: %w", err)
+	}
+	if resp.StatusCode == http.StatusOK {
+		return body, "", nil
+	}
+	var e struct {
+		Code string `json:"code"`
+	}
+	if json.Unmarshal(body, &e) == nil && e.Code != "" {
+		return nil, e.Code, nil
+	}
+	return nil, "", fmt.Errorf("daemon API POST desktop/test-capture: status %d", resp.StatusCode)
+}
+
 // SendPreview errors, one per refusal the CLI words differently (11-08).
 var (
 	ErrPreviewNoSession   = errors.New("no such session")

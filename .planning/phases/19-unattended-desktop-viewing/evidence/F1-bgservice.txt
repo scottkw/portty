@@ -1,0 +1,23 @@
+AXStaticText Value=Tailscale
+AXStaticText Value=Connected as OFFICE-VM
+AXStaticText Value=Share a session from the toolbar, or right-click it in the sidebar. Macs signed in to your Tailscale account see shared sessions in their sidebar, and each shared session gets a link that opens in a browser on any device signed in to your account. Turning Share off disconnects everyone.
+AXStaticText Value=Desktop
+AXStaticText Value=Always-available desktop
+AXStaticText Value=Always-available desktop
+AXStaticText Value=Turning this off stops every saved desktop link.
+AXCheckBox [AXSwitch] Title=Always-available desktop Value=1 DOMIdentifier=desktopAlways
+AXStaticText Value=Status
+AXStaticText Value=Paused after repeated errors. Run Test Capture to resume.
+AXStaticText Value=Link
+AXStaticText Value=Open it in Chrome or Safari on a device signed in to your Tailscale account. Treat it like a password.
+AXButton Title=Copy Link
+AXStaticText Value=Permissions
+AXStaticText Value=Screen Recording and Accessibility.
+AXStaticText Value=Granted
+AXButton Title=Review Permissions…
+AXStaticText Value=Background service
+AXStaticText Value=Portty's background service is turned off in Login Items, so this Mac's desktop is only reachable while Portty is open.
+AXStaticText Value=Needs repair
+AXButton Title=Open Login Items
+AXStaticText Value=While it is plugged in, Portty keeps this Mac from sleeping on its own, though the display may still sleep. Closing the lid or choosing Sleep still puts it to sleep. On battery, including a low battery, it sleeps as usual. Nothing can wake it from here. macOS asks you to approve Screen Recording agai
+AXButton Title=Done

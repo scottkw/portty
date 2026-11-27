@@ -1,0 +1,9 @@
+log lines before: 31 at guest epoch 1795729257
+at guest epoch 1795729334: nudge lines in the log: 0; awaiting_approval lines: 0; stall lines: 0; log lines now: 31
+2026/11/26 21:37:23.653336 WARN desktop: capture start failed err="screencap: screen recording permission denied: The user declined TCCs for application, window, display capture"
+2026/11/26 21:37:33.723503 WARN desktop: capture start failed err="screencap: screen recording permission denied: The user declined TCCs for application, window, display capture"
+2026/11/26 21:37:43.801127 WARN desktop: capture start failed err="screencap: screen recording permission denied: The user declined TCCs for application, window, display capture"
+2026/11/26 21:37:53.847231 WARN desktop: capture start failed err="screencap: screen recording permission denied: The user declined TCCs for application, window, display capture"
+2026/11/26 21:40:53.642024 INFO desktop: viewer left viewer=8dee0c06 viewers=0
+2026/11/26 21:40:56.196211 INFO desktop: viewer joined viewer=e50d87fb viewers=1
+GET /desktop: {"state":"streaming","viewers":1,"reason":null,"lapseSeq":0}

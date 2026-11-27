@@ -1,0 +1,12 @@
+AXGroup [AXApplicationStatus] DOMClassList=(     "sidebar__footer" ) @40,692 247x28
+AXGroup [AXApplicationDialog] Title=Sharing Description=Sharing DOMClassList=(     dialog,     "dialog--settings" ) @280,82 720x560
+AXStaticText Value=Always-available desktop DOMClassList=(     "settings-row__label" ) @322,349 586x18
+AXStaticText Value=Always-available desktop DOMClassList=( ) @322,350 154x16
+AXGroup DOMClassList=(     "settings-row__description" ) @322,367 586x32
+AXCheckBox [AXSwitch] Title=Always-available desktop Value=0 DOMIdentifier=desktopAlways DOMClassList=(     switch ) @920,363 38x22
+AXStaticText Value=Permissions DOMClassList=( ) @322,425 74x16
+AXGroup DOMClassList=(     "settings-row__description" ) @322,442 399x16
+AXGroup [AXApplicationGroup] DOMClassList=(     "ts-status__text",     "ts-status__text--granted" ) @748,433 46x16
+AXStaticText Value=Granted DOMClassList=( ) @748,433 47x16
+AXButton Title=Review Permissions… DOMClassList=(     button,     "button--secondary" ) @802,429 157x24
+AXButton Title=Done DOMClassList=(     button,     "button--primary" ) @903,601 80x29

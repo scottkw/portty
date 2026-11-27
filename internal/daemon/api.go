@@ -14,7 +14,9 @@ import (
 	"time"
 
 	"github.com/scottkw/portty/internal/capability"
+	"github.com/scottkw/portty/internal/desktop"
 	"github.com/scottkw/portty/internal/relay"
+	"github.com/scottkw/portty/internal/screencap"
 	"github.com/scottkw/portty/internal/tailnet"
 	"github.com/scottkw/portty/internal/webserver"
 )
@@ -40,6 +42,29 @@ type API struct {
 	shareHealth    func(context.Context) webserver.TailscaleHealth
 	newShareServer func(webserver.TailscaleHealth, *relay.HubManager) (*webserver.WebServer, error)
 	warmCert       func(context.Context, string) error
+
+	// --- Phase 19 desktop (desktop_api.go), all guarded by mu --------------
+	// desktopCfg is desktop.json as loaded or last saved; desktopErr is why a
+	// file that exists was not usable (the desktop then stays off, the file is
+	// left alone). desktopMgr is nil while the desktop is off or not yet up.
+	desktopCfg desktop.Config
+	desktopErr error
+	desktopMgr *desktop.Manager
+	// The tailnet address and name the Manager and the share server were built
+	// for, so the poller can tell when they changed. Empty: unknown.
+	desktopBuiltIP, desktopBuiltDomain string
+	shareBuiltIP, shareBuiltDomain     string
+	desktopTS                          string // last Tailscale verdict: ok, off, https_off, userspace; "" before the first check
+	// Seams, copied from package defaults in NewAPI (SetDesktopSeamsForTest).
+	interfaceAddrs   func() ([]net.Addr, error)
+	newDesktopSource func() screencap.Source
+	desktopMediaPort int // 0: desktop.MediaPortDefault
+	// The poller runs for the API's life: desktopCtx ends in Stop, and it is
+	// also the Manager's lifetime (a Manager keeps the context it is started with).
+	desktopCtx       context.Context
+	desktopCancel    context.CancelFunc
+	desktopPollOnce  sync.Once
+	desktopPollEvery time.Duration
 
 	// --- Phase 87 capability state (D-04/D-06/D-14/D-15/D-16) -----------
 	// signingKey is the 32-byte HMAC-SHA256 key used to Sign capabilities.
@@ -97,7 +122,10 @@ type API struct {
 
 // NewAPI creates an API wired to the given SessionEngine and registers all routes.
 func NewAPI(engine *SessionEngine) *API {
+	desktopCtx, desktopCancel := context.WithCancel(context.Background())
 	a := &API{
+		desktopCtx: desktopCtx, desktopCancel: desktopCancel, desktopPollEvery: desktopPollEvery,
+		interfaceAddrs: defaultInterfaceAddrs, newDesktopSource: defaultNewDesktopSource,
 		engine:       engine,
 		mux:          http.NewServeMux(),
 		tailnetCache: &tailnetCache{},
@@ -114,6 +142,14 @@ func NewAPI(engine *SessionEngine) *API {
 	}
 	a.probePeers = func(ctx context.Context) []tailnet.Peer {
 		return a.tailnetCache.getOrRefresh(ctx, tailnet.DiscoverAndProbe)
+	}
+	// An unusable desktop.json leaves the desktop off with the reason kept for
+	// GET /desktop; the file is never rewritten here.
+	if engine.configDir != "" {
+		a.desktopCfg, a.desktopErr = desktop.LoadConfig(engine.configDir)
+		if a.desktopErr != nil {
+			a.desktopCfg = desktop.Config{}
+		}
 	}
 	a.registerRoutes()
 	a.handler = a.freezeGate(a.mux)
@@ -132,11 +168,12 @@ func NewAPI(engine *SessionEngine) *API {
 //
 // WR-01 (it2): the drain is short, so no slow route may hold the gate.
 // /peers/connect only caches a peer's cap, which no handoff moves; PUT share
-// takes the gate itself after its slow health check and cert warm-up.
+// and PUT /desktop take the gate themselves after their slow health check and
+// cert warm-up.
 func (a *API) freezeGate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet || r.Method == http.MethodHead || r.URL.Path == "/handoff" ||
-			r.URL.Path == "/peers/connect" || r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/share") {
+			r.URL.Path == "/peers/connect" || r.Method == http.MethodPut && (strings.HasSuffix(r.URL.Path, "/share") || r.URL.Path == "/desktop") {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -214,6 +251,7 @@ func (a *API) registerRoutes() {
 	a.mux.HandleFunc("POST /peers/ports", a.handlePortOpen)
 	// Phase 87 D-16 panic button: new signing key; shares are re-minted.
 	a.mux.HandleFunc("POST /capability/regenerate-key", a.handleRegenerateSigningKey)
+	a.registerDesktopRoutes(a.mux)
 }
 
 // Handler returns the API's underlying http.Handler (the registered mux).
@@ -305,6 +343,7 @@ func (a *API) serveOn(ln, relayLn net.Listener) {
 	a.ln = ln
 	go http.Serve(ln, a.handler) //nolint:errcheck
 	a.serveRelay(relayLn)
+	a.startDesktopPoller()
 }
 
 // Start validates the socket path, cleans up any stale socket, and begins
@@ -322,6 +361,7 @@ func (a *API) Start(socketPath string) error {
 	}
 	a.ln = ln
 	go http.Serve(ln, a.handler) //nolint:errcheck
+	a.startDesktopPoller()
 	return nil
 }
 
@@ -346,6 +386,7 @@ func (a *API) Stop() error {
 	if ws != nil {
 		_ = ws.Stop()
 	}
+	a.stopDesktop()
 
 	a.portForwards.CloseAll()
 
@@ -381,8 +422,16 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 func (a *API) handleHealth(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, HealthResponse{Status: "ok", Version: BuildVersion, API: APIVersion, Handoff: HandoffVersion})
+	writeJSON(w, http.StatusOK, HealthResponse{Status: "ok", Version: BuildVersion, API: APIVersion, Handoff: HandoffVersion, Launchd: launchdManaged, PID: os.Getpid()})
 }
+
+// shutdownExit is how /shutdown ends the process; a test replaces it.
+var shutdownExit = os.Exit
+
+// shutdownDesktopGrace bounds how long /shutdown waits for the desktop to stop
+// (Manager.Close clears captureActive first, so a late exit still counts clean).
+// Short: a replacement daemon waits on the lock for this process to go.
+const shutdownDesktopGrace = 500 * time.Millisecond
 
 func (a *API) handleShutdown(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
@@ -390,8 +439,14 @@ func (a *API) handleShutdown(w http.ResponseWriter, r *http.Request) {
 		f.Flush()
 	}
 	go func() {
+		stopped := make(chan struct{})
+		go func() { defer close(stopped); a.stopDesktop() }()
+		select {
+		case <-stopped:
+		case <-time.After(shutdownDesktopGrace):
+		}
 		time.Sleep(50 * time.Millisecond)
-		os.Exit(0)
+		shutdownExit(0)
 	}()
 }
 
@@ -768,7 +823,13 @@ func (a *API) handleRegenerateSigningKey(w http.ResponseWriter, r *http.Request)
 		ws.SetSigningKey(newKey)
 		a.remintSharesLocked(ws)
 	}
+	mgr := a.desktopMgr
 	a.mu.Unlock()
+	// Every desktop viewer's link was signed under the old key. Closed after
+	// a.mu is released: a close waits on the viewer's end of the handshake.
+	if mgr != nil {
+		mgr.CloseAll(desktop.CloseTokenRejected, "token rejected")
+	}
 	w.WriteHeader(http.StatusOK)
 }
 

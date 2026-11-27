@@ -1,0 +1,23 @@
+p18-state row=QT-WR02-before vm_utc=2026-11-26T16:43:13Z
+installed_version=
+gui_pid_count=0
+daemon_version=
+attached_images=0
+system_images=1
+cache_dmgs=0
+staging_dirs=0
+run_dirs=0
+trash_portty=0
+--- gui pids and executables
+--- daemon pids and executables
+--- attached images
+image-path      : /System/Library/AssetsV2/com_apple_MobileAsset_PKITrustStore/purpose_auto/d1b36c40ecf011c1a2dfeacc93215881ad4cf525.asset/AssetData/Restore/SECUREPKITRUSTSTOREASSETS_SECUREPKITRUSTSTORE_Cryptex.dmg
+--- update cache
+total 0
+drwx------  2 admin  staff   64 Nov 26 07:41 .
+drwxr-xr-x  5 admin  staff  160 Nov 25 22:50 ..
+--- staging dirs
+--- run dirs
+--- trash: Portty bundles, version, ctime (the move into the Trash; 18-05)
+--- update.log tail
+tail: ~/Library/Application Support/portty/update.log: No such file or directory

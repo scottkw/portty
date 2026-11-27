@@ -1,0 +1,16 @@
+# after turning the desktop off in Settings (switch clicked just before the first line)
+p19-both t=1 epoch=1795727003 desk=["streaming","streaming",1,3387] term={"len":1833,"first":1,"last":1827,"lastEpoch":1795727003,"count":1827,"breaks":0}
+p19-both t=2 epoch=1795727004 desk=["streaming","streaming",1,3387] term={"len":1834,"first":1,"last":1828,"lastEpoch":1795727004,"count":1828,"breaks":0}
+p19-both t=3 epoch=1795727006 desk=["streaming","streaming",1,3387] term={"len":1836,"first":1,"last":1830,"lastEpoch":1795727006,"count":1830,"breaks":0}
+p19-both t=4 epoch=1795727007 desk=["streaming","streaming",1,3387] term={"len":1837,"first":1,"last":1831,"lastEpoch":1795727007,"count":1831,"breaks":0}
+p19-both t=5 epoch=1795727009 desk=["streaming","streaming",1,3387] term={"len":1838,"first":1,"last":1832,"lastEpoch":1795727008,"count":1832,"breaks":0}
+p19-both t=6 epoch=1795727010 desk=["streaming","streaming",1,3387] term={"len":1840,"first":1,"last":1834,"lastEpoch":1795727010,"count":1834,"breaks":0}
+p19-both t=7 epoch=1795727012 desk=["streaming","streaming",1,3387] term={"len":1841,"first":1,"last":1835,"lastEpoch":1795727012,"count":1835,"breaks":0}
+p19-both t=8 epoch=1795727013 desk=["streaming","streaming",1,3387] term={"len":1842,"first":1,"last":1836,"lastEpoch":1795727013,"count":1836,"breaks":0}
+p19-both t=9 epoch=1795727015 desk=["streaming","streaming",1,3387] term={"len":1844,"first":1,"last":1838,"lastEpoch":1795727015,"count":1838,"breaks":0}
+p19-both t=10 epoch=1795727016 desk=["streaming","streaming",1,3387] term={"len":1845,"first":1,"last":1839,"lastEpoch":1795727016,"count":1839,"breaks":0}
+p19-both t=11 epoch=1795727018 desk=["streaming","streaming",1,3387] term={"len":1847,"first":1,"last":1841,"lastEpoch":1795727019,"count":1841,"breaks":0}
+p19-both t=12 epoch=1795727020 desk=["streaming","streaming",1,3387] term={"len":1848,"first":1,"last":1842,"lastEpoch":1795727020,"count":1842,"breaks":0}
+p19-both t=13 epoch=1795727021 desk=["streaming","streaming",1,3387] term={"len":1849,"first":1,"last":1843,"lastEpoch":1795727021,"count":1843,"breaks":0}
+p19-both t=14 epoch=1795727023 desk=["streaming","streaming",1,3387] term={"len":1851,"first":1,"last":1845,"lastEpoch":1795727023,"count":1845,"breaks":0}
+GET /desktop: {"alwaysAvailable":false,"state":"off","viewers":0}

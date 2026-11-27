@@ -50,6 +50,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/scottkw/portty/internal/desktop"
 	"github.com/scottkw/portty/internal/fdpass"
 	"github.com/scottkw/portty/internal/pty"
 	"github.com/scottkw/portty/internal/relay"
@@ -628,7 +629,9 @@ func (o *oldHandoff) die(step string) {
 }
 
 // global collects the GLOBAL frame and its fds: lock, API listener, relay
-// listener and, while sessions being moved are shared, the share listener.
+// listener and, while the share server is needed (a shared session being moved
+// or the always-available desktop), the share listener. The wire format is the
+// same either way: a desktop-only handoff is ShareListener with no Shares.
 func (o *oldHandoff) global() (hsGlobal, []syscall.Conn, error) {
 	a := o.a
 	ul, okU := a.ln.(*net.UnixListener)
@@ -645,8 +648,9 @@ func (o *oldHandoff) global() (hsGlobal, []syscall.Conn, error) {
 		}
 	}
 	ws := a.webServer
+	needed := a.serverNeededLocked() // a terminal share or always-available: the link must survive
 	a.mu.RUnlock()
-	if ws != nil && len(g.Shares) > 0 {
+	if ws != nil && needed {
 		if tl, ok := ws.Listener().(*net.TCPListener); ok {
 			conns = append(conns, tl)
 			g.ShareListener = true
@@ -765,8 +769,16 @@ func (o *oldHandoff) finish(peerGone <-chan int) {
 	a := o.a
 	a.handedOff.Store(true)
 	a.closeListenerCopies()
+	// Desktop viewers are not handed over: they get 1012 (the viewer's wake
+	// signal) and redial the takeover on the same link. Run beside the terminal
+	// viewers' drain, since each close handshake can take seconds.
+	desktopDone := make(chan struct{})
+	go func() {
+		defer close(desktopDone)
+		a.closeDesktopForHandoff()
+	}()
 	m := a.engine.Manager()
-	var dones []<-chan struct{}
+	dones := []<-chan struct{}{desktopDone}
 	for _, id := range m.SessionIDs() {
 		if h, ok := m.Get(id); ok {
 			dones = append(dones, h.RestartViewers())
@@ -797,6 +809,35 @@ wait:
 	log.Printf("handoff: committed: %d sessions moved to pid %d in %v; exiting",
 		len(o.frozen), o.pid, time.Since(o.start).Round(time.Millisecond))
 	handoffExit(0)
+}
+
+// closeDesktopForHandoff ends this daemon's desktop for good after COMMITTED:
+// every desktop viewer is closed with 1012, capture stops (which clears
+// captureActive, so the takeover's crash breaker counts no abnormal exit) and
+// the media socket is released for the takeover to bind. The Manager is taken
+// under a.mu and closed outside it: Close waits on each viewer's close
+// handshake. Never on a rollback path.
+func (a *API) closeDesktopForHandoff() {
+	a.mu.Lock()
+	mgr := a.desktopMgr
+	a.desktopMgr, a.desktopBuiltIP, a.desktopBuiltDomain = nil, "", ""
+	a.mu.Unlock()
+	if mgr != nil {
+		// Close clears captureActive first, then sends the same 1012 to every
+		// viewer. A CloseAll here would put the slow handshakes ahead of the flag.
+		_ = mgr.Close()
+	}
+}
+
+// desktopWhenOldGone brings the desktop up on this (takeover) daemon the moment
+// the old daemon has exited and so freed the media port, instead of waiting for
+// the poller's next 10 s tick: a viewer redials as soon as it gets 1012.
+func (a *API) desktopWhenOldGone(gone <-chan int) {
+	select {
+	case <-gone:
+		a.desktopTick(a.desktopCtx)
+	case <-a.desktopCtx.Done():
+	}
 }
 
 // waitHubsInputIdle waits until every hub's queued viewer input reached its
@@ -1144,30 +1185,55 @@ func (t *takeover) finalize() error {
 	if err := a.BootstrapCapabilityState(); err != nil {
 		return err
 	}
+	t.loadDesktopConfig()
 	shares := map[string]shareRecord{}
 	for id, s := range t.global.Shares {
 		if t.imported(id) {
 			shares[id] = shareRecord{grantID: s.GrantID, token: s.Token}
 		}
 	}
-	if len(shares) == 0 {
-		t.dropShares()
-		return nil
+	// With no terminal share the only reason for a server is always-available,
+	// which never fails a handoff: the sessions matter more, and the poller
+	// starts the server once the old daemon has let go of the port.
+	desktopOnly := len(shares) == 0
+	if desktopOnly {
+		a.mu.RLock()
+		on := a.desktopCfg.AlwaysAvailable
+		a.mu.RUnlock()
+		if !on {
+			t.dropShares()
+			return nil
+		}
+		if t.shareLn == nil {
+			log.Printf("handoff: always-available server starts after the old daemon exits")
+			t.dropShares()
+			return nil
+		}
 	}
 	switch {
 	case t.shareLn == nil:
 		return errors.New("share records came without the share listener")
 	case !t.certOK || t.health.IP == "":
+		if desktopOnly {
+			log.Printf("handoff: share certificate unavailable; always-available server starts after the old daemon exits")
+			t.dropShares()
+			return nil
+		}
 		return errors.New("share certificate unavailable")
 	}
 	a.mu.RLock()
 	newServer := a.newShareServer
 	a.mu.RUnlock()
 	ws, err := newServer(t.health, a.engine.Manager())
-	if err != nil {
-		return err
+	if err == nil {
+		err = ws.CheckListener(t.shareLn) // WR-05: before COMMIT, so the old daemon keeps serving
 	}
-	if err := ws.CheckListener(t.shareLn); err != nil { // WR-05: before COMMIT, so the old daemon keeps serving
+	if err != nil {
+		if desktopOnly {
+			log.Printf("handoff: share server unusable (%v); always-available server starts after the old daemon exits", err)
+			t.dropShares()
+			return nil
+		}
 		return err
 	}
 	// wireShareServer denies a.relayPort, but commit serves the relay (and sets
@@ -1179,6 +1245,24 @@ func (t *takeover) finalize() error {
 	a.mu.Unlock()
 	t.ws = ws
 	return nil
+}
+
+// loadDesktopConfig reads desktop.json afresh: a PUT /desktop was gated during
+// the freeze, so the disk is current. An unusable file reads as off with the
+// reason kept for GET /desktop, as NewAPI does.
+func (t *takeover) loadDesktopConfig() {
+	a := t.a
+	if a.engine.configDir == "" {
+		return
+	}
+	cfg, err := desktop.LoadConfig(a.engine.configDir)
+	if err != nil {
+		log.Printf("handoff: desktop.json is unusable (%v); the desktop stays off", err)
+		cfg = desktop.Config{}
+	}
+	a.mu.Lock()
+	a.desktopCfg, a.desktopErr = cfg, err
+	a.mu.Unlock()
 }
 
 // dropShares gives up the share listener and any records.
@@ -1305,6 +1389,9 @@ func (t *takeover) commit(withCommitted bool) int {
 	for _, s := range t.sessions {
 		s.hub.Start()
 		a.engine.watchSessionExit(s.id, s.sess, s.hub, onExit)
+	}
+	if withCommitted && t.oldPID > 0 {
+		go a.desktopWhenOldGone(watchOldExit(t.oldPID))
 	}
 	if t.postStep("after-serve-before-committed") {
 		t.cleanup()

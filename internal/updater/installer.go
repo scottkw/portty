@@ -647,6 +647,9 @@ func RunInstaller(ctx context.Context, j Job, env InstallerEnv) Result {
 		}
 		env.Sleep(installerPoll)
 	}
+	// Healthy: a GUI and the daemon both run the new version, so a keepDaemon the job carried for a
+	// relaunch of the older copy has nothing left to keep and must not reach the next start.
+	r.KeepDaemon = false
 	// Healthy: the old bundle (at j.Staged since the swap) goes to the Trash, recoverable by hand,
 	// never deleted. Only a Portty.app inside a staging folder beside the target is trashed; a
 	// refused Trash keeps it aside for the next GUI start's sweep to retry.

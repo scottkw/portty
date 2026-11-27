@@ -1,0 +1,2 @@
+kill -9 daemon pid 95419 at guest epoch 1795727457
+health answers again at guest epoch 1795727458: {"version":"v19.2.3","launchd":true,"pid":26082}

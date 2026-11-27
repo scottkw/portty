@@ -1,0 +1,21 @@
+# V1b control: GUI running (same build), a third simulated lapse: the GUI claims and posts
+== processes (GUI running)
+69995     1 /Applications/Portty.app/Contents/MacOS/Portty daemon
+71188     1 /Applications/Portty.app/Contents/MacOS/Portty
+notif_count_before=3
+== POST third lapse with the GUI running
+POST http=204
+{"alwaysAvailable":true,"state":"awaiting_approval","viewers":0,"locked":false,"approachingLapse":false,"lapseSeq":3,"lapseClaimedSeq":3,"tailscale":"ok","launchd":true}
+
+notif_count_after=3
+== daemon.log (last lapse lines)
+2026-11-26 20:13:18.660 Portty[69995:1403973] Portty: dispatching native notification for identifier portty.desktop-approval-lapse (main queue: 0)
+2026-11-26 20:13:18.675 Portty[69995:1403973] Portty: notification delivery accepted for identifier portty.desktop-approval-lapse
+2026/11/26 20:13:58.446953 WARN desktop: waiting for approval at the Mac lapse=3 detector=simulated gui=true
+2026/11/26 20:14:01.456539 INFO desktop: lapse claimed lapse=3 by=gui
+== GUI log (notification lines)
+2026/11/26 20:14:01 notification: dispatching native notification for identifier portty.desktop-approval-lapse
+2026-11-26 20:14:01.456 Portty[71188:1405705] Portty: dispatching native notification for identifier portty.desktop-approval-lapse (main queue: 1)
+2026-11-26 20:14:01.475 Portty[71188:1405761] Portty: notification delivery accepted for identifier portty.desktop-approval-lapse
+== DELETE
+DELETE http=204

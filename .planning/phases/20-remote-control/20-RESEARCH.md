@@ -419,19 +419,28 @@ try await stream?.updateContentFilter(filter)
 | A14 | Cheap single-window frame fetch via `CGWindowListCreateDescriptionFromArray` at 5 Hz | Pattern 7 | Slightly more CPU |
 | A15 | System double-click interval constant (500 ms) acceptable | R11 | Double click feels off; use the system value |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Layout-aware typing for printable keys.**
+1. **Layout-aware typing for printable keys.** RESOLVED (planning, 2026-11-26): no layout fallback. Printable keys always go by `code`; every key message still carries `k` and `caps` (CONTEXT Claude's Discretion after research), so a fallback can be added later with no protocol change. Deciding artifact: 20-02-PLAN.md "Flagged decisions" (No layout fallback; rated reversible), wire fields frozen in 20-01-PLAN.md; a non-US viewer layout is an owner-run observation in 20-11-PLAN.md.
    - What we know: the accepted `key`+`code` design types the remote layout's characters; success criterion 2 says "arrives as typed".
    - What's unclear: whether the user's two Macs share a layout (probably US on both) and whether non-US viewers matter this milestone.
    - Recommendation: ship the accepted design with `k` and `caps` fields (R6); ask the user before adding a fallback that sends printable unmodified keys as `text`.
-2. **Lock Screen in the Send-keys menu before Phase 23.**
+2. **Lock Screen in the Send-keys menu before Phase 23.** RESOLVED: keep it behind a confirm dialog (CONTEXT Claude's Discretion after research: "Lock Screen in the Send-keys menu sits behind a confirm dialog"), greyed in window shares (research R9; 20-UI-SPEC.md Decisions "Lock Screen" and "Window-share chords"). Deciding artifacts: 20-CONTEXT.md, 20-UI-SPEC.md Surface D; implemented in 20-07-PLAN.md (confirm) and 20-04-PLAN.md (daemon drops the chord in window shares).
    - What we know: the lock gate blocks every viewer after the lock; unlock is Phase 23; v2.0 ships after Phase 23.
    - What's unclear: whether a confirm dialog is enough or the item should be hidden until Phase 23 (the office Mac is unattended).
    - Recommendation: confirm dialog; hide in window shares.
-3. **Ctrl→Cmd swap semantics.** Exchange (Ctrl↔Cmd) versus one-way. Recommendation: exchange (keeps Ctrl chords for remote terminals reachable).
-4. **Topmost-window hit test on window shares (R-Pattern 7 item 4).** Not in CONTEXT; adds one CGWindowList call per press. Recommendation: include; ask only if the user wants it left out.
-5. **Where Phase 19 leaves the capture interface** (see "Phase 19 design details"): planner should read Phase 19's plans once they exist and reconcile.
+3. **Ctrl→Cmd swap semantics.** Exchange (Ctrl↔Cmd) versus one-way. Recommendation: exchange (keeps Ctrl chords for remote terminals reachable). RESOLVED: exchange (CONTEXT Claude's Discretion after research: "the Ctrl to Cmd option swaps the two keys"); implemented in 20-06-PLAN.md (mapped code fixed at keydown).
+4. **Topmost-window hit test on window shares (R-Pattern 7 item 4).** Not in CONTEXT; adds one CGWindowList call per press. Recommendation: include; ask only if the user wants it left out. RESOLVED: included (CONTEXT Claude's Discretion after research: "every click first checks which window is on top at that point"); implemented in 20-04-PLAN.md Task 3 (drop reason `covered`).
+5. **Where Phase 19 leaves the capture interface** (see "Phase 19 design details"): planner should read Phase 19's plans once they exist and reconcile. RESOLVED (planning, 2026-11-26, reconciled against merged code at 44670565: 19-01..19-11 and 19-17):
+   - Item 1 capture interface: `screencap.Source.SelectSurface` exists and is documented as the Phase 20 hook; Phase 20 adds `SurfaceInfo`, `ListSurfaces` (Deps seam) and the live switch (20-03-PLAN.md).
+   - Item 2 encoder re-creation: `pc_encoder_rebuild` and `DisplaySource.Rebuild` exist (19-05); per-unit `AccessUnit.Width/Height` already drives the `size` message; 20-03 adds `pc_stream_select` with `updateContentFilter` and a still-frame fallback.
+   - Item 3 offer shape: the viewer builds its offer after the server hello (19-06 `handle`), so 20-06 creates the `input` channel before `createOffer` when the server hello carries `caps.input`; `Deps.OnDataChannel` is registered before the offer is applied (19-03 peer.go) and SCTP max message size is 8192.
+   - Item 4 per-viewer identity and rights: `Viewer{ID, Rights, JoinedAt}` with `RightsViewOnly` exists (19-03); 20-01 adds the rights bits and per-viewer input state.
+   - Item 5 lock-state source: `Manager.Locked()` (250 ms wall-clock cache, true on a read error) exists (19-09); 20-01 and 20-02 call it on every press.
+   - Item 6 video rect: `videoContentRect` and `onVideoRect` exist in DesktopView.tsx (19-06); 20-06 normalizes against them.
+   - Item 7 TESTING.md numbering: computed at run time after Phase 19's Category BJ (20-11-PLAN.md).
+   - 19-10 (handoff closes desktop viewers with CloseAll then Close) and 19-11 (perm-probe, permissions endpoint, setup sheet) merged during planning and are cited as merged in 20-01, 20-09 and 20-10.
+   - Still-unmerged Phase 19 plans Phase 20 depends on, each enforced by a `<precondition>` in the dependent plan: 19-12 (VM real-media proof, VM grants, `vmdesktop` tag guard; 20-09), 19-13 (Settings Desktop group, DesktopStatusResult; 20-10; also edits style.css and RegenerateKeyModal.tsx, reconciled append-only in 20-06..20-08), 19-14 (tray desktop line; 20-10), 19-15 (final VM matrix in the shared VMs; 20-09 waits for it), 19-16 (TESTING.md Category BJ; 20-11).
 
 ## Environment Availability
 

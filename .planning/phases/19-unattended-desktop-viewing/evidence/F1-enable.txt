@@ -1,0 +1,15 @@
+sessions before enable: ["f732c76d"]
+after enable: 		"app.portty.Portty.daemon" => enabled
+sent SIGTERM to: 36753
+{"status":"ok","version":"v19.2.3","api":5,"handoff":1,"pid":36779}
+
+health: {"status":"ok","version":"v19.2.3","api":5,"handoff":1,"launchd":true,"pid":45985}
+sessions after the re-home: ["f732c76d"]
+--- Desktop group rows
+AXStaticText Value=Status
+AXStaticText Value=Paused after repeated errors. Run Test Capture to resume.
+(end of rows)
+2026/11/26 21:16:44 daemon: launchd agent: ready (state 0)
+2026/11/26 21:18:02 daemon: launchd agent: Portty's background service is turned off in Login Items. Turn on Portty in System Settings, General, Login Items, then try again.
+2026/11/26 21:24:02 daemon: launchd agent: ready (state 0)
+2026/11/26 21:24:02 daemon: re-home requested

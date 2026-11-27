@@ -38,6 +38,9 @@ export function GetSessionTailLines(id: string, n: number): Promise<string[]>
 // Daemon error and retry bound methods
 export function GetDaemonError(): Promise<string>
 export function RetryDaemon(): Promise<void>
+// 19-17 — what puts the daemon back under launchd: "login_items", "move_to_applications", "open_app", "rehome_pending" or "".
+export function GetDaemonRepair(): Promise<string>
+export function OpenLoginItems(): Promise<void>
 // DEBT-08 — the version-mismatch restart prompt: the session count to ask about (0: none; -1: unknown).
 export function GetDaemonRestartPrompt(): Promise<number>
 export function AnswerDaemonRestart(restart: boolean): Promise<void>
@@ -181,6 +184,64 @@ export interface RemotePortResult {
   errorCode: string
 }
 export function OpenRemotePort(sessionID: string, rawURL: string, consent: boolean): Promise<RemotePortResult>
+
+// Portty 19-11: the Set Up Desktop Sharing sheet. The daemon holds the grants,
+// so it reads them (a fresh probe process, never a cached answer) and takes the
+// test capture. None of the three throws.
+// GetDesktopPermissions: errorCode is '' (sr/ax are the OS's live answer) or
+// 'unavailable' (not known: daemon unreachable or its probe failed).
+export interface DesktopPermissionsResult {
+  sr: boolean
+  ax: boolean
+  errorCode: string
+}
+export function GetDesktopPermissions(): Promise<DesktopPermissionsResult>
+// RunDesktopTestCapture: imageDataURL is a data:image/jpeg URL (a 512 px
+// still), or errorCode is needs_permission, timeout, capture_failed or
+// unavailable.
+export interface TestCaptureResult {
+  imageDataURL: string
+  errorCode: string
+}
+export function RunDesktopTestCapture(): Promise<TestCaptureResult>
+// OpenDesktopPermissionPane: kind is 'screen' or 'accessibility'; any other
+// kind rejects without opening anything.
+export function OpenDesktopPermissionPane(kind: string): Promise<void>
+
+// Portty 19-13: the Settings ▸ Sharing Desktop group. None throws.
+// GetDesktopStatus: errorCode 'unavailable' means the daemon cannot be asked
+// (the other fields mean nothing). state is the daemon enum (off, needs_permission,
+// awaiting_approval, display_asleep, locked, idle, streaming, capture_paused);
+// tailscale is ok, off, https_off, userspace or '' before the first check;
+// launchd is false while the daemon runs without launchd.
+export interface DesktopStatusResult {
+  alwaysAvailable: boolean
+  state: string
+  viewers: number
+  locked: boolean
+  approachingLapse: boolean
+  tailscale: string
+  launchd: boolean
+  reason: string
+  errorCode: string
+}
+export function GetDesktopStatus(): Promise<DesktopStatusResult>
+// SetDesktopAlwaysAvailable: errorCode is a daemon refusal (tailscale_off,
+// https_off, tailscale_userspace, port_in_use, start_failed) or 'unavailable';
+// firstShare is true when this call recorded the CT acknowledgement.
+export interface DesktopResult {
+  alwaysAvailable: boolean
+  firstShare: boolean
+  errorCode: string
+  errorDetail: string
+}
+export function SetDesktopAlwaysAvailable(on: boolean): Promise<DesktopResult>
+// GetDesktopLink: fetched only on Copy Link, never rendered or kept.
+export interface DesktopLinkResult {
+  url: string
+  errorCode: string
+}
+export function GetDesktopLink(): Promise<DesktopLinkResult>
 
 // Phase 87 capability bound methods (SEC-01..SEC-05)
 export function RegenerateSigningKey(): Promise<void>

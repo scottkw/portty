@@ -1,0 +1,20 @@
+## GUI running: POST /desktop/debug/lapse
+rec=35 app=app.portty.portty  07:04:00 id=[portty.update-result] title=[Portty] body=[The update to Portty 1.8.1 didn't take. Portty 1.8.0 is still installed.]
+rec=42 app=app.portty.portty  20:14:01 id=[portty.desktop-approval-lapse] title=[Portty] body=[Portty desktop needs approval at the Mac.]
+p19-notif-count=3
+GET /desktop: {"alwaysAvailable":true,"state":"idle","lapseSeq":0,"lapseClaimedSeq":0}
+POST at guest epoch 1795729409: 
+GET /desktop after: {"state":"awaiting_approval","lapseSeq":1,"lapseClaimedSeq":1}
+daemon log:
+2026/11/26 21:43:29.814625 WARN desktop: waiting for approval at the Mac lapse=1 detector=simulated gui=true
+2026/11/26 21:43:32.427320 INFO desktop: lapse claimed lapse=1 by=gui
+gui log:
+2026-11-26 20:14:01.475 Portty[71188:1405761] Portty: notification delivery accepted for identifier portty.desktop-approval-lapse
+2026/11/26 21:43:32 notification: dispatching native notification for identifier portty.desktop-approval-lapse
+2026-11-26 21:43:32.427 Portty[75220:1649620] Portty: dispatching native notification for identifier portty.desktop-approval-lapse (main queue: 1)
+2026-11-26 21:43:32.456 Portty[75220:1649694] Portty: notification delivery accepted for identifier portty.desktop-approval-lapse
+unified log (last 60 s) Added notification request lines for Portty: 1
+DELETE: 204
+rec=35 app=app.portty.portty  07:04:00 id=[portty.update-result] title=[Portty] body=[The update to Portty 1.8.1 didn't take. Portty 1.8.0 is still installed.]
+rec=43 app=app.portty.portty  21:43:32 id=[portty.desktop-approval-lapse] title=[Portty] body=[Portty desktop needs approval at the Mac.]
+p19-notif-count=3

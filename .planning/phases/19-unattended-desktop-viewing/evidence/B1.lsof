@@ -1,0 +1,18 @@
+p19-lsof daemon pid 41613
+COMMAND   PID  USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+Portty  41613 admin    7u  IPv4 0x98f0956d8147a6d7      0t0  TCP 127.0.0.1:58593 (LISTEN)
+Portty  41613 admin   26u  IPv4 0x99a2734786d850e4      0t0  TCP tailnet address:7444 (LISTEN)
+Portty  41613 admin   29u  IPv4 0xbf6b6deb348fcf35      0t0  UDP tailnet address:7444
+Portty  41613 admin   34u  IPv4 0xd4e9d18d97935260      0t0  TCP tailnet address:7444->100.x.x.N:55062 (ESTABLISHED)
+Portty  41613 admin   54u  IPv4 0xa15a8b886811a519      0t0  TCP tailnet address:7444->100.x.x.N:55752 (ESTABLISHED)
+Portty  41613 admin   67u  IPv4 0x3c245498b09c31ea      0t0  TCP tailnet address:7444->100.x.x.N:55758 (ESTABLISHED)
+Portty  41613 admin   71u  IPv4  0x5cdaaf8bf0d5d73      0t0  TCP tailnet address:7444->100.x.x.N:55760 (ESTABLISHED)
+Portty  41613 admin   72u  IPv4 0x3b169c73aa837d8c      0t0  TCP tailnet address:7444->100.x.x.N:55782 (ESTABLISHED)
+Portty  41613 admin   74u  IPv4 0x8432f0ffb595a0c9      0t0  TCP tailnet address:7444->100.x.x.N:55836 (ESTABLISHED)
+Portty  41613 admin   75u  IPv4 0xec9f810022a0dfb7      0t0  TCP tailnet address:7444->100.x.x.N:55707 (ESTABLISHED)
+Portty  41613 admin   78u  IPv4 0x354b850bd8a09b71      0t0  TCP tailnet address:7444->100.x.x.N:55842 (ESTABLISHED)
+Portty  41613 admin   79u  IPv4  0xca7d1115d013f83      0t0  TCP tailnet address:7444->100.x.x.N:55755 (ESTABLISHED)
+Portty  41613 admin   80u  IPv4 0x5325140dfdd2cefb      0t0  TCP tailnet address:7444->100.x.x.N:55759 (ESTABLISHED)
+Portty  41613 admin   81u  IPv4  0x6f4fd4bddcb17c7      0t0  TCP tailnet address:7444->100.x.x.N:55839 (ESTABLISHED)
+Portty  41613 admin   83u  IPv4 0xf0887f9d82094acc      0t0  TCP tailnet address:7444->100.x.x.N:55767 (ESTABLISHED)
+Portty  41613 admin   84u  IPv4 0x862c193e92ebd821      0t0  TCP tailnet address:7444->100.x.x.N:55841 (ESTABLISHED)

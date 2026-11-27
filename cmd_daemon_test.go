@@ -2,12 +2,17 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/scottkw/portty/internal/daemon"
+	"github.com/scottkw/portty/internal/screencap"
 )
 
 func TestCmdDaemon_ServiceActions(t *testing.T) {
@@ -156,5 +161,143 @@ func TestCmdDaemon_TakeoverRoutes(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatalf("bogus reached RunTakeover (%d calls)", calls)
+	}
+}
+
+// DSHR-01: install, uninstall, start and stop now drive Portty's own
+// LaunchAgent through launchctl (a fake here: HOME is a temp dir and the real
+// launchd is never reached). stop is `kill SIGTERM` (the daemon exits 0 and
+// launchd leaves it down); uninstall refuses while the job runs.
+func TestAgentControl_Actions(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	var calls [][]string
+	jobPid, loaded := 0, false
+	t.Cleanup(daemon.SetLaunchctlForTest(func(_ context.Context, args ...string) ([]byte, error) {
+		calls = append(calls, args)
+		switch args[0] {
+		case "print":
+			if !loaded {
+				return []byte("Could not find service"), errors.New("exit status 113")
+			}
+			if jobPid == 0 { // launchd's idle output names no pid (WR-04: no pid line is not idle)
+				return []byte("state = not running\n"), nil
+			}
+			return []byte(fmt.Sprintf("state = running\npid = %d\n", jobPid)), nil
+		case "print-disabled":
+			return []byte("disabled services = {\n}\n"), nil
+		case "bootstrap":
+			loaded = true
+		case "bootout":
+			loaded = false
+		}
+		return nil, nil
+	}))
+	target := fmt.Sprintf("gui/%d/%s", os.Getuid(), daemon.LaunchdLabel)
+	agent, err := daemon.AgentPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := func() []string { return calls[len(calls)-1] }
+
+	var out bytes.Buffer
+	if err := cmdDaemon([]string{"install"}, &out); err != nil || !loaded {
+		t.Fatalf("install: %v, job loaded %v", err, loaded)
+	}
+	if _, err := os.Stat(agent); err != nil {
+		t.Fatalf("install wrote no plist: %v", err)
+	}
+	calls = nil
+	if err := cmdDaemon([]string{"start"}, &out); err != nil || len(calls) != 1 || !slices.Equal(last(), []string{"kickstart", target}) {
+		t.Fatalf("start: %v, calls %v; want one plain kickstart", err, calls)
+	}
+	calls = nil
+	if err := cmdDaemon([]string{"stop"}, &out); err != nil || len(calls) != 1 || !slices.Equal(last(), []string{"kill", "SIGTERM", target}) {
+		t.Fatalf("stop: %v, calls %v; want kill SIGTERM", err, calls)
+	}
+
+	jobPid = 4242
+	calls = nil
+	err = cmdDaemon([]string{"uninstall"}, &out)
+	if err == nil || !strings.Contains(err.Error(), "Run portty daemon stop first, then uninstall.") {
+		t.Fatalf("uninstall of a running job = %v, want the stop-first message", err)
+	}
+	if _, serr := os.Stat(agent); serr != nil || !loaded {
+		t.Fatalf("a running job's uninstall changed things: plist err %v, loaded %v, calls %v", serr, loaded, calls)
+	}
+
+	jobPid = 0
+	if err := cmdDaemon([]string{"uninstall"}, &out); err != nil || loaded {
+		t.Fatalf("uninstall of an idle job: %v, loaded %v", err, loaded)
+	}
+	if _, serr := os.Stat(agent); serr == nil {
+		t.Fatal("uninstall left the plist")
+	}
+	for _, c := range calls {
+		if slices.Contains(c, "-k") {
+			t.Fatalf("a launchctl call carries the kill flag: %v", c)
+		}
+	}
+}
+
+// DPRM-01: `portty daemon perm-probe` is the child the daemon's Prober spawns.
+// It prints exactly one JSON line with the three keys and starts nothing.
+func TestCmdDaemon_PermProbe(t *testing.T) {
+	oldProbe, oldRun, oldWire := permProbeFunc, runDaemonFunc, wireDesktopNotifier
+	t.Cleanup(func() { permProbeFunc, runDaemonFunc, wireDesktopNotifier = oldProbe, oldRun, oldWire })
+	started := 0
+	runDaemonFunc = func() { started++ }
+	wireDesktopNotifier = func() { started++ }
+	permProbeFunc = func() (screencap.Permissions, error) {
+		return screencap.Permissions{SR: true, AX: false, PE: false}, nil
+	}
+
+	var buf bytes.Buffer
+	if err := cmdDaemon([]string{"perm-probe"}, &buf); err != nil {
+		t.Fatalf("cmdDaemon(perm-probe): %v", err)
+	}
+	if got, want := buf.String(), `{"sr":true,"ax":false,"pe":false}`+"\n"; got != want {
+		t.Fatalf("output %q, want %q", got, want)
+	}
+	if started != 0 {
+		t.Fatalf("perm-probe started %d daemon or notifier hooks, want 0", started)
+	}
+
+	permProbeFunc = func() (screencap.Permissions, error) { return screencap.Permissions{}, errors.New("boom") }
+	buf.Reset()
+	if err := cmdDaemon([]string{"perm-probe"}, &buf); err == nil || buf.Len() != 0 {
+		t.Fatalf("a failed read gave err %v and output %q, want an error and no output", err, buf.String())
+	}
+}
+
+// CONTEXT [Permissions]: the daemon is the designated sender when no GUI runs,
+// so its native sender is wired before it starts, in the three entry cases only.
+func TestCmdDaemon_WiresDesktopNotifier(t *testing.T) {
+	oldRun, oldTake, oldWire, oldCtl := runDaemonFunc, runTakeoverFunc, wireDesktopNotifier, serviceControlFunc
+	t.Cleanup(func() {
+		runDaemonFunc, runTakeoverFunc, wireDesktopNotifier, serviceControlFunc = oldRun, oldTake, oldWire, oldCtl
+	})
+	var events []string
+	wireDesktopNotifier = func() { events = append(events, "wire") }
+	runDaemonFunc = func() { events = append(events, "daemon") }
+	runTakeoverFunc = func() { events = append(events, "takeover") }
+	serviceControlFunc = func(string) error { return nil }
+
+	for _, tc := range []struct {
+		args []string
+		want []string
+	}{
+		{nil, []string{"wire", "daemon"}},
+		{[]string{"run"}, []string{"wire", "daemon"}},
+		{[]string{"--takeover"}, []string{"wire", "takeover"}},
+		{[]string{"install"}, nil},
+		{[]string{"start"}, nil},
+	} {
+		events = nil
+		if err := cmdDaemon(tc.args, &bytes.Buffer{}); err != nil {
+			t.Fatalf("cmdDaemon(%v): %v", tc.args, err)
+		}
+		if !slices.Equal(events, tc.want) {
+			t.Errorf("cmdDaemon(%v) events %v, want %v", tc.args, events, tc.want)
+		}
 	}
 }

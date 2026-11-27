@@ -5,13 +5,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"testing"
 	"time"
 
 	"github.com/scottkw/portty/internal/daemon"
@@ -67,6 +70,7 @@ type App struct {
 	client           *daemon.DaemonClient  // only daemon communication field; set in NewApp, before Wails starts any goroutine (nil only in tests)
 	trayInit         bool                  // true once initTray has been called
 	lastTrayQuartile atomic.Int32          // Phase 98 PRG-03 — last applied tray progress quartile [0..4]; -1 = unset. Atomic because written by Wails RPC goroutine (SetTrayProgress) and read by startTrayPoller goroutine via trayIconBytesForState (CR-01).
+	lapseTried       atomic.Int64          // highest desktop LapseSeq this GUI tried to claim; refreshTrayState runs on the poller and on RPC goroutines, so atomic
 	daemonErr        atomic.Pointer[error] // non-nil when EnsureDaemon failed; atomic: Retry writes it while init reads it (IN-08)
 	quitting         atomic.Bool           // set first by QuitAll and shutdown: beforeClose allows exit and the poller never respawns (WR-04)
 	cliInstalling    atomic.Bool           // one Install Command-Line Tool… run at a time (11-REVIEW IN-01)
@@ -196,6 +200,21 @@ type App struct {
 	detectMoverFunc func() (updater.DMGRun, bool)
 	// moverStartFunc hands a mover job to the installer and quits the GUI; nil means a.startInstaller.
 	moverStartFunc func(updater.Job) error
+
+	// repairKind is the string GetDaemonRepair reports for a daemon that is not
+	// under launchd ("" when none): set by the ensure's OnFallback and by an
+	// unusable EnsureAgent, cleared once launchd runs the daemon. Always a string.
+	repairKind atomic.Value
+
+	// diskImageLaunch is set by startDaemon when the GUI runs from a disk image or an
+	// App Translocation path: the repair is then to move it to Applications.
+	diskImageLaunch atomic.Bool
+
+	// Re-home retry (see rehomeIfUnmanaged), guarded by rehomeMu.
+	rehomeMu       sync.Mutex
+	rehomeArmed    bool
+	rehomeAttempts int
+	rehomeNext     time.Time
 }
 
 // defaultTailscaleCheck seeds App.tailscaleCheckFunc; nil means
@@ -351,14 +370,225 @@ func (a *App) startDaemon(socketPath string) {
 	if a.startupDone != nil {
 		defer close(a.startupDone)
 	}
+	a.prepareAgent()
 	if err := a.ensure()(socketPath); err != nil {
 		a.daemonErr.Store(&err)
 		// Notify frontend — window is already rendered when OnStartup runs (goroutine).
 		a.emitEvent("daemon:error", err.Error())
 	} else {
 		a.launchedAt = time.Now()
+		a.afterEnsure(socketPath)
 		a.applyStoredAppearance()
 	}
+}
+
+// afterEnsure reads the daemon's /health once after a successful start. A
+// daemon under launchd needs no repair. One that is not (a fallback, or a
+// takeover left by an upgrade) gets a re-home kickstart, retried by the tray
+// tick. The legacy kardianos agent is cleaned up either way; a false result is
+// retried at the next GUI start, and nothing here fails startup.
+func (a *App) afterEnsure(socketPath string) {
+	h, err := daemonHealthOf(socketPath)
+	if err != nil {
+		return
+	}
+	if h.Launchd {
+		a.repairKind.Store("")
+	} else {
+		a.rehomeAttempt(time.Now())
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	switch done, err := legacyCleanupFunc(ctx, h.PID); {
+	case err != nil:
+		log.Printf("daemon: legacy agent cleanup: %v", err)
+	case !done:
+		log.Printf("daemon: legacy agent cleanup deferred to the next start")
+	}
+}
+
+// requestRehome kickstarts the agent's job when it is loaded and enabled, so a
+// daemon that is not under launchd hands its sessions to the job (19-02). It
+// reports whether a later retry can help: not for a disabled or unloaded agent
+// (the repair is the user's or the next start's), yes for a launchctl error.
+func (a *App) requestRehome() (retry bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	loaded, disabled, _, err := agentLoadedFunc(ctx)
+	switch {
+	case err != nil:
+		log.Printf("daemon: re-home: %v", err)
+		return true
+	case disabled:
+		a.repairKind.Store(repairLoginItems)
+		return false
+	case !loaded:
+		return false
+	}
+	if err := kickstartFunc(ctx); err != nil {
+		log.Printf("daemon: re-home: %v", err)
+		return true
+	}
+	log.Printf("daemon: re-home requested")
+	return true
+}
+
+// rehomeAttempt makes one re-home attempt and schedules the next, or stops the
+// retry for this GUI run.
+func (a *App) rehomeAttempt(now time.Time) {
+	retry := a.requestRehome()
+	a.rehomeMu.Lock()
+	defer a.rehomeMu.Unlock()
+	a.rehomeAttempts++
+	a.rehomeArmed = retry && a.rehomeAttempts < rehomeMaxAttempts
+	if !a.rehomeArmed {
+		return
+	}
+	gap := rehomeEvery
+	if a.rehomeAttempts <= len(rehomeBackoff) {
+		gap = rehomeBackoff[a.rehomeAttempts-1]
+	}
+	a.rehomeNext = now.Add(gap)
+}
+
+// rehomeIfUnmanaged is the tray tick's re-home retry. It reads health only
+// when an attempt is due, and stops for this GUI run once the daemon reports
+// launchd. A daemon that does not answer is the respawn's to bring back.
+func (a *App) rehomeIfUnmanaged(now time.Time) {
+	a.rehomeMu.Lock()
+	due := a.rehomeArmed && !now.Before(a.rehomeNext)
+	a.rehomeMu.Unlock()
+	if !due || a.quitting.Load() {
+		return
+	}
+	h, err := daemonHealthOf(daemon.DefaultSocketPath())
+	if err != nil {
+		return
+	}
+	if h.Launchd {
+		a.rehomeMu.Lock()
+		a.rehomeArmed = false
+		a.rehomeMu.Unlock()
+		a.repairKind.Store("")
+		return
+	}
+	a.rehomeAttempt(now)
+}
+
+// Seams for the launchd-first start; tests swap them so no real launchctl runs.
+var (
+	ensureAgentFunc    = daemon.EnsureAgent
+	kickstartFunc      = daemon.Kickstart
+	agentLoadedFunc    = daemon.AgentLoaded
+	legacyCleanupFunc  = daemon.LegacyCleanup
+	executablePathFunc = os.Executable
+	// openSystemURL opens one System Settings URL; it refuses under a test binary.
+	openSystemURL = func(url string) error {
+		if testing.Testing() {
+			return errors.New("refusing to open System Settings from a test binary")
+		}
+		return exec.Command("/usr/bin/open", url).Run()
+	}
+)
+
+// openURLLoginItems is System Settings > General > Login Items (macOS 13+).
+const openURLLoginItems = "x-apple.systempreferences:com.apple.LoginItems-Settings.extension"
+
+// Repair kinds GetDaemonRepair reports; 19-13 shows them in Settings.
+const (
+	repairLoginItems         = "login_items"
+	repairOpenApp            = "open_app"
+	repairMoveToApplications = "move_to_applications"
+
+	reasonDiskImage = "running from a disk image"
+)
+
+// repairKindFor maps a typed agent error from the ensure to a repair kind.
+// Anything unexpected still reads as needing repair, never as silent.
+func repairKindFor(err error) string {
+	switch {
+	case errors.Is(err, daemon.ErrAgentUnsafePath):
+		return repairMoveToApplications
+	case errors.Is(err, daemon.ErrAgentMissing):
+		return repairOpenApp
+	default: // disabled, refused, launchctl failures
+		return repairLoginItems
+	}
+}
+
+// installedExecutable resolves the running executable and reports whether it
+// is the installed Portty.app (/Applications or ~/Applications), the only
+// bundle allowed to write the production LaunchAgent. The reason names the
+// failed rule, never a path.
+func installedExecutable() (exe string, ok bool, reason string) {
+	exe, err := executablePathFunc()
+	if err != nil {
+		return "", false, "executable path unknown"
+	}
+	if r, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = r
+	}
+	if strings.HasPrefix(exe, "/Volumes/") || strings.Contains(exe, "/AppTranslocation/") {
+		return exe, false, reasonDiskImage
+	}
+	const rel = "Applications/Portty.app/Contents/MacOS/Portty"
+	if exe == "/"+rel {
+		return exe, true, ""
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		if r, err := filepath.EvalSymlinks(home); err == nil {
+			home = r
+		}
+		if exe == filepath.Join(home, rel) {
+			return exe, true, ""
+		}
+	}
+	return exe, false, "not the installed Portty.app in Applications"
+}
+
+// prepareAgent installs or refreshes the LaunchAgent before the ensure, for an
+// installed bundle only. An unusable agent is not fatal: the ensure falls back
+// to the detached spawn. It is still recorded as a repair, because a daemon
+// that is already running makes the ensure start nothing and fall back to nothing.
+func (a *App) prepareAgent() {
+	exe, ok, reason := installedExecutable()
+	a.diskImageLaunch.Store(reason == reasonDiskImage)
+	if !ok {
+		log.Printf("daemon: launchd agent not written: %s", reason)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	state, err := ensureAgentFunc(ctx, exe)
+	if err != nil {
+		log.Printf("daemon: launchd agent: %v", err)
+		a.repairKind.Store(repairKindFor(err))
+		return
+	}
+	log.Printf("daemon: launchd agent: ready (state %d)", state)
+}
+
+// GetDaemonRepair says what the desktop must do to put the daemon back under
+// launchd: "login_items", "move_to_applications", "open_app", or "" for
+// nothing. It never blocks terminals; Settings shows it as needs repair.
+func (a *App) GetDaemonRepair() string {
+	if a.diskImageLaunch.Load() {
+		return repairMoveToApplications
+	}
+	if k, _ := a.repairKind.Load().(string); k != "" {
+		return k
+	}
+	a.rehomeMu.Lock()
+	defer a.rehomeMu.Unlock()
+	if a.rehomeArmed {
+		return "rehome_pending"
+	}
+	return ""
+}
+
+// OpenLoginItems opens System Settings at Login Items. The URL is fixed.
+func (a *App) OpenLoginItems() error {
+	return openSystemURL(openURLLoginItems)
 }
 
 // ensure returns the EnsureDaemon seam, or daemon.EnsureDaemon with the GUI's
@@ -390,8 +620,22 @@ func (a *App) ensure() func(socketPath string) error {
 		if a.keepDaemonOnce.Swap(false) { // just rolled back: keep whichever daemon holds the sessions
 			opts = daemon.EnsureOptions{Restart: func(daemon.RestartQuestion) bool { return false }, NoHandoff: true}
 		}
+		// A start that falls back is surfaced as a repair; a start that goes through
+		// launchd clears one. A daemon that was already up started nothing, so it
+		// changes no repair state here (startDaemon reads its /health instead).
+		_, healthErr := daemonHealthOf(socketPath)
+		wasDown := healthErr != nil
+		fellBack := false
+		opts.OnFallback = func(reason error) {
+			fellBack = true
+			a.repairKind.Store(repairKindFor(reason))
+			log.Printf("daemon: started without launchd: %v", reason)
+		}
 		if err := ensureDaemon(ctx, socketPath, opts); err != nil {
 			return err
+		}
+		if wasDown && !fellBack {
+			a.repairKind.Store("")
 		}
 		if err := ctx.Err(); err != nil { // Quit All: no more calls to a daemon that may be hung (V-05b)
 			return err
@@ -1566,6 +1810,7 @@ func (a *App) startTrayPoller(ctx context.Context) {
 			select {
 			case <-ticker.C:
 				a.respawnDaemonIfDown(time.Now())
+				a.rehomeIfUnmanaged(time.Now())
 				a.refreshTrayState()
 			case <-ctx.Done():
 				return
@@ -1584,14 +1829,49 @@ func (a *App) refreshTrayState() {
 		// Startup failed — tray is visible but daemon is unreachable.
 		// Show error icon and appropriate tooltip.
 		a.updateTray(nil, false)
+		a.setTrayDesktopLine("")
 		return
 	}
 	connected := a.client.Health() == nil
 	var sessions []SessionInfo
+	desktopLine := "" // an unreachable daemon or a failed read clears the line
 	if connected {
 		sessions = a.ListSessions()
+		// gui=1 tells the daemon this GUI is running, which makes it the lapse sender.
+		if st, err := a.client.DesktopStatusAsGUI(); err == nil {
+			desktopLine = desktopTrayLine(st)
+			a.claimAndPostLapse(st)
+		}
 	}
 	a.updateTray(sessions, connected)
+	a.setTrayDesktopLine(desktopLine)
+}
+
+// claimAndPostLapse is the GUI half of the lapse notification's one-sender rule
+// (CONTEXT: the GUI when it runs, otherwise the daemon): a new lapse in
+// awaiting_approval is claimed once, and only the winner posts, so a lapse the
+// daemon already took posts nothing here. A failed claim is not retried; the
+// daemon posts itself if no claim reaches it.
+func (a *App) claimAndPostLapse(st daemon.DesktopStatusResponse) {
+	seq := int64(st.LapseSeq)
+	tried := a.lapseTried.Load()
+	awaiting := st.State == "awaiting_approval"
+	if !awaiting || seq < tried {
+		// The lapse is over, or LapseSeq restarted (a new daemon or a rebuilt
+		// Manager): the next lapse is claimed whatever its number.
+		if a.lapseTried.CompareAndSwap(tried, 0) {
+			tried = 0
+		}
+	}
+	if !awaiting || seq <= tried || st.LapseSeq <= st.LapseClaimedSeq {
+		return
+	}
+	if !a.lapseTried.CompareAndSwap(tried, seq) {
+		return // another refresh took this lapse
+	}
+	if won, err := a.client.ClaimDesktopLapse(st.LapseSeq); err == nil && won {
+		a.sendNotificationFunc("portty.desktop-approval-lapse", "Portty", "Portty desktop needs approval at the Mac.")
+	}
 }
 
 // checkTailscaleHealth runs one health check and emits "tailscale:health" when
@@ -1646,3 +1926,12 @@ func (a *App) startHealthPoller(ctx context.Context) {
 		}
 	}()
 }
+
+// Re-home retry schedule: gaps after the 1st..4th attempts, then every
+// rehomeEvery, at most rehomeMaxAttempts attempts per GUI run.
+var rehomeBackoff = []time.Duration{30 * time.Second, time.Minute, 2 * time.Minute, 4 * time.Minute}
+
+const (
+	rehomeEvery       = 10 * time.Minute
+	rehomeMaxAttempts = 8
+)

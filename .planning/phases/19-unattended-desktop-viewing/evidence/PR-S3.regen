@@ -1,0 +1,11 @@
+# regenerate the signing key with both viewers attached (office guest clock)
+regen at epoch 1795735046: HTTP 200
+# daemon.log lines in the 22 s window (the per-second state column of this run was lost to a jq quoting slip, fixed in the rig; the state read follows)
+--- daemon.log lines since the start
+2026/11/26 23:17:26.479198 INFO desktop: viewer left viewer=618643c8 viewers=1
+2026/11/26 23:17:26.733046 INFO desktop: viewer left viewer=7d37f5b0 viewers=0
+# GET /desktop after the regeneration
+p19-desk epoch=1795735097 {"state":"idle","viewers":0,"reason":null}
+p19-desk epoch=1795735098 {"state":"idle","viewers":0,"reason":null}
+p19-desk epoch=1795735099 {"state":"idle","viewers":0,"reason":null}
+--- daemon.log lines since the start

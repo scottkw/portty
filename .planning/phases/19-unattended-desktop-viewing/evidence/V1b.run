@@ -1,0 +1,61 @@
+# V1b run 1: GUI quit, only the launchd daemon (build 19.1.2, tags wailsassets vmdesktop, Developer ID)
+== state before
+{"alwaysAvailable":true,"state":"idle","viewers":0,"locked":false,"approachingLapse":false,"lapseSeq":0,"lapseClaimedSeq":0,"tailscale":"ok","launchd":true}
+
+gui_procs=1
+notif_count_before=2
+== POST lapse
+guest_epoch=1795723965
+POST /desktop/debug/lapse http=204
+== state after
+{"alwaysAvailable":true,"state":"awaiting_approval","viewers":0,"locked":false,"approachingLapse":false,"lapseSeq":1,"lapseClaimedSeq":1,"tailscale":"ok","launchd":true}
+
+notif_count_after=3
+== daemon.log tail
+2026/11/26 20:12:45.056091 WARN desktop: waiting for approval at the Mac lapse=1 detector=simulated gui=false
+2026/11/26 20:12:45.056306 INFO desktop: lapse claimed lapse=1 by=daemon
+2026/11/26 20:12:45.056644 notification: dispatching native notification for identifier portty.desktop-approval-lapse
+2026-11-26 20:12:45.056 Portty[69995:1403969] Portty: dispatching native notification for identifier portty.desktop-approval-lapse (main queue: 0)
+2026-11-26 20:12:45.087 Portty[69995:1404091] Portty: notification delivery accepted for identifier portty.desktop-approval-lapse
+== unified log (Portty, last 1m)
+Timestamp               Ty Process[PID:TID]
+2026-11-26 20:12:41.688 Df Portty[70537:156c58] [com.apple.xpc:connection] [0x75e8c50140] activating connection: mach=true listener=false peer=false name=com.apple.distributed_notifications@Uv3
+2026-11-26 20:12:45.046 Df Portty[69995:156c41] Portty: dispatching native notification for identifier <private> (main queue: 0)
+2026-11-26 20:12:45.048 Df Portty[69995:156c41] [com.apple.UserNotifications:Connections] [app.portty.Portty] Creating a user notification center
+2026-11-26 20:12:45.049 Df Portty[69995:156c41] [com.apple.xpc:connection] [0x774eca8000] activating connection: mach=true listener=false peer=false name=com.apple.usernotifications.listener
+2026-11-26 20:12:45.064 Df Portty[69995:156c41] [com.apple.UserNotifications:Connections] [app.portty.Portty] Adding notification request 5D6B-9C3C to destinations: Default, contentDate: (null)
+2026-11-26 20:12:45.077 Df Portty[69995:156c41] [com.apple.UserNotifications:Connections] [app.portty.Portty] Added notification request: [ hasError: 0 hasCompletionHandler: 1 ]
+2026-11-26 20:12:45.077 Df Portty[69995:156cbb] Portty: notification delivery accepted for identifier <private>
+
+# V1b run 2: a repeat lapse (the identifier replaces, the count stays)
+== processes (GUI quit means only the launchd daemon)
+69995     1 /Applications/Portty.app/Contents/MacOS/Portty daemon
+== DELETE the first simulated lapse
+DELETE http=204
+{"alwaysAvailable":true,"state":"idle","viewers":0,"locked":false,"approachingLapse":false,"lapseSeq":1,"lapseClaimedSeq":1,"tailscale":"ok","launchd":true}
+
+notif_count_before_second=3
+== POST second lapse
+POST http=204
+{"alwaysAvailable":true,"state":"awaiting_approval","viewers":0,"locked":false,"approachingLapse":false,"lapseSeq":2,"lapseClaimedSeq":2,"tailscale":"ok","launchd":true}
+
+notif_count_after_second=3
+== daemon.log (lapse lines)
+2026/11/26 20:12:45.056091 WARN desktop: waiting for approval at the Mac lapse=1 detector=simulated gui=false
+2026/11/26 20:12:45.056306 INFO desktop: lapse claimed lapse=1 by=daemon
+2026/11/26 20:12:45.056644 notification: dispatching native notification for identifier portty.desktop-approval-lapse
+2026-11-26 20:12:45.056 Portty[69995:1403969] Portty: dispatching native notification for identifier portty.desktop-approval-lapse (main queue: 0)
+2026-11-26 20:12:45.087 Portty[69995:1404091] Portty: notification delivery accepted for identifier portty.desktop-approval-lapse
+2026/11/26 20:13:18.660340 WARN desktop: waiting for approval at the Mac lapse=2 detector=simulated gui=false
+2026/11/26 20:13:18.660387 INFO desktop: lapse claimed lapse=2 by=daemon
+2026/11/26 20:13:18.660455 notification: dispatching native notification for identifier portty.desktop-approval-lapse
+2026-11-26 20:13:18.660 Portty[69995:1403973] Portty: dispatching native notification for identifier portty.desktop-approval-lapse (main queue: 0)
+2026-11-26 20:13:18.675 Portty[69995:1403973] Portty: notification delivery accepted for identifier portty.desktop-approval-lapse
+== DELETE
+DELETE http=204
+
+# V1b records in the user notification database
+rec=32 app=app.portty.portty delivered_utc=2026-11-26 05:31:01 id=[portty.update-available] title=[Portty] body=[Version 1.8.1 is available.]
+rec=35 app=app.portty.portty delivered_utc=2026-11-26 07:04:00 id=[portty.update-result] title=[Portty] body=[The update to Portty 1.8.1 didn't take. Portty 1.8.0 is still installed.]
+rec=41 app=app.portty.portty delivered_utc=2026-11-26 20:13:18 id=[portty.desktop-approval-lapse] title=[Portty] body=[Portty desktop needs approval at the Mac.]
+p19-notif-count=3

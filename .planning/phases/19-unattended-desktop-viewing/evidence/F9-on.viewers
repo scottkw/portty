@@ -1,0 +1,4 @@
+p19-safari t=1 stats={"status":"streaming","state":"needs_permission","viewers":1,"framesDecoded":0,"frameWidth":0,"frameHeight":0,"bytesReceived":0,"cspViolations":0} title=Portty Desktop (debug fd=0 fw=0 csp=0 st=streaming)
+p19-safari t=2 stats={"status":"streaming","state":"needs_permission","viewers":1,"framesDecoded":0,"frameWidth":0,"frameHeight":0,"bytesReceived":0,"cspViolations":0} title=Portty Desktop (debug fd=0 fw=0 csp=0 st=streaming)
+p19-safari t=3 stats={"status":"streaming","state":"needs_permission","viewers":1,"framesDecoded":0,"frameWidth":0,"frameHeight":0,"bytesReceived":0,"cspViolations":0} title=Portty Desktop (debug fd=0 fw=0 csp=0 st=streaming)
+p19-safari t=4 stats={"status":"streaming","state":"needs_permission","viewers":1,"framesDecoded":0,"frameWidth":0,"frameHeight":0,"bytesReceived":0,"cspViolations":0} title=Portty Desktop (debug fd=0 fw=0 csp=0 st=streaming)

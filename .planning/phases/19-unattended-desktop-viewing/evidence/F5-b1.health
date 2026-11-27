@@ -1,0 +1,15 @@
+epoch=1795725523 {"status":"ok","version":"v19.2.0","api":5,"handoff":1,"launchd":true,"pid":77622}
+epoch=1795725529 {"status":"ok","version":"v19.2.0","api":5,"handoff":1,"launchd":true,"pid":77622}
+epoch=1795725535 {"status":"ok","version":"v19.2.1","api":5,"handoff":1,"pid":84826}
+epoch=1795725540 {"status":"ok","version":"v19.2.1","api":5,"handoff":1,"pid":84826}
+epoch=1795725544 {"status":"ok","version":"v19.2.1","api":5,"handoff":1,"pid":84826}
+epoch=1795725549 {"status":"ok","version":"v19.2.1","api":5,"handoff":1,"pid":84826}
+epoch=1795725553 {"status":"ok","version":"v19.2.1","api":5,"handoff":1,"pid":84826}
+epoch=1795725557 {"status":"ok","version":"v19.2.1","api":5,"handoff":1,"pid":84826}
+epoch=1795725562 {"status":"ok","version":"v19.2.1","api":5,"handoff":1,"pid":84826}
+epoch=1795725566 {"status":"ok","version":"v19.2.1","api":5,"handoff":1,"launchd":true,"pid":85243}
+epoch=1795725571 {"status":"ok","version":"v19.2.1","api":5,"handoff":1,"launchd":true,"pid":85243}
+epoch=1795725575 {"status":"ok","version":"v19.2.1","api":5,"handoff":1,"launchd":true,"pid":85243}
+epoch=1795725580 {"status":"ok","version":"v19.2.1","api":5,"handoff":1,"launchd":true,"pid":85243}
+epoch=1795725584 {"status":"ok","version":"v19.2.1","api":5,"handoff":1,"launchd":true,"pid":85243}
+epoch=1795725588 {"status":"ok","version":"v19.2.1","api":5,"handoff":1,"launchd":true,"pid":85243}

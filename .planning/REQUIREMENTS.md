@@ -21,17 +21,17 @@
 
 ### Permissions & state (DPRM)
 
-- [ ] **DPRM-01**: User is guided to grant Screen Recording and Accessibility, and a test capture confirms they work; grants are confirmed by polling the permission state (not by the system dialog), with the System Settings page offered and no short timeout
-- [ ] **DPRM-02**: Host and viewers see the desktop state: permission missing, waiting for approval at the Mac, display asleep, locked, streaming (N viewers)
-- [ ] **DPRM-03**: When the macOS Screen Recording approval lapses, Portty shows "waiting for approval at the Mac" and sends a native notification; lapse detection does not rely on zero frames (approval-store date where readable, otherwise a pointer nudge plus frame check)
-- [ ] **DPRM-04**: While viewers are connected, the shared Mac holds display-awake and system-sleep assertions so the display stays on (lid-closed sleep excepted), and a stream that ends on display sleep restarts by itself after the wake; waking an already sleeping Mac from a viewer is not promised
+- [x] **DPRM-01**: User is guided to grant Screen Recording and Accessibility, and a test capture confirms they work; grants are confirmed by polling the permission state (not by the system dialog), with the System Settings page offered and no short timeout
+- [x] **DPRM-02**: Host and viewers see the desktop state: permission missing, waiting for approval at the Mac, display asleep, locked, streaming (N viewers)
+- [x] **DPRM-03**: When the macOS Screen Recording approval lapses, Portty shows "waiting for approval at the Mac" and sends a native notification; lapse detection does not rely on zero frames (approval-store date where readable, otherwise a pointer nudge plus frame check)
+- [x] **DPRM-04**: While viewers are connected, the shared Mac holds display-awake and system-sleep assertions so the display stays on (lid-closed sleep excepted), and a stream that ends on display sleep restarts by itself after the wake; waking an already sleeping Mac from a viewer is not promised
 
 ### Viewing (DESK)
 
-- [ ] **DESK-01**: Viewer sees the shared display live, sharp on Retina, fitted to the window
-- [ ] **DESK-02**: Desktop media stays on the tailnet: no STUN/TURN/cloud, no desktop socket binds a non-tailnet address, and the two real Macs reach each other on a direct tailnet path
-- [ ] **DESK-03**: Viewer reconnects by itself after a network drop, Mac sleep/wake or Portty upgrade, showing "Reconnecting"
-- [ ] **DESK-04**: Several viewers can watch one share at once; a new viewer gets a picture right away
+- [x] **DESK-01**: Viewer sees the shared display live, sharp on Retina, fitted to the window
+- [x] **DESK-02**: Desktop media stays on the tailnet: no STUN/TURN/cloud, no desktop socket binds a non-tailnet address, and the two real Macs reach each other on a direct tailnet path
+- [x] **DESK-03**: Viewer reconnects by itself after a network drop, Mac sleep/wake or Portty upgrade, showing "Reconnecting"
+- [x] **DESK-04**: Several viewers can watch one share at once; a new viewer gets a picture right away
 - [ ] **DESK-05**: Sharer picks a whole display or a single window to share
 - [ ] **DESK-06**: Displays can be switched mid-session
 - [ ] **DESK-07**: Picture is sharp when the screen is still and smooth when moving, adapting to the network
@@ -49,20 +49,20 @@
 ### Viewers (DVWR)
 
 - [ ] **DVWR-01**: Portty app on another Mac opens a peer's desktop in a Desktop tab from the sidebar
-- [ ] **DVWR-02**: Desktop Chrome and Safari open a desktop from a link
+- [x] **DVWR-02**: Desktop Chrome and Safari open a desktop from a link
 - [ ] **DVWR-03**: iPhone (Safari or Home Screen) viewer has trackpad mode, pinch-zoom, long-press right-click, two-finger scroll and soft keyboard; video starts from a tap (iOS will not autoplay it)
 - [ ] **DVWR-04**: In control mode in the Portty app, Cmd+W, Cmd+Q and Cmd+C go to the remote Mac instead of Portty
 
 ### Share modes & trust (DSHR)
 
-- [ ] **DSHR-01**: User can turn on always-available desktop; their own devices (same Tailscale account) can open it any time with nobody at the Mac and the GUI closed; the daemon runs under launchd as its primary path (GUI and CLI start it with `launchctl kickstart`). If macOS refuses, disables or can't bootstrap the agent, Portty falls back to a detached daemon start so terminals still work, and the desktop shows needs repair, with the unattended guarantee degraded (amended by user decision 2026-11-25, "Start it anyway")
-- [ ] **DSHR-02**: Always-available links, including iPhone Home Screen links, survive daemon restarts and upgrades
+- [x] **DSHR-01**: User can turn on always-available desktop; their own devices (same Tailscale account) can open it any time with nobody at the Mac and the GUI closed; the daemon runs under launchd as its primary path (GUI and CLI start it with `launchctl kickstart`). If macOS refuses, disables or can't bootstrap the agent, Portty falls back to a detached daemon start so terminals still work, and the desktop shows needs repair, with the unattended guarantee degraded (amended by user decision 2026-11-25, "Start it anyway")
+- [x] **DSHR-02**: Always-available links, including iPhone Home Screen links, survive daemon restarts and upgrades
 - [ ] **DSHR-03**: Share Desktop creates a link that other tailnet people can open; terminal links stay limited to the host's own account
 - [ ] **DSHR-04**: Each guest waits at an Admit prompt showing their tailnet identity; guests are view-only until the sharer allows control (and clipboard) for that person
 - [ ] **DSHR-05**: Sharer can stop the share or revoke one viewer at any time, ending their connection immediately; links die with the share
 - [ ] **DSHR-06**: The shared Mac shows join/leave notifications and a persistent "shared with N" indicator with one-click stop
 - [ ] **DSHR-07**: Joins, leaves and control grants are written to a local audit log
-- [ ] **DSHR-08**: A desktop link never opens a terminal session, and a terminal link never opens the desktop
+- [x] **DSHR-08**: A desktop link never opens a terminal session, and a terminal link never opens the desktop
 
 ### Remote unlock (UNLK — feasible per FEAS-01)
 
@@ -70,7 +70,7 @@
 
 ### Release (REL)
 
-- [ ] **REL-01**: Releases are Apple Silicon only with minimum macOS 14; every nested binary is signed, notarized and verified in CI
+- [x] **REL-01**: Releases are Apple Silicon only with minimum macOS 14; every nested binary is signed, notarized and verified in CI
 
 ## Future Requirements
 
@@ -106,14 +106,14 @@
 | UPD-07 | Phase 18 | Complete |
 | UPD-08 | Phase 18 | Complete |
 | UPD-09 | Phase 18 | Complete |
-| DPRM-01 | Phase 19 | Pending |
-| DPRM-02 | Phase 19 | Pending |
-| DPRM-03 | Phase 19 | Pending |
-| DPRM-04 | Phase 19 | Pending |
-| DESK-01 | Phase 19 | Pending |
-| DESK-02 | Phase 19 | Pending |
-| DESK-03 | Phase 19 | Pending |
-| DESK-04 | Phase 19 | Pending |
+| DPRM-01 | Phase 19 | Complete (real-Mac checks deferred, see 19-UAT.md) |
+| DPRM-02 | Phase 19 | Complete (real-Mac checks deferred, see 19-UAT.md) |
+| DPRM-03 | Phase 19 | Complete (real-Mac checks deferred, see 19-UAT.md) |
+| DPRM-04 | Phase 19 | Complete (real-Mac checks deferred, see 19-UAT.md) |
+| DESK-01 | Phase 19 | Complete (real-Mac checks deferred, see 19-UAT.md) |
+| DESK-02 | Phase 19 | Complete (real-Mac checks deferred, see 19-UAT.md) |
+| DESK-03 | Phase 19 | Complete (real-Mac checks deferred, see 19-UAT.md) |
+| DESK-04 | Phase 19 | Complete (real-Mac checks deferred, see 19-UAT.md) |
 | DESK-05 | Phase 20 | Pending |
 | DESK-06 | Phase 20 | Pending |
 | DESK-07 | Phase 23 | Pending |
@@ -125,19 +125,19 @@
 | DCTL-06 | Phase 20 | Pending |
 | DCTL-07 | Phase 23 | Pending |
 | DVWR-01 | Phase 21 | Pending |
-| DVWR-02 | Phase 19 | Pending |
+| DVWR-02 | Phase 19 | Complete (real-Mac checks deferred, see 19-UAT.md) |
 | DVWR-03 | Phase 21 | Pending |
 | DVWR-04 | Phase 21 | Pending |
-| DSHR-01 | Phase 19 | Pending |
-| DSHR-02 | Phase 19 | Pending |
+| DSHR-01 | Phase 19 | Complete (real-Mac checks deferred, see 19-UAT.md) |
+| DSHR-02 | Phase 19 | Complete (real-Mac checks deferred, see 19-UAT.md) |
 | DSHR-03 | Phase 22 | Pending |
 | DSHR-04 | Phase 22 | Pending |
 | DSHR-05 | Phase 22 | Pending |
 | DSHR-06 | Phase 22 | Pending |
 | DSHR-07 | Phase 22 | Pending |
-| DSHR-08 | Phase 19 | Pending |
+| DSHR-08 | Phase 19 | Complete (real-Mac checks deferred, see 19-UAT.md) |
 | UNLK-01 | Phase 23 | Pending (feasible per FEAS-01: ships) |
-| REL-01 | Phase 18.1 | Pending (moved from Phase 23 on 2026-11-25; Phase 23 ships v2.0 on this pipeline) |
+| REL-01 | Phase 18.1 | Complete (moved from Phase 23 on 2026-11-25; Phase 23 ships v2.0 on this pipeline; M-172 rc.1 run deferred) |
 
 **Coverage:**
 - v2.0 requirements: 39 total

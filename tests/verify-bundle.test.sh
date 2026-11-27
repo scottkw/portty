@@ -141,10 +141,19 @@ echo "=== verify-bundle.sh --signed (fake codesign) ==="
 
 # A fake codesign answers the verify, -dvv, -d -r- and entitlements queries from FAKE_* variables
 # and logs every call to $FAKE_LOG; signing calls (--force) just succeed. No keychain is touched.
+# It is per file: when the queried path (the last argument) contains FAKE_BAD_PATH, the
+# FAKE_BAD_VERIFY_RC, FAKE_BAD_FLAGS and FAKE_BAD_TIMESTAMP values replace the normal ones for that
+# path only, so a bad nested Mach-O can sit next to a good main executable and bundle.
 mkdir -p "$WORK/bin"
 cat >"$WORK/bin/codesign" <<'FAKE'
 #!/usr/bin/env bash
 echo "$*" >>"${FAKE_LOG:-/dev/null}"
+target="${*: -1}"
+if [[ -n "${FAKE_BAD_PATH:-}" && "$target" == *"$FAKE_BAD_PATH"* ]]; then
+  FAKE_VERIFY_RC="${FAKE_BAD_VERIFY_RC:-${FAKE_VERIFY_RC:-0}}"
+  FAKE_FLAGS="${FAKE_BAD_FLAGS:-${FAKE_FLAGS:-0x10000(runtime)}}"
+  FAKE_TIMESTAMP="${FAKE_BAD_TIMESTAMP:-${FAKE_TIMESTAMP:-1}}"
+fi
 case " $* " in
   *" --verify "*) exit "${FAKE_VERIFY_RC:-0}" ;;
   *" --entitlements - --xml "*) cat "$FAKE_ENT" ;;
@@ -163,6 +172,31 @@ esac
 FAKE
 chmod +x "$WORK/bin/codesign"
 
+# Fake xcrun (stapler validate exits FAKE_STAPLE_RC) and spctl (prints a Gatekeeper verdict built
+# from FAKE_GK_VERDICT and FAKE_GK_SOURCE) for the --notarized branch.
+cat >"$WORK/bin/xcrun" <<'FAKE'
+#!/usr/bin/env bash
+echo "xcrun $*" >>"${FAKE_LOG:-/dev/null}"
+[[ "$1 $2" == "stapler validate" ]] && exit "${FAKE_STAPLE_RC:-0}"
+exit 0
+FAKE
+cat >"$WORK/bin/spctl" <<'FAKE'
+#!/usr/bin/env bash
+echo "spctl $*" >>"${FAKE_LOG:-/dev/null}"
+echo "${*: -1}: ${FAKE_GK_VERDICT:-accepted}" >&2
+echo "source=${FAKE_GK_SOURCE:-Notarized Developer ID}" >&2
+echo "origin=Developer ID Application: Test (S2K7P43927)" >&2
+[[ "${FAKE_GK_VERDICT:-accepted}" == accepted ]]
+FAKE
+chmod +x "$WORK/bin/xcrun" "$WORK/bin/spctl"
+
+# A PATH with every tool the gate needs except jq (macOS ships /usr/bin/jq, so jq cannot be
+# hidden by trimming PATH; this links each needed tool into its own directory instead).
+mkdir -p "$WORK/nojq"
+for t in bash env plutil file lipo vtool awk sort head find grep cat dirname tr wc cut xcrun xcode-select; do
+  p="$(command -v "$t")" && ln -sf "$p" "$WORK/nojq/$t"
+done
+
 ENT="$(cd "$SCRIPT_DIR/.." && pwd)/build/entitlements.plist"
 V12_DR='designated => identifier "app.portty.Portty" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = S2K7P43927'
 # (plutil key paths split on dots, so the variants are written from JSON.)
@@ -170,15 +204,18 @@ echo '{"com.apple.security.network.client":true,"com.apple.security.network.serv
   plutil -convert xml1 -o "$WORK/ent-taskallow.plist" -
 echo '{"com.apple.security.network.client":true}' | plutil -convert xml1 -o "$WORK/ent-noserver.plist" -
 
-# fake_case NAME WANT_TAG [VAR=value ...] runs --signed on a good fixture with the fake on PATH.
-# WANT_TAG empty: expect exit 0. Otherwise exit 1 with at least one FAIL line, every FAIL line
-# carrying exactly WANT_TAG (no unrelated tags).
+# fake_case NAME WANT_TAG [VAR=value ...] runs the gate (CASE_MODE, default --signed) on a good
+# fixture with a nested helper at Contents/Helpers/helper, with the fakes on PATH (CASE_PATH
+# replaces the real PATH behind them). WANT_TAG empty: expect exit 0. Otherwise exit 1 with at
+# least one FAIL line, every FAIL line carrying exactly WANT_TAG (no unrelated tags).
 fake_case() {
   local name="$1" tag="$2"
   shift 2
   local app out rc total tagged
   app=$(make_app "fake$PASS$FAIL" 14.0 14.0 app.portty.Portty arm64)
-  out=$(env PATH="$WORK/bin:$PATH" FAKE_DR="$V12_DR" FAKE_ENT="$ENT" "$@" bash "$GATE" "$app" --signed 2>&1)
+  build_macho "$app/Contents/Helpers/helper" 14.0 arm64
+  out=$(env PATH="$WORK/bin:${CASE_PATH:-$PATH}" FAKE_DR="$V12_DR" FAKE_ENT="$ENT" "$@" \
+    /bin/bash "$GATE" "$app" "${CASE_MODE:---signed}" 2>&1)
   rc=$?
   if [[ -z "$tag" ]]; then
     if [[ $rc -eq 0 && "$out" == OK:* ]]; then pass "$name"; else fail "$name" "exit $rc. output: $out"; fi
@@ -207,6 +244,34 @@ fake_case "entitlements plus com.apple.security.get-task-allow fail FAIL: entitl
 fake_case "entitlements without network.server fail FAIL: entitlements" "entitlements" FAKE_ENT="$WORK/ent-noserver.plist"
 fake_case "bundle identifier app.portty.Other fails FAIL: identifier" "identifier" FAKE_ID=app.portty.Other
 fake_case "codesign --verify exiting 1 fails FAIL: unsigned" "unsigned" FAKE_VERIFY_RC=1
+
+# Per-file: only the nested helper is bad; the main executable and bundle stay good, so the
+# per-Mach-O loop is the only thing that can catch it (WR-02).
+fake_case "unsigned nested helper fails FAIL: unsigned Contents/Helpers/helper only" \
+  "unsigned Contents/Helpers/helper" FAKE_BAD_PATH=Contents/Helpers/helper FAKE_BAD_VERIFY_RC=1
+fake_case "nested helper without the runtime flag fails FAIL: runtime Contents/Helpers/helper only" \
+  "runtime Contents/Helpers/helper" FAKE_BAD_PATH=Contents/Helpers/helper FAKE_BAD_FLAGS='0x0(none)'
+fake_case "nested helper without a timestamp fails FAIL: timestamp Contents/Helpers/helper only" \
+  "timestamp Contents/Helpers/helper" FAKE_BAD_PATH=Contents/Helpers/helper FAKE_BAD_TIMESTAMP=0
+fake_case "bad main executable fails FAIL: runtime Contents/MacOS/Portty only" \
+  "runtime Contents/MacOS/Portty" FAKE_BAD_PATH=Contents/MacOS/Portty FAKE_BAD_FLAGS='0x0(none)'
+
+# WR-01: no jq on PATH must fail closed, not compare two identical error strings.
+CASE_PATH="$WORK/nojq" fake_case "jq missing from PATH fails FAIL: entitlements gate needs jq" \
+  "entitlements gate needs jq"
+
+echo ""
+echo "=== verify-bundle.sh --notarized (fake codesign, xcrun, spctl) ==="
+
+CASE_MODE=--notarized fake_case "stapled and accepted as Notarized Developer ID passes --notarized" ""
+CASE_MODE=--notarized fake_case "no stapled ticket fails FAIL: notarization has no valid stapled ticket" \
+  "notarization has no valid stapled ticket" FAKE_STAPLE_RC=65
+CASE_MODE=--notarized fake_case "Gatekeeper source=Unnotarized Developer ID fails FAIL: notarization Gatekeeper" \
+  "notarization Gatekeeper" FAKE_GK_VERDICT=rejected FAKE_GK_SOURCE='Unnotarized Developer ID'
+CASE_MODE=--notarized fake_case "accepted but source=Developer ID (not notarized) fails FAIL: notarization Gatekeeper" \
+  "notarization Gatekeeper" FAKE_GK_SOURCE='Developer ID'
+CASE_MODE=--notarized fake_case "--notarized still runs the signature gates (bad team fails FAIL: team)" \
+  "team" FAKE_TEAM=ABCDE12345
 
 echo ""
 echo "=== sign-bundle.sh (fake codesign) ==="
@@ -277,6 +342,20 @@ if [[ $RC -ne 0 && ! -s "$LOG" ]]; then
 else
   fail "CFBundleIdentifier app.portty.Other exits non-zero and signs nothing" "rc $RC, out: $OUT, log: $(cat "$LOG")"
 fi
+
+for key in CFBundleIdentifier CFBundleExecutable; do
+  APP=$(make_app "no$key" 14.0 14.0 app.portty.Portty arm64)
+  plutil -remove "$key" "$APP/Contents/Info.plist"
+  LOG="$WORK/no$key.log"
+  : >"$LOG"
+  OUT=$(env PATH="$WORK/bin:$PATH" FAKE_LOG="$LOG" SIGN_IDENTITY="Test Identity" bash "$SIGNER" "$APP" 2>&1)
+  RC=$?
+  if [[ $RC -eq 1 && "$OUT" == *"ERROR: $key"* && ! -s "$LOG" ]]; then
+    pass "plist without $key exits 1 with a clear ERROR naming $key and signs nothing (WR-03)"
+  else
+    fail "plist without $key exits 1 with a clear ERROR naming $key and signs nothing (WR-03)" "rc $RC, out: $OUT, log: $(cat "$LOG")"
+  fi
+done
 
 GOT_ENT=$(plutil -convert json -o - "$ENT" | jq -S -c .)
 if [[ "$GOT_ENT" == '{"com.apple.security.network.client":true,"com.apple.security.network.server":true}' ]]; then

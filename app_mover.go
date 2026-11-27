@@ -86,27 +86,53 @@ func statfsOrigin(path string) (string, error) {
 // file (quick 261126-dfn). Mover mode never runs consumeInstallResult, and a result about this
 // same version still counts: the user is retrying this DMG. A keepDaemon result is put back, so
 // the installed copy's next start still keeps the daemon that holds the sessions (WR-04), and its
-// keepDaemon is returned for runMover's job, so the installer's own result keeps it too.
-func (a *App) showEarlierResult() (keepDaemon bool) {
+// keepDaemon is returned for runMover's job, so the installer's own result keeps it too. The
+// result put back is returned as putBack (nil when none), for runMover to take again when the
+// copy it installs must not inherit it.
+func (a *App) showEarlierResult() (keepDaemon bool, putBack *updater.Result) {
 	res, ok, err := updater.TakeResult(installResultPath())
 	if err != nil {
 		updateLogf("mover: earlier result ignored: %v", err)
-		return false
+		return false, nil
 	}
 	if !ok {
-		return false
+		return false, nil
 	}
 	updateLogf("mover: earlier result %s %s to %s %s", res.Outcome, res.OldVersion, res.NewVersion, res.Reason) // never res.DMG, a path
-	if res.KeepDaemon && updater.WriteResult(installResultPath(), res) != nil {
-		updateLogf("mover: earlier result not put back")
+	if res.KeepDaemon {
+		if updater.WriteResult(installResultPath(), res) != nil {
+			updateLogf("mover: earlier result not put back")
+		} else {
+			putBack = &res
+		}
 	}
 	body, ok := updater.ResultText(res)
 	if _, verr := updater.ParseVersion(res.NewVersion); !ok || verr != nil {
-		return res.KeepDaemon
+		return res.KeepDaemon, putBack
 	}
 	a.setDockVisible(true) // Pitfall 10, as in runMover
 	a.alert(body, "")
-	return res.KeepDaemon
+	return res.KeepDaemon, putBack
+}
+
+// takeStaleKeep takes back a keepDaemon result showEarlierResult put back, before a move job
+// installs version: that result was for the older installed copy's next start, and the copy the
+// installer starts would read it first, keep the older daemon, never pass the health check and
+// roll back. It is taken only when the kept daemon can be no newer than version: a rollback keeps
+// the daemon of its old or new version, never one above its new version. A possibly newer kept
+// daemon stays kept, so no restart of it is ever offered (WR-04). It reports whether it took it.
+func takeStaleKeep(putBack *updater.Result, version string) bool {
+	if putBack == nil {
+		return false
+	}
+	if c, err := updater.Compare(version, putBack.NewVersion); err != nil || c < 0 {
+		return false
+	}
+	if _, ok, err := updater.TakeResult(installResultPath()); err != nil || !ok {
+		return false
+	}
+	updateLogf("mover: earlier keepDaemon result taken back: version %s installs over it", version)
+	return true
 }
 
 // runMover moves the DMG's Portty into place (P4: a second GUI may be running from an installed
@@ -114,9 +140,11 @@ func (a *App) showEarlierResult() (keepDaemon bool) {
 // older copy: ask first, then stage beside it; Cancel opens it and quits, leaving the DMG alone.
 // A same or newer copy: open it (never a downgrade). The staged copy passes the update's checks
 // before its quarantine is cleared. Any failure shows why, reveals the app on the volume and quits.
-// An earlier result's keepDaemon rides in the job, so the installer's result keeps it (WR-04).
+// An earlier result's keepDaemon rides in the job, so the installer's result keeps it (WR-04); its
+// put-back file stays for every path that leaves the installed copy in place, and is taken back
+// just before a move job starts (takeStaleKeep), put back again if the installer never starts.
 func (a *App) runMover(r updater.DMGRun) {
-	keep := a.showEarlierResult()
+	keep, putBack := a.showEarlierResult()
 	version := strings.TrimPrefix(Version, "v")
 	system, home := moverRoots()
 	ctx, cancel := context.WithTimeout(context.Background(), moverStageTimeout)
@@ -191,7 +219,11 @@ func (a *App) runMover(r updater.DMGRun) {
 		return
 	}
 	job.Staged = staged
+	taken := takeStaleKeep(putBack, version)
 	if err := start(job); err != nil {
+		if taken && updater.WriteResult(installResultPath(), *putBack) != nil {
+			updateLogf("mover: earlier result not put back")
+		}
 		fail(err)
 	}
 }

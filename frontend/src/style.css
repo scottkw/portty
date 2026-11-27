@@ -765,6 +765,37 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   padding: 0;
   overflow: hidden;
 }
+/* Set Up Desktop Sharing (19-11, styled in 19-13): wide enough that the how-to lines wrap to 3 lines or fewer. */
+.dialog--setup {
+  width: 560px;
+  max-width: calc(100% - 48px);
+}
+/* The Test Capture result: a 256x160 box (16:10) for the daemon's JPEG, or its placeholder while capturing. */
+.desktop-setup__thumb {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 256px;
+  height: 160px;
+  border: 1px solid var(--color-control-border);
+  border-radius: 8px;
+  object-fit: contain;
+  background: var(--color-terminal-bg);
+}
+.desktop-setup__placeholder {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 256px;
+  height: 160px;
+  border: 1px solid var(--color-control-border);
+  border-radius: 8px;
+  background: var(--color-field);
+}
+/* Stacked, per the contract: the thumbnail, then the caption 8px under it. */
+.desktop-setup__result {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
 .settings-sheet__header {
   flex-shrink: 0;
   display: flex;
@@ -885,6 +916,11 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   line-height: 16px;
   color: var(--color-text-secondary);
 }
+/* A second Caption line inside a description (the CT line under the desktop switch). */
+.settings-row__note {
+  display: block;
+  margin-top: 8px;
+}
 .settings-row__control {
   flex-shrink: 0;
   display: flex;
@@ -906,6 +942,10 @@ html.is-inactive .sidebar__row[aria-current="page"] {
 }
 .settings-row .button[aria-disabled='true'] {
   opacity: var(--opacity-disabled);
+}
+/* Copy Link keeps the width of "Copied!" so the label change does not move it. */
+.settings-row .button.button--copy {
+  min-width: 76px;
 }
 .settings-input {
   height: 24px;
@@ -1211,8 +1251,14 @@ html.is-inactive .sidebar__row[aria-current="page"] {
 }
 .ts-status__dot--ok    { background: var(--color-status-on); }
 .ts-status__dot--error { background: var(--color-status-off); }
+/* Needs action at the Mac (19-13): Needs permission, Waiting for approval, Needs repair. */
+.ts-status__dot--warn  { background: var(--color-status-warn); }
 .ts-status__text {
   color: var(--color-text-secondary);
+}
+/* The word "Granted", as "Acknowledged" does (.settings-row__success). */
+.ts-status__text--granted {
+  color: var(--color-success-text);
 }
 
 /* ─── Banner stack container (Phase 81 — BAN-01/BAN-02) ─────────── */
@@ -2108,6 +2154,7 @@ html.is-inactive .sidebar__row[aria-current="page"] {
   --shadow-switch-knob: 0 1px 2px rgba(0,0,0,0.3);
   --shadow-popover: 0 8px 24px rgba(0,0,0,0.16);
   --opacity-disabled: 0.45;
+  --color-viewer-bg: #000000;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -2161,6 +2208,7 @@ html.is-inactive .sidebar__row[aria-current="page"] {
     --shadow-switch-knob: 0 1px 2px rgba(0,0,0,0.3);
     --shadow-popover: 0 12px 32px rgba(0,0,0,0.5);
     --opacity-disabled: 0.45;
+    --color-viewer-bg: #000000;
   }
 }
 
@@ -2487,5 +2535,137 @@ html.is-desktop :is(.sidebar, .tab-bar) input {
   select,
   .xterm-helper-textarea {
     font-size: 16px;
+  }
+}
+
+/* ─── Desktop viewer (Phase 19-06, 19-UI-SPEC Surface 5) ─────────────
+   The page is the picture: black letterbox, nothing drawn on it. Every
+   message sits on a popover chip or card. The video carries only
+   object-fit: the browser downsamples the stream to the window's device
+   pixels, so nothing else may touch its size or sampling. */
+html:has(.desktop-view),
+html:has(.desktop-view) body {
+  background: var(--color-viewer-bg);
+  overscroll-behavior: none;
+}
+
+.desktop-view {
+  position: fixed;
+  inset: 0;
+  box-sizing: border-box;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  background: var(--color-viewer-bg);
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+
+.desktop-view__video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: var(--color-viewer-bg);
+}
+
+.desktop-scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--color-scrim);
+}
+
+.desktop-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.desktop-chip {
+  position: absolute;
+  top: calc(8px + env(safe-area-inset-top));
+  left: 0;
+  right: 0;
+  width: fit-content;
+  margin: 0 auto;
+  min-height: 32px;
+  padding: 8px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  border: 1px solid var(--color-control-border);
+  border-radius: 8px;
+  background: var(--color-popover);
+  box-shadow: var(--shadow-popover);
+  color: var(--color-text);
+  font-size: 13px;
+  line-height: 16px;
+  pointer-events: auto;
+  transition: opacity 150ms ease;
+}
+.desktop-chip--fading {
+  opacity: 0;
+}
+.desktop-chip__icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.desktop-card {
+  position: relative;
+  width: calc(100% - 48px);
+  max-width: 320px;
+  padding: 24px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border: 1px solid var(--color-control-border);
+  border-radius: 10px;
+  background: var(--color-popover);
+  box-shadow: var(--shadow-popover);
+  text-align: center;
+  pointer-events: auto;
+}
+/* The card's text column (the live region); its buttons follow it in the card. */
+.desktop-status__text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  align-self: stretch;
+}
+.desktop-card__icon {
+  width: 24px;
+  height: 24px;
+  margin-bottom: 8px;
+  color: var(--color-text-secondary);
+}
+.desktop-card__heading {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 22px;
+  color: var(--color-text);
+}
+.desktop-card__body {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--color-text-secondary);
+}
+.desktop-card__action {
+  height: auto;
+  min-height: 44px;
+  margin-top: 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desktop-chip {
+    transition: none;
   }
 }

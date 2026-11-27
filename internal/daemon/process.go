@@ -22,6 +22,11 @@ import (
 // builds and restart them.
 var BuildVersion string
 
+// launchdManaged is whether launchd started this daemon (GET /health
+// "launchd"). Set once at daemon start, before the API serves; a takeover
+// daemon (RunTakeover) leaves it false.
+var launchdManaged bool
+
 // RunDaemon is the daemon's main entry point. It creates a signal context and
 // delegates to runDaemonCore. Called from main.go when os.Args[1] == "daemon".
 func RunDaemon() {
@@ -95,6 +100,59 @@ func reportTakeover(status *os.File, code int) {
 	_ = status.Close()
 }
 
+// Seams of runDaemonCore: the exit and the four steps whose failure is fatal,
+// so a test can fail one without a real daemon. daemonExit is how a startup
+// failure reaches launchd: KeepAlive SuccessfulExit false restarts only a
+// non-zero exit.
+var (
+	daemonExit               = os.Exit
+	lockWait                 = 2 * time.Second
+	cleanupStaleSocket       = CleanupStaleSocket
+	bootstrapCapabilityState = (*API).BootstrapCapabilityState
+	startRelay               = (*API).StartRelay
+	startAPI                 = (*API).Start
+)
+
+// Seams of the re-home: the in-process takeover and the serve tail.
+var (
+	runTakeoverStep = runTakeover
+	serveStep       = serveDaemon
+)
+
+// shouldRehome reports whether the launchd job's daemon (this build) may take
+// over the daemon h describes: healthy, speaking this HandoffVersion, not
+// itself launchd-managed (a managed one is never a target) and not newer than
+// build (a downgrade handoff is unsupported, olderRelease).
+func shouldRehome(h HealthResponse, build string) bool {
+	return h.Status == "ok" && !h.Launchd && h.Handoff == HandoffVersion &&
+		(h.Version == build || olderRelease(h.Version, build))
+}
+
+// rehome runs in a launchd-started daemon that lost the lock to another
+// daemon: after an upgrade the GUI-spawned takeover daemon is unmanaged, so
+// this daemon takes its sessions over with the v1 handoff and serves them, and
+// the daemon is launchd-managed again. Any other outcome returns, and the
+// caller exits 0: a non-zero exit would have launchd retry every 10 s, freezing
+// writes each time. HandoffVersion stays 1.
+func rehome(ctx context.Context, socketPath, lockPath string) {
+	if !ManagedByLaunchd(ctx) {
+		return
+	}
+	h, err := NewDaemonClient(socketPath).WithContext(ctx).HealthInfo()
+	if err != nil || !shouldRehome(h, BuildVersion) {
+		return
+	}
+	launchdManaged = true
+	engine := NewSessionEngine()
+	api := NewAPI(engine)
+	code := runTakeoverStep(ctx, takeoverDeps{socketPath: socketPath, lockPath: lockPath, api: api, build: BuildVersion})
+	if code != takeoverCommitted {
+		fmt.Fprintf(os.Stderr, "daemon: re-home not done: %s\n", moveFailedReason(code))
+		return
+	}
+	serveStep(ctx, api, engine, socketPath)
+}
+
 // runDaemonCore is the blocking core of the daemon. It creates a SessionEngine,
 // starts the API (with relay server inside), and blocks until ctx is cancelled.
 // Using a context parameter allows it to be driven by either signal handling
@@ -104,14 +162,23 @@ func runDaemonCore(ctx context.Context) {
 	socketPath := DefaultSocketPath()
 	// WR-05: the lock comes before any socket cleanup or bind. A daemon that
 	// cannot get it within the wait leaves the running one alone.
-	lock, err := lockDaemon(filepath.Join(filepath.Dir(socketPath), "daemon.lock"), 2*time.Second)
+	lockPath := filepath.Join(filepath.Dir(socketPath), "daemon.lock")
+	lock, err := lockDaemon(lockPath, lockWait)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "daemon: already running (lock: %v)\n", err)
+		if errors.Is(err, syscall.EWOULDBLOCK) { // another daemon: exit 0, launchd leaves it
+			fmt.Fprintf(os.Stderr, "daemon: already running (lock: %v)\n", err)
+			rehome(ctx, socketPath, lockPath)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "daemon: lock: %v\n", err)
+		daemonExit(1)
 		return
 	}
 	defer lock.Close() // held for the process lifetime
-	if err := CleanupStaleSocket(socketPath); err != nil {
+	launchdManaged = ManagedByLaunchd(ctx)
+	if err := cleanupStaleSocket(socketPath); err != nil {
 		fmt.Fprintf(os.Stderr, "daemon: %v\n", err)
+		daemonExit(1)
 		return
 	}
 
@@ -122,21 +189,24 @@ func runDaemonCore(ctx context.Context) {
 	// server can start. A missing key here is fatal
 	// — without it, requireCapability would 401 every request and the daemon
 	// is effectively a brick for web access.
-	if err := api.BootstrapCapabilityState(); err != nil {
+	if err := bootstrapCapabilityState(api); err != nil {
 		fmt.Fprintf(os.Stderr, "daemon: bootstrap capability state: %v\n", err)
+		daemonExit(1)
 		return
 	}
 
 	// Start the relay TCP server inside the daemon.
-	relayPort, err := api.StartRelay()
+	relayPort, err := startRelay(api)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "daemon: start relay: %v\n", err)
+		daemonExit(1)
 		return
 	}
 	fmt.Fprintf(os.Stderr, "daemon: relay listening on port %d\n", relayPort)
 
-	if err := api.Start(socketPath); err != nil {
+	if err := startAPI(api, socketPath); err != nil {
 		fmt.Fprintf(os.Stderr, "daemon: start api: %v\n", err)
+		daemonExit(1)
 		return
 	}
 	fmt.Fprintf(os.Stderr, "daemon: listening on %s\n", socketPath)
@@ -213,11 +283,50 @@ type RestartPolicy func(RestartQuestion) bool
 type EnsureOptions struct {
 	Restart   RestartPolicy
 	NoHandoff bool
+	// Start says who is asking; the zero value is the GUI. Every start tries
+	// the launchd job first (launchctl kickstart); the CLI also prints a
+	// repair sentence before it falls back.
+	Start StartMode
+	// OnFallback is called once, with the typed agent error, just before a
+	// start falls back to the detached spawn: the daemon it starts is not
+	// launchd-managed, which callers surface as needs-repair.
+	OnFallback func(reason error)
+}
+
+// StartMode is the caller of EnsureDaemon.
+type StartMode int
+
+const (
+	StartGUI StartMode = iota
+	StartCLI
+)
+
+// executablePath is os.Executable; a var so tests choose the running binary.
+var executablePath = os.Executable
+
+// fallbackSpawn starts the daemon detached, outside launchd. Only a typed
+// agent error leads here. A test binary never starts one: the child re-runs
+// the test binary, outlives the test and holds the user's real socket.
+var fallbackSpawn = func(exe string) (<-chan struct{}, func(), error) {
+	if testing.Testing() {
+		return nil, nil, errors.New("refusing to spawn a daemon from a test binary")
+	}
+	return startDetachedDaemon(exe)
+}
+
+// SetFallbackSpawnForTest replaces the fallback spawn; restore puts it back.
+func SetFallbackSpawnForTest(fn func(exe string) (<-chan struct{}, func(), error)) (restore func()) {
+	old := fallbackSpawn
+	fallbackSpawn = fn
+	return func() { fallbackSpawn = old }
 }
 
 // EnsureDaemon checks if the daemon is reachable on socketPath. If not, it
-// spawns a detached daemon subprocess using the current binary with "daemon"
-// as the first argument, then polls until the daemon is ready (waitForDaemon).
+// starts it through launchd (launchctl kickstart of Portty's LaunchAgent) and
+// polls until the daemon is ready (waitForDaemon). Only a typed agent error
+// (ErrAgentMissing, ErrAgentRefused, ErrAgentDisabled, ErrAgentUnsafePath,
+// ErrAgentLaunchctl) falls back to a detached daemon subprocess of the current
+// binary, after opts.OnFallback has been told; that daemon is not launchd-managed.
 // A daemon from another build is restarted, after opts.Restart agrees when it
 // has live sessions. When the policy says no, EnsureDaemon returns nil with
 // the old daemon still running: the policy's own "no" is the caller's signal.
@@ -273,7 +382,11 @@ func ensureDaemon(ctx context.Context, socketPath string, opts EnsureOptions, h 
 			n := liveSessions(client)
 			moveFailed := ""
 			if n != 0 && !opts.NoHandoff && health.Handoff == HandoffVersion {
-				done, reason, err := handOff(ctx, client, h)
+				hh := h
+				if opts.Start == StartCLI {
+					hh.spawnTakeover = cliTakeover(ctx, client, h, health)
+				}
+				done, reason, err := handOff(ctx, client, hh)
 				if done || err != nil {
 					return err
 				}
@@ -327,19 +440,79 @@ func ensureDaemon(ctx context.Context, socketPath string, opts EnsureOptions, h 
 	if err := ctx.Err(); err != nil {
 		return err // cancelled before a spawn: never spawn
 	}
-	// A test binary must never spawn a detached daemon: the child re-runs the
-	// test binary, outlives the test, and holds the user's real socket.
-	if testing.Testing() {
-		return fmt.Errorf("EnsureDaemon: refusing to spawn a daemon from a test binary")
-	}
-
-	exe, err := os.Executable()
+	exe, err := executablePath()
 	if err != nil {
 		return fmt.Errorf("EnsureDaemon: locate binary: %w", err)
 	}
 
+	// launchd first: the detached spawn (fallbackSpawn) only after a typed agent
+	// error, so terminals always start; the error is surfaced, never silent.
+	// A test binary reaches the kickstart through an injected launchctl
+	// recorder; its default refuses.
 	return startDaemon(ctx, client, h.readyWait, filepath.Join(filepath.Dir(socketPath), "daemon.lock"),
-		func() (<-chan struct{}, func(), error) { return startDetachedDaemon(exe) })
+		func() (<-chan struct{}, func(), error) {
+			err := agentStartable(ctx, exe)
+			if err == nil {
+				if err = Kickstart(ctx); err == nil {
+					return nil, nil, nil
+				}
+			}
+			if cerr := ctx.Err(); cerr != nil {
+				return nil, nil, cerr // a cancelled launchctl call is no agent error: spawn nothing
+			}
+			if opts.OnFallback != nil {
+				opts.OnFallback(err)
+			}
+			if opts.Start == StartCLI {
+				_, _ = fmt.Fprintf(h.stderr, "portty: %v\n", err)
+			}
+			return fallbackSpawn(exe)
+		})
+}
+
+// cliTakeover is the CLI's spawnTakeover: it moves a stale daemon's sessions
+// by asking launchd, whose daemon re-homes them (runDaemonCore). With no usable
+// agent it prints the repair sentence and takes over the way the GUI does. If
+// the old daemon is the launchd job itself there is no second job to re-home
+// from, so the move reports failed and the restart question follows.
+func cliTakeover(ctx context.Context, client *DaemonClient, h ensureHooks, old HealthResponse) func(string) (int, <-chan int, error) {
+	return func(exe string) (int, <-chan int, error) {
+		out := make(chan int, 1)
+		if old.Launchd {
+			out <- takeoverFailed
+			return 0, out, nil
+		}
+		if err := agentStartable(ctx, exe); err != nil {
+			_, _ = fmt.Fprintf(h.stderr, "portty: %v\n", err)
+			return h.spawnTakeover(exe)
+		}
+		go func() { out <- launchdTakeover(ctx, client, h.readyWait) }()
+		return 0, out, nil
+	}
+}
+
+// launchdTakeover kickstarts the job and waits, up to wait, for this build's
+// daemon to answer: it took the sessions over. The outcome code is
+// takeoverCommitted or takeoverFailed; no clock decides a handoff's result, it
+// only bounds how long a job that never re-homes is waited for.
+func launchdTakeover(ctx context.Context, client *DaemonClient, wait time.Duration) int {
+	if err := Kickstart(ctx); err != nil {
+		return takeoverFailed
+	}
+	deadline := time.Now().Add(wait)
+	for {
+		if v, err := client.GetDaemonVersion(); err == nil && !StaleVersion(v) {
+			return takeoverCommitted
+		}
+		if !time.Now().Before(deadline) {
+			return takeoverFailed
+		}
+		select {
+		case <-ctx.Done():
+			return takeoverFailed
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
 }
 
 // handOff starts a takeover and waits for its outcome code; no clock decides

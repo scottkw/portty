@@ -653,6 +653,7 @@ func TestFreezeGate_SlowRoutesSkipBarrier(t *testing.T) {
 	}{
 		{http.MethodPost, "/peers/connect", false},
 		{http.MethodPut, "/sessions/abc/share", false},
+		{http.MethodPut, "/desktop", false},
 		{http.MethodPost, "/sessions", true},
 		{http.MethodDelete, "/sessions/abc", true},
 		{http.MethodPost, "/capability/regenerate-key", true},

@@ -844,6 +844,7 @@ type fakeDaemon struct {
 	path     string
 	ver      atomic.Pointer[string]
 	shutdown atomic.Bool
+	launchd  atomic.Bool  // /health reports launchd true: this daemon is the launchd job
 	hang     atomic.Bool  // accept and never answer, like a SIGSTOPped daemon (V-05b)
 	hung     atomic.Int64 // requests held unanswered
 }
@@ -868,7 +869,7 @@ func startFakeDaemon(t *testing.T, handoff int, sessions string) *fakeDaemon {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/health":
-			_ = json.NewEncoder(w).Encode(HealthResponse{Status: "ok", Version: *f.ver.Load(), API: 2, Handoff: handoff})
+			_ = json.NewEncoder(w).Encode(HealthResponse{Status: "ok", Version: *f.ver.Load(), API: 2, Handoff: handoff, Launchd: f.launchd.Load()})
 		case "/sessions":
 			fmt.Fprint(w, sessions)
 		case "/relay-port":

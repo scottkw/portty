@@ -25,7 +25,7 @@
  * Wails-side code that may not yet have window.location populated).
  */
 
-export type AppMode = 'desktop' | 'web'
+export type AppMode = 'desktop' | 'web' | 'desktopview'
 
 export interface WebModeParams {
   /** Session id from `?session=`; null if absent, empty, or whitespace-only. */
@@ -36,22 +36,23 @@ export interface WebModeParams {
 
 /**
  * detectMode returns 'web' when running in a regular browser under the /app/
- * route (the web-share viewer entry), or 'desktop' otherwise (Wails-served
- * root, dev server, etc).
+ * route (the web-share viewer entry), 'desktopview' under /desktop/ (Phase 19:
+ * the always-available desktop viewer, which must never boot the Wails-coupled
+ * App), or 'desktop' otherwise (Wails-served root, dev server, etc).
  *
  * The signal is pathname-based:
- *   - `/app`        → web
- *   - `/app/`       → web
- *   - `/app/<...>`  → web
- *   - anything else → desktop
+ *   - `/app`, `/app/`, `/app/<...>`         → web
+ *   - `/desktop`, `/desktop/`, `/desktop/…` → desktopview
+ *   - anything else                         → desktop
  *
- * Note: `/apps`, `/foo/app/`, etc. are NOT web mode — the prefix match
- * respects the `/app` boundary (either an exact equal or followed by `/`).
+ * Note: `/apps`, `/desktops`, `/foo/desktop/`, etc. are NOT those modes: the
+ * prefix match respects the boundary (an exact equal or followed by `/`).
  */
 export function detectMode(loc: Location = window.location): AppMode {
   const path = loc.pathname
   if (path === '/app') return 'web'
   if (path.startsWith('/app/')) return 'web'
+  if (path === '/desktop' || path.startsWith('/desktop/')) return 'desktopview'
   return 'desktop'
 }
 

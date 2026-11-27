@@ -24,6 +24,9 @@ export const GetSessionTailLines  = (id, n)                 => Call('main.App.Ge
 // Daemon error and retry bound methods
 export const GetDaemonError       = ()                      => Call('main.App.GetDaemonError', [])
 export const RetryDaemon          = ()                      => Call('main.App.RetryDaemon', [])
+// 19-17 — the desktop repair kind and the Login Items opener.
+export const GetDaemonRepair      = ()                      => Call('main.App.GetDaemonRepair', [])
+export const OpenLoginItems       = ()                      => Call('main.App.OpenLoginItems', [])
 // DEBT-08 — the version-mismatch restart prompt (0: none; -1: count unknown).
 export const GetDaemonRestartPrompt = ()                    => Call('main.App.GetDaemonRestartPrompt', [])
 export const AnswerDaemonRestart  = (restart)               => Call('main.App.AnswerDaemonRestart', [restart])
@@ -97,6 +100,16 @@ export const ConnectPeerSession      = (host, sessionID)    => Call('main.App.Co
 // Portty 13-05: returns RemotePortResult and never throws.
 export const OpenRemotePort          = (sessionID, rawURL, consent) => Call('main.App.OpenRemotePort', [sessionID, rawURL, consent])
 
+// Portty 19-11: the Set Up Desktop Sharing sheet. The first two return result
+// objects and never throw; OpenDesktopPermissionPane rejects for an unknown kind.
+export const GetDesktopPermissions   = ()                   => Call('main.App.GetDesktopPermissions', [])
+export const RunDesktopTestCapture   = ()                   => Call('main.App.RunDesktopTestCapture', [])
+export const OpenDesktopPermissionPane = (kind)             => Call('main.App.OpenDesktopPermissionPane', [kind])
+// Portty 19-13: the Settings ▸ Sharing Desktop group. None rejects; failures are errorCode results.
+export const GetDesktopStatus         = ()                   => Call('main.App.GetDesktopStatus', [])
+export const SetDesktopAlwaysAvailable = (on)                => Call('main.App.SetDesktopAlwaysAvailable', [on])
+export const GetDesktopLink           = ()                   => Call('main.App.GetDesktopLink', [])
+
 // Phase 87 capability bound methods (SEC-01..SEC-05)
-export const RegenerateSigningKey    = ()                   => Call('main.App.RegenerateSigningKey', [])
+export const RegenerateSigningKey    = ()                => Call('main.App.RegenerateSigningKey', [])
 

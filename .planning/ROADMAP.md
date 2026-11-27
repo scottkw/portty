@@ -57,8 +57,8 @@ Full details: `.planning/milestones/v1.2-ROADMAP.md`. Audit: `.planning/mileston
 
 - [x] **Phase 17: Desktop Feasibility Spike** - A throwaway capture → encode → pion → browser path on a real Mac settles every risky assumption with a recorded go/no-go, and the capture-host architecture is decided from that evidence (completed 2026-11-25)
 - [x] **Phase 18: Self-Installing Updates** - Update verifies, replaces `/Applications/Portty.app`, relaunches, cleans up the DMG and rolls back a version that won't start; a first launch from a mounted DMG moves itself into place; sessions survive (completed 2026-11-26; human verification deferred, see 18-UAT.md)
-- [ ] **Phase 18.1: Apple Silicon Release Pipeline** (INSERTED) - One arm64-only build published under both DMG names, inside-out signing with the v1.2 designated requirement, every nested binary signed, notarized and verified in CI, minimum macOS 14 enforced at build time
-- [ ] **Phase 19: Unattended Desktop Viewing** - Always-available desktop for your own Macs: guided permissions, live view in Chrome and Safari with nobody at the Mac, visible state, display kept awake, automatic reconnect, media on the tailnet only
+- [x] **Phase 18.1: Apple Silicon Release Pipeline** (INSERTED) - One arm64-only build published under both DMG names, inside-out signing with the v1.2 designated requirement, every nested binary signed, notarized and verified in CI, minimum macOS 14 enforced at build time (completed 2026-11-26; SC2 runtime proof deferred to Phase 23 rc.1, see 18.1-UAT.md)
+- [x] **Phase 19: Unattended Desktop Viewing** - Always-available desktop for your own Macs: guided permissions, live view in Chrome and Safari with nobody at the Mac, visible state, display kept awake, automatic reconnect, media on the tailnet only (completed 2026-11-26; real-Mac verification deferred, see 19-UAT.md)
 - [ ] **Phase 20: Remote Control** - Pointer, keyboard, Send-keys menu and explicit clipboard from any viewer; the sharer picks a display or a single window and switches displays mid-session
 - [ ] **Phase 21: Portty App and iPhone Viewers** - A Desktop tab opened from the sidebar in the Portty app, with Cmd shortcuts forwarded in control mode, and an iPhone viewer with trackpad mode and touch controls
 - [ ] **Phase 22: Click-to-Share for Tailnet People** - A desktop link other tailnet people can open, an Admit prompt by tailnet identity, view-only until granted, instant stop and revoke, a "shared with N" indicator, an audit log, and soft control hand-off
@@ -177,7 +177,7 @@ Plans:
   2. One arm64 build is published as both `portty-vX.Y.Z-darwin-universal.dmg` and `portty-vX.Y.Z-darwin-arm64.dmg`. Each DMG is signed with `--identifier` equal to its name without .dmg, notarized, stapled and checked the way the updater checks it, and both are in checksums.txt. An installed v1.2.x copy still finds, verifies and installs the release through the universal name. (REL-01)
   3. Signing is inside out per Mach-O (no `codesign --deep`), keeps identifier `app.portty.Portty`, hardened runtime, timestamp and the unchanged entitlements file, and CI fails on unsigned code, the wrong team, a missing runtime flag, a non-arm64 slice, a minos below 14.0 or a designated requirement that differs from v1.2's. The signing step is written so a provisioning profile and the persistent-content-capture entitlement can be added later without other changes; the profile is added only once Apple grants request T558S9Q5B3. (REL-01)
   4. release_workflow_test.go and the other release tests pin both asset names, identifier equals name for each, the arm64-only build flag, no `--deep` and the verify loop. If the build.yml matrix context changes, TESTING.md Section 3 and the branch protection on `main` move to the new check name in the same change. (REL-01)
-**Plans**: 3/4 plans executed
+**Plans**: 4/4 plans executed
 
 Plans:
 **Wave 1**
@@ -190,7 +190,7 @@ Plans:
 - [x] 18.1-03-PLAN.md — release.yml: arm64 build with macOS 14 flags, bundle gates, inside-out signing; one build published as both DMG names from one suffix list (identifier = name, notarized, stapled, verified, checksums, release-notes line, 210-min timeout); Go pins against DMGAssetNames (needs Phase 18's 18-02)
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 18.1-04-PLAN.md — TESTING.md (REL-01 rows, build-script group of 2, renamed check context and one-check protection payload, Category BI.1 first-tag-run item); merge checkpoint, then the delegated branch protection on main, recorded in Section 3
+- [x] 18.1-04-PLAN.md — TESTING.md (REL-01 rows, build-script group of 2, renamed check context and one-check protection payload, Category BI.1 first-tag-run item); merge checkpoint, then the delegated branch protection on main, recorded in Section 3
 
 ### Phase 19: Unattended Desktop Viewing
 **Goal**: Turn on always-available desktop on the office Mac once, then open its live desktop from home in Chrome or Safari any time, with nobody at the Mac and the GUI closed. Permissions are guided, the desktop's state is always visible, and the display stays awake while someone is watching. Viewers reconnect by themselves, desktop media never leaves the tailnet, and terminal sessions and their upgrade handoff are untouched.
@@ -202,41 +202,41 @@ Plans:
   3. Several viewers can watch at once, and a new viewer gets a picture right away. Each viewer comes back by itself after a network drop, Mac sleep and wake, or a Portty upgrade, showing "Reconnecting" in the meantime. Always-available links, including one saved to an iPhone Home Screen, keep working across daemon restarts and upgrades. (DESK-03, DESK-04, DSHR-02)
   4. Desktop media stays on the tailnet. No STUN, TURN or cloud server is contacted, and no desktop socket binds a non-tailnet address; tests assert both. The office Mac and the home Mac reach each other on a direct tailnet path (tailscale ping reads direct). A desktop link never opens a terminal session and a terminal link never opens the desktop; cross-token tests refuse both. (DESK-02, DSHR-08)
   5. Terminal sessions never regress. With the desktop share on, a Portty upgrade still hands every terminal session to the new daemon with PIDs and history intact. Turning the desktop share on or off never takes the share server away from terminal viewers, and the reverse holds too. (DSHR-02, DESK-03; guards the validated UPGR-01..05)
-**Plans**: 17 plans
+**Plans**: 17/17 plans executed
 
 Plans:
 **Wave 1**
-- [ ] 19-01-PLAN.md — Tracer: always-available link on loopback (desktop token under its own HKDF key, /desktop/ and /desktop/ws signalling v1, synthetic source into a pion answer); screencap.Source interface and State enum
-- [ ] 19-02-PLAN.md — Daemon under launchd: own LaunchAgent, kickstart-only start path (no -k, no detached spawn), typed repair errors, legacy agent cleanup, re-home after upgrade
+- [x] 19-01-PLAN.md — Tracer: always-available link on loopback (desktop token under its own HKDF key, /desktop/ and /desktop/ws signalling v1, synthetic source into a pion answer); screencap.Source interface and State enum
+- [x] 19-02-PLAN.md — Daemon under launchd: own LaunchAgent, kickstart-only start path (no -k, no detached spawn), typed repair errors, legacy agent cleanup, re-home after upgrade
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 19-03-PLAN.md — Media server hardening: tailnet-only bind, no STUN/TURN/mDNS, multi-viewer with IDR on join, viewer cap, size events plus rebuild, data-channel hook (8192-byte SCTP), per-viewer rights
-- [ ] 19-04-PLAN.md — Route gates: desktop-off and rejected-link pages, /desktop/check, DSHR-08 cross-token matrix, CSP pin, manifest without start_url, /desktop redirect
-- [ ] 19-05-PLAN.md — Native capture: ScreenCaptureKit main display, rebuildable VideoToolbox encoder with hardware read-back, power/lock/AC reads, pointer nudge, preflight confined to one file
-- [ ] 19-17-PLAN.md — GUI on the launchd start path: agent install from installed bundles, repair state with Open Login Items, re-home retry
+- [x] 19-03-PLAN.md — Media server hardening: tailnet-only bind, no STUN/TURN/mDNS, multi-viewer with IDR on join, viewer cap, size events plus rebuild, data-channel hook (8192-byte SCTP), per-viewer rights
+- [x] 19-04-PLAN.md — Route gates: desktop-off and rejected-link pages, /desktop/check, DSHR-08 cross-token matrix, CSP pin, manifest without start_url, /desktop redirect
+- [x] 19-05-PLAN.md — Native capture: ScreenCaptureKit main display, rebuildable VideoToolbox encoder with hardware read-back, power/lock/AC reads, pointer nudge, preflight confined to one file
+- [x] 19-17-PLAN.md — GUI on the launchd start path: agent install from installed bundles, repair state with Open Login Items, re-home retry
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 19-06-PLAN.md — Browser viewer: desktopview mode, desktopClient (pluggable transport, pre-redial hook, wake events, backoff), DesktopView states and video rect, CSP e2e
-- [ ] 19-07-PLAN.md — VM launchd rows (install, kickstart, repair state, re-home, stop, legacy end state)
-- [ ] 19-08-PLAN.md — Daemon wiring: desktop.json, /desktop API, serverNeeded(), health poller, userspace refusal, revocation, production DisplaySource
-- [ ] 19-09-PLAN.md — State and recovery: precedence and push, Locked(), stall watchdog, lapse signals and one-sender claim, viewer and AC-only assertions, restart after wake, crash-loop breaker
+- [x] 19-06-PLAN.md — Browser viewer: desktopview mode, desktopClient (pluggable transport, pre-redial hook, wake events, backoff), DesktopView states and video rect, CSP e2e
+- [x] 19-07-PLAN.md — VM launchd rows (install, kickstart, repair state, re-home, stop, legacy end state)
+- [x] 19-08-PLAN.md — Daemon wiring: desktop.json, /desktop API, serverNeeded(), health poller, userspace refusal, revocation, production DisplaySource
+- [x] 19-09-PLAN.md — State and recovery: precedence and push, Locked(), stall watchdog, lapse signals and one-sender claim, viewer and AC-only assertions, restart after wake, crash-loop breaker
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 19-10-PLAN.md — Handoff with the desktop on: listener passed under serverNeeded, viewers reconnect, HandoffVersion stays 1
-- [ ] 19-11-PLAN.md — Onboarding: perm-probe subcommand, permission and test-capture endpoints, Set Up Desktop Sharing sheet, daemon notifier wiring
+- [x] 19-10-PLAN.md — Handoff with the desktop on: listener passed under serverNeeded, viewers reconnect, HandoffVersion stays 1
+- [x] 19-11-PLAN.md — Onboarding: perm-probe subcommand, permission and test-capture endpoints, Set Up Desktop Sharing sheet, daemon notifier wiring
 
 **Wave 5** *(blocked on Wave 4 completion)*
-- [ ] 19-12-PLAN.md — VM proof of the real media path: Safari and Chrome over the tailnet with the GUI quit, CSP, binds and packets, assertions, probe, notification path
+- [x] 19-12-PLAN.md — VM proof of the real media path: Safari and Chrome over the tailnet with the GUI quit, CSP, binds and packets, assertions, probe, notification path
 
 **Wave 6** *(blocked on Wave 5 completion)*
-- [ ] 19-13-PLAN.md — Settings ▸ Sharing Desktop group (switch, status, Copy Link, permissions, footnote) and security copy
-- [ ] 19-14-PLAN.md — Tray Desktop line and the GUI half of the lapse-notification claim
+- [x] 19-13-PLAN.md — Settings ▸ Sharing Desktop group (switch, status, Copy Link, permissions, footnote) and security copy
+- [x] 19-14-PLAN.md — Tray Desktop line and the GUI half of the lapse-notification claim
 
 **Wave 7** *(blocked on Wave 6 completion)*
-- [ ] 19-15-PLAN.md — Final VM matrix: upgrade with desktop on and live terminal sessions (SC5), GUI flow, multi-viewer, restarts, closure
+- [x] 19-15-PLAN.md — Final VM matrix: upgrade with desktop on and live terminal sessions (SC5), GUI flow, multi-viewer, restarts, closure
 
 **Wave 8** *(blocked on Wave 7 completion)*
-- [ ] 19-16-PLAN.md — TESTING.md: Section 2/4/5 updates for all new tests and M-NN rows
+- [x] 19-16-PLAN.md — TESTING.md: Section 2/4/5 updates for all new tests and M-NN rows
 **Notes**: The largest change to existing code is the share server's lifetime: it must stay up while either a terminal share or the desktop share needs it. Its handoff path changes too. Desktop sessions are not handed off; they reconnect.
 **UI hint**: yes
 
@@ -249,7 +249,33 @@ Plans:
   2. A viewer types text with shortcuts and non-ASCII characters (accents, emoji, input-method text) and it arrives as typed. No key or modifier stays held after the viewer loses focus, closes or disconnects. A Send-keys menu sends Cmd+Tab, Cmd+Space and Lock Screen, and an optional Ctrl→Cmd swap serves viewers on non-Mac keyboards. (DCTL-02, DCTL-03)
   3. The sharer picks a whole display or a single window to share, and displays can be switched mid-session without the viewer reconnecting. In a window share, the window comes to the front when controlled and clicks never land outside it. (DESK-05, DESK-06, DCTL-05)
   4. Text copies from the shared Mac to the viewer, and pastes from the viewer to the shared Mac, only by an explicit action and never in the background. Items a password manager marks as concealed never sync. (DCTL-06)
-**Plans**: TBD
+**Plans**: 0/11 plans executed
+
+Plans:
+**Wave 1**
+- [ ] 20-01-PLAN.md — Tracer: a click on the `input` data channel reaches the event bridge at the right global point (stale epoch and locked presses dropped); tagged private-source bridge, closed key table, text chunking, own-account rights in hello; wire contract frozen in golden files
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 20-02-PLAN.md — Daemon input: keys and text, release-all on every trigger plus 3 s dead-man, press-only gates, optimistic Lock Screen, click count, wheel, relative move with cursor report, rate limits, "Control needs Accessibility" state
+- [ ] 20-03-PLAN.md — Display and window picker and mid-session switch on the running stream (no renegotiation): epoch bump, fallback to main display, resize, still-frame fallback
+- [ ] 20-06-PLAN.md — Viewer input layer: channel before offer, pointer and keyboard capture, IME, Cmd-chord tap rule, Ctrl/Cmd swap, release chord, release triggers and heartbeat
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 20-04-PLAN.md — Window-share confinement: AX focus gate, raise-then-drop with verified raise ladder, clamped moves, topmost hit test, raise-failed and minimized states
+- [ ] 20-07-PLAN.md — Control bar: picker, standalone Send Keys menu with Lock Screen confirm, swap toggle, View Only / Control, Full Screen with Keyboard Lock, availability table
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 20-05-PLAN.md — Daemon clipboard: read on request only, types checked first (concealed/transient never read), 16 KiB chunks under the read limit, strict reassembly, per-viewer rights
+- [ ] 20-08-PLAN.md — Clipboard UI (Safari-safe write, Copy and Paste fallback popovers, notices) and persistent state chips
+
+**Wave 5** *(blocked on Wave 4 completion; needs 19-12 and 19-15 merged)*
+- [ ] 20-09-PLAN.md — Tart VM proof of all real-macOS control rows and the PASTE_ROW verdict (user checkpoints for VM permission clicks)
+
+**Wave 6** *(blocked on Wave 5 completion; needs 19-13 and 19-14 merged)*
+- [ ] 20-10-PLAN.md — Host side: Settings Showing row, Control needs Accessibility, changed Phase 19 strings, tray window-only suffix, conditional Paste from Other Apps row
+
+**Wave 7** *(blocked on Wave 6 completion; needs 19-16 merged)*
+- [ ] 20-11-PLAN.md — TESTING.md: Sections 2 and 4 plus a Phase 20 Section 5 category numbered after Phase 19's last M-NN
 **UI hint**: yes
 
 ### Phase 21: Portty App and iPhone Viewers
@@ -298,9 +324,9 @@ Plans:
 |-------|-----------|----------------|--------|-----------|
 | 17. Desktop Feasibility Spike | v2.0 | 12/12 | Complete    | 2026-11-25 |
 | 18. Self-Installing Updates | v2.0 | 10/10 | Complete    | 2026-11-26 |
-| 18.1. Apple Silicon Release Pipeline (INSERTED) | v2.0 | 3/4 | In Progress | - |
-| 19. Unattended Desktop Viewing | v2.0 | 0/17 | Planned | - |
-| 20. Remote Control | v2.0 | 0/TBD | Not started | - |
+| 18.1. Apple Silicon Release Pipeline (INSERTED) | v2.0 | 4/4 | Complete    | 2026-11-26 |
+| 19. Unattended Desktop Viewing | v2.0 | 17/17 | Complete    | 2026-11-26 |
+| 20. Remote Control | v2.0 | 0/11 | Planned | - |
 | 21. Portty App and iPhone Viewers | v2.0 | 0/TBD | Not started | - |
 | 22. Click-to-Share for Tailnet People | v2.0 | 0/TBD | Not started | - |
 | 23. Audio, Adaptive Quality, Unlock and Release | v2.0 | 0/TBD | Not started | - |
