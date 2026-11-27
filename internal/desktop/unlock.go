@@ -134,9 +134,9 @@ type msgUnlock struct {
 
 // UnlockStats is the unlock state as the host sees it: counts and states only.
 type UnlockStats struct {
-	State       string // idle, unlocking, retrying or paused
-	Failures    int
-	RelockArmed bool
+	State       string `json:"state"` // idle, unlocking, retrying or paused
+	Failures    int    `json:"failures"`
+	RelockArmed bool   `json:"relock_armed"`
 }
 
 // unlockState is the Manager's unlock bookkeeping behind one leaf mutex (never
