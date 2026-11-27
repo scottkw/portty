@@ -41,6 +41,11 @@
 #   ln-prompt2             home: is a Local Network prompt for Portty open, and is it frontmost
 #   tailnet-health         both guests: tailscale status run inside the guest, online yes or no only
 #
+# 21-12 (Allow heals the tab, control mode, held keys; rig/axswitch.swift and rig/keystate.swift):
+#   tools12                host compiles both helpers, installs axswitch (home) and keystate (both) in ~/p21
+#   axswitch [LABEL [press]]   home: System Settings switches (Local Network page), or AXPress one
+#   keystate [office|home] which of Cmd, Shift, Option, Control, C, V, W, Q, A, Return the OS holds down
+#
 # It lives under .planning on purpose (like p19-rig.sh). Every launch, key post, log read and removal
 # runs inside portty-test-2 through ssh; the host side only builds a scratch copy, streams the bundle
 # and writes scrubbed evidence. Nothing here posts input on, captures, or touches the host, contacts the
@@ -408,6 +413,32 @@ cmd_tailnet_health() {
   done
 }
 
+# ---- 21-12: Allow heals the tab, control mode keys -----------------------------------------------
+
+# tools12: compile rig/axswitch.swift and rig/keystate.swift on the host (nothing is run there) and install
+# axswitch in the home guest and keystate in both guests, under ~/p21.
+cmd_tools12() {
+  local tmp n
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/p21-12.XXXXXX")
+  swiftc -O "$HERE/axswitch.swift" -o "$tmp/axswitch" 2>&1 | grep -v warning || true
+  swiftc -O "$HERE/keystate.swift" -o "$tmp/keystate" 2>&1 | grep -v warning || true
+  vm_ssh "$VM2_NAME" 'mkdir -p ~/p21 && cat > ~/p21/axswitch && chmod +x ~/p21/axswitch' < "$tmp/axswitch"
+  for n in "$VM1_NAME" "$VM2_NAME"; do
+    vm_ssh "$n" 'mkdir -p ~/p21 && cat > ~/p21/keystate && chmod +x ~/p21/keystate' < "$tmp/keystate"
+  done
+  rm -rf "$tmp"
+  echo "tools12: axswitch in $VM2_NAME, keystate in both guests"
+}
+
+# axswitch [LABEL [press]]: the switches in System Settings of the home guest (Local Network page open),
+# read, or one pressed with AXPress. No click lands on a banner that slid over the switch.
+cmd_axswitch() { vm_ssh "$VM2_NAME" "~/p21/axswitch com.apple.systempreferences $*"; }
+
+# keystate [office|home]: which keys the OS of that guest believes are held (default office).
+cmd_keystate() {
+  case "${1:-office}" in office) vm_ssh "$VM1_NAME" '~/p21/keystate' ;; home) vm_ssh "$VM2_NAME" '~/p21/keystate' ;; *) die "keystate [office|home]" ;; esac
+}
+
 main() {
   local c=${1:-}
   [ -n "$c" ] || die "usage: p21-rig.sh COMMAND ... (see the header)"
@@ -423,6 +454,9 @@ main() {
     safari2-front) cmd_safari2_front "$@" ;;
     ln-prompt2) cmd_ln_prompt2 "$@" ;;
     tailnet-health) cmd_tailnet_health "$@" ;;
+    tools12) cmd_tools12 "$@" ;;
+    axswitch) cmd_axswitch "$@" ;;
+    keystate) cmd_keystate "$@" ;;
     tools2) cmd_tools2 "$@" ;;
     vm2-idle) cmd_vm2_idle "$@" ;;
     deploy2) cmd_deploy2 "$@" ;;
