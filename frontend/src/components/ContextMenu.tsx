@@ -24,6 +24,7 @@ export interface ContextMenuRow {
   text: string
   /** A caption's id; the menu links to every caption by aria-describedby. */
   id?: string
+  separatorBefore?: boolean
 }
 
 export type ContextMenuEntry = ContextMenuItem | ContextMenuRow
@@ -133,14 +134,16 @@ export function ContextMenu({ items, x, y, invoker, onClose, className }: Contex
       {items.map((item, n) => {
         if (isRow(item)) {
           return (
-            <div
-              key={`${n}-${item.text}`}
-              id={item.id}
-              role="presentation"
-              className={item.kind === 'label' ? 'desktop-menu__label' : 'desktop-menu__caption'}
-            >
-              {item.text}
-            </div>
+            <React.Fragment key={`${n}-${item.text}`}>
+              {item.separatorBefore && <div className="context-menu__separator" role="separator" />}
+              <div
+                id={item.id}
+                role="presentation"
+                className={item.kind === 'label' ? 'desktop-menu__label' : 'desktop-menu__caption'}
+              >
+                {item.text}
+              </div>
+            </React.Fragment>
           )
         }
         return (

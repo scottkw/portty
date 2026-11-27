@@ -6,6 +6,7 @@ import {
   CursorArrowRaysIcon,
   ExclamationTriangleIcon,
   HandRaisedIcon,
+  InformationCircleIcon,
   LockClosedIcon,
   MoonIcon,
   PlayIcon,
@@ -16,13 +17,14 @@ import {
   createDesktopClient,
   type ClientStatus,
   type DesktopControlMsg,
+  type DesktopClient,
   type DesktopStateMsg,
   type DesktopSurfaceMsg,
 } from '../lib/desktopClient'
 import { HINT_KEY, createDesktopInput, type DesktopInput, type ReleaseReason } from '../lib/desktopInput'
 import { isPhone } from '../lib/phoneQuery'
 import { UserRefused } from './UserRefused'
-import { DesktopControlBar } from './DesktopControlBar'
+import { DesktopControlBar, SWITCH_TIMEOUT_MS, type SurfacePick } from './DesktopControlBar'
 
 const TITLE = 'Portty Desktop'
 
@@ -112,6 +114,10 @@ const STATE_CARDS: Partial<Record<DesktopStateMsg['state'], CardKey>> = {
 }
 
 const HINT_ID = 'desktop-stage-hint'
+const SURFACE_FALLBACKS: Record<string, string | undefined> = {
+  window_closed: 'The shared window closed; showing the main display',
+  display_gone: 'The shared display disconnected; showing the main display',
+}
 const CHIP_SHOW_MS = 3000
 const CHIP_FADE_MS = 150
 
@@ -206,6 +212,11 @@ export function DesktopView({
   const [noticeFading, setNoticeFading] = useState(false)
   // The shared surface as the daemon last said it, and whether a bar menu or dialog is open.
   const [surf, setSurf] = useState<DesktopSurfaceMsg | null>(null)
+  // A pick is in flight until its surface message arrives, the daemon refuses, or SWITCH_TIMEOUT_MS passes.
+  const [switching, setSwitching] = useState<(SurfacePick & { previous: string }) | null>(null)
+  const clientRef = useRef<DesktopClient | null>(null)
+  const surfRef = useRef<DesktopSurfaceMsg | null>(null)
+  const switchingRef = useRef<(SurfacePick & { previous: string }) | null>(null)
   const [barMenuOpen, setBarMenuOpen] = useState(false)
   // Whether the stage had the keyboard when the pointer went down on the bar (the press itself blurs it).
   const stageHadFocus = useRef(false)
@@ -219,6 +230,28 @@ export function DesktopView({
     () => pushNotice({ Icon: CursorArrowRaysIcon, text: 'Typing stays on this device', dwell: 3000 }),
     [pushNotice],
   )
+
+  // The label returns to the previous surface and the user is told, in words, that it did not happen.
+  const switchFailed = useCallback(() => {
+    const sw = switchingRef.current
+    if (!sw) return
+    switchingRef.current = null
+    setSwitching(null)
+    pushNotice({
+      Icon: ExclamationTriangleIcon,
+      text: `Couldn't switch to ${sw.name}. Still showing ${sw.previous}.`,
+      dwell: 5000,
+      alert: true,
+    })
+  }, [pushNotice])
+
+  const switchFailedRef = useRef(switchFailed)
+  switchFailedRef.current = switchFailed
+  useEffect(() => {
+    if (!switching) return
+    const id = setTimeout(switchFailed, SWITCH_TIMEOUT_MS)
+    return () => clearTimeout(id)
+  }, [switching, switchFailed])
 
   // A notice dwells, then fades, then goes; a newer one replaces it and restarts the clock.
   useEffect(() => {
@@ -272,6 +305,7 @@ export function DesktopView({
 
   useEffect(() => {
     const client = createDesktopClient()
+    clientRef.current = client
     const phone = isPhone()
     let lastEpoch: number | null = null
     const offs = [
@@ -336,10 +370,29 @@ export function DesktopView({
       }),
       client.on('control', setCtlState),
       client.on('surface', (sf) => {
+        // Every viewer, a phone too, hears what the Mac now shows. The notice goes first so that, when
+        // something was held, "Held keys were released" (sent by the release below) is the one that stays.
+        const prev = surfRef.current
+        surfRef.current = sf
+        setSurf(sf)
+        const sw = switchingRef.current
+        if (sw && (sf.reason !== '' || (sf.kind === sw.kind && sf.id === sw.id))) {
+          switchingRef.current = null
+          setSwitching(null)
+        }
+        const surfaceNotice = SURFACE_FALLBACKS[sf.reason]
+        if (surfaceNotice) pushNotice({ Icon: InformationCircleIcon, text: surfaceNotice, dwell: 5000 })
+        else if (prev && (prev.kind !== sf.kind || prev.id !== sf.id)) {
+          pushNotice({
+            Icon: sf.kind === 'window' ? WindowIcon : ComputerDesktopIcon,
+            text: sf.kind === 'display' && sf.name === 'Main Display' ? 'Showing the main display' : `Showing ${sf.name}`,
+            dwell: 3000,
+          })
+        }
         if (lastEpoch !== null && sf.e !== lastEpoch) inputCtl.current?.releaseAll('surface')
         lastEpoch = sf.e
-        setSurf(sf)
       }),
+      client.on('selectFailed', () => switchFailedRef.current()),
       client.on('track', (stream) => {
         const v = videoRef.current
         if (!v) return
@@ -363,6 +416,7 @@ export function DesktopView({
       inputCtl.current?.destroy()
       inputCtl.current = null
       client.stop()
+      clientRef.current = null
     }
   }, [startPlay, updateRect, pushNotice, typingStays])
 
@@ -533,6 +587,16 @@ export function DesktopView({
         <div className="desktop-overlay" onPointerDownCapture={() => { stageHadFocus.current = capturedRef.current }}>
           <DesktopControlBar
             windowShare={surf?.kind === 'window'}
+            surface={surf ? { kind: surf.kind, id: surf.id, name: surf.name } : null}
+            switching={switching !== null}
+            requestSurfaces={() => clientRef.current?.requestSurfaces() ?? Promise.reject(new Error('not connected'))}
+            onSelectSurface={(pick) => {
+              if (switchingRef.current) return
+              const sw = { ...pick, previous: surfRef.current?.name ?? 'the main display' }
+              switchingRef.current = sw
+              setSwitching(sw)
+              clientRef.current?.selectSurface(pick.kind, pick.id)
+            }}
             sendChord={(codes) => inputCtl.current?.sendChord(codes)}
             onMenuOpenChange={setBarMenuOpen}
             onSendKeysDone={() => { if (stageHadFocus.current) inputRef.current?.focus({ preventScroll: true }) }}

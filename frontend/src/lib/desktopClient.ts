@@ -95,6 +95,26 @@ export interface DesktopSurfaceMsg {
   reason: SurfaceReason
 }
 
+/** One entry of the daemon's surface list (20-03). Names are the Mac's own text: render as text, never markup. */
+export interface SurfaceDisplayInfo {
+  id: number
+  name: string
+  w: number
+  h: number
+  main: boolean
+}
+export interface SurfaceWindowInfo {
+  id: number
+  app: string
+  title: string
+  /** `App — Title`, as the daemon formats it. */
+  name: string
+}
+export interface DesktopSurfacesMsg {
+  displays: SurfaceDisplayInfo[]
+  windows: SurfaceWindowInfo[]
+}
+
 export type ControlInput = 'ok' | 'needs_accessibility'
 export type ControlWindow = '' | 'raise_failed' | 'minimized'
 
@@ -121,6 +141,10 @@ export interface DesktopEvents {
   /** The input data channel opened or closed. */
   input: { open: boolean }
   surface: DesktopSurfaceMsg
+  /** A good reply to a surfaces request. */
+  surfaces: DesktopSurfacesMsg
+  /** The daemon refused or failed a select (`code` is its reason, '' when not a string). */
+  selectFailed: { code: string }
   control: DesktopControlMsg
   cursor: DesktopCursorMsg
 }
@@ -140,6 +164,10 @@ export interface DesktopClient {
   sendInput(msg: object, droppable?: boolean): boolean
   /** The surface epoch last announced by the server, or null until the first surface message. */
   currentEpoch(): number | null
+  /** Asks for the displays and windows. Resolves on the next reply; rejects on an error reply, a dropped connection or after 5 s. */
+  requestSurfaces(): Promise<DesktopSurfacesMsg>
+  /** Picks a surface; the answer is a `surface` event for every viewer, or `selectFailed` for this one. Display id 0 is the main display. */
+  selectSurface(kind: SurfaceKind, id: number): void
   on<K extends keyof DesktopEvents>(event: K, cb: (v: DesktopEvents[K]) => void): () => void
 }
 
@@ -150,6 +178,7 @@ export const RECONNECT = {
   helloTimeoutMs: 10000,
   gatherTimeoutMs: 3000,
   iceDisconnectedMs: 2000,
+  surfacesTimeoutMs: 5000,
 }
 
 /** wss://<same host>/desktop/ws?cap=<token from the page URL>. */
@@ -197,7 +226,8 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
 
   const listeners: { [K in keyof DesktopEvents]: Set<(v: DesktopEvents[K]) => void> } = {
     track: new Set(), state: new Set(), size: new Set(), status: new Set(), wake: new Set(),
-    rights: new Set(), input: new Set(), surface: new Set(), control: new Set(), cursor: new Set(),
+    rights: new Set(), input: new Set(), surface: new Set(), surfaces: new Set(), selectFailed: new Set(),
+    control: new Set(), cursor: new Set(),
   }
   function emit<K extends keyof DesktopEvents>(event: K, v: DesktopEvents[K]) {
     for (const cb of [...listeners[event]]) cb(v)
@@ -243,6 +273,23 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
     return null
   }
 
+  interface ListWait {
+    resolve: (m: DesktopSurfacesMsg) => void
+    reject: (e: Error) => void
+    timer: unknown
+  }
+  let listWaits: ListWait[] = []
+  /** Ends every waiting requestSurfaces: with the list, or with the reason it will not come. */
+  function settleLists(result: DesktopSurfacesMsg | Error) {
+    const waits = listWaits
+    listWaits = []
+    for (const w of waits) {
+      clock.clearTimeout(w.timer)
+      if (result instanceof Error) w.reject(result)
+      else w.resolve(result)
+    }
+  }
+
   /** Close the current socket and peer connection and their timers. Never redials. */
   function teardown() {
     helloTimer = cancel(helloTimer)
@@ -252,6 +299,7 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
     gotTrack = false
     iceUp = false
     epoch = null
+    settleLists(new Error('not connected'))
     // The viewer must release what it holds when its channel goes, so say so now: a closed
     // peer connection reports its channel only after the generation has moved on.
     if (inputChannel) {
@@ -527,6 +575,19 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
           })
           break
         }
+        case 'surfaces': {
+          const list = parseSurfaces(m)
+          if (list === null) {
+            settleLists(new Error(m.error === 'forbidden' ? 'forbidden' : 'list_failed'))
+            break
+          }
+          emit('surfaces', list)
+          settleLists(list)
+          break
+        }
+        case 'select_failed':
+          emit('selectFailed', { code: typeof m.code === 'string' ? m.code : '' })
+          break
         case 'size':
           if (Number.isInteger(m.w) && Number.isInteger(m.h)) emit('size', { w: m.w as number, h: m.h as number })
           break
@@ -647,12 +708,57 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
       return true
     },
     currentEpoch: () => epoch,
+    requestSurfaces() {
+      return new Promise<DesktopSurfacesMsg>((resolve, reject) => {
+        if (!transport || !hadHello) {
+          reject(new Error('not connected'))
+          return
+        }
+        const wait: ListWait = {
+          resolve,
+          reject,
+          timer: clock.setTimeout(() => {
+            listWaits = listWaits.filter((w) => w !== wait)
+            reject(new Error('timeout'))
+          }, RECONNECT.surfacesTimeoutMs),
+        }
+        listWaits.push(wait)
+        transport.send({ type: 'surfaces' })
+      })
+    },
+    selectSurface(kind, id) {
+      transport?.send({ type: 'select', kind, id })
+    },
     on(event, cb) {
       const set = listeners[event] as Set<typeof cb>
       set.add(cb)
       return () => set.delete(cb)
     },
   }
+}
+
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null
+
+/** A surfaces reply: only typed fields are kept (T-20-35). Null for an error reply or a malformed list. */
+function parseSurfaces(m: Record<string, unknown>): DesktopSurfacesMsg | null {
+  if (m.error !== undefined || !Array.isArray(m.displays) || !Array.isArray(m.windows)) return null
+  const displays: SurfaceDisplayInfo[] = []
+  for (const d of m.displays) {
+    if (!isObj(d) || !Number.isInteger(d.id) || typeof d.name !== 'string') continue
+    if (!Number.isInteger(d.w) || !Number.isInteger(d.h)) continue
+    displays.push({ id: d.id as number, name: d.name, w: d.w as number, h: d.h as number, main: d.main === true })
+  }
+  const windows: SurfaceWindowInfo[] = []
+  for (const w of m.windows) {
+    if (!isObj(w) || !Number.isInteger(w.id) || typeof w.name !== 'string') continue
+    windows.push({
+      id: w.id as number,
+      app: typeof w.app === 'string' ? w.app : '',
+      title: typeof w.title === 'string' ? w.title : '',
+      name: w.name,
+    })
+  }
+  return { displays, windows }
 }
 
 export async function fetchCheck(loc: Location = window.location): Promise<CheckVerdict> {

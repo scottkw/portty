@@ -17,6 +17,8 @@ interface MockClient {
   send: ReturnType<typeof vi.fn>
   sendInput: ReturnType<typeof vi.fn>
   currentEpoch: ReturnType<typeof vi.fn>
+  requestSurfaces: ReturnType<typeof vi.fn>
+  selectSurface: ReturnType<typeof vi.fn>
   on: (ev: string, cb: Listener) => () => void
   emit: <K extends keyof DesktopEvents>(ev: K, v: DesktopEvents[K]) => void
 }
@@ -33,6 +35,16 @@ vi.mock('../../lib/desktopClient', () => ({
       send: vi.fn(),
       sendInput: vi.fn(() => true),
       currentEpoch: vi.fn(() => 1),
+      requestSurfaces: vi.fn(() =>
+        Promise.resolve({
+          displays: [
+            { id: 1, name: 'Main Display', w: 1470, h: 956, main: true },
+            { id: 2, name: 'Display 2', w: 1920, h: 1080, main: false },
+          ],
+          windows: [{ id: 4242, app: 'Terminal', title: 'zsh', name: 'Terminal — zsh' }],
+        }),
+      ),
+      selectSurface: vi.fn(),
       on: (ev: string, cb: Listener) => {
         if (!ls.has(ev)) ls.set(ev, new Set())
         ls.get(ev)!.add(cb)
@@ -702,6 +714,144 @@ describe('control bar (Phase 20-07 Task 1)', () => {
     })
     act(() => menuItem('Cmd+Tab').click())
     expect(document.activeElement).toBe(sendKeysBtn())
+  })
+})
+
+describe('surface picker and notices (Phase 20-07 Task 2)', () => {
+  const picker = () => container.querySelector('.desktop-bar__picker') as HTMLButtonElement
+  const notice = () => container.querySelector('.desktop-chip--notice')
+  const radios = () => Array.from(document.querySelectorAll<HTMLElement>('[role="menuitemradio"]'))
+  const MAIN = { e: 1, kind: 'display', id: 1, name: 'Main Display', w: 1470, h: 956, reason: '' } as const
+  const surface = (over: Partial<DesktopEvents['surface']> = {}) =>
+    act(() => client().emit('surface', { ...MAIN, ...over } as DesktopEvents['surface']))
+
+  function ownAccount() {
+    act(() => client().emit('rights', { control: true, clipboard: true, surface: true }))
+  }
+  async function picked(label: string) {
+    await act(async () => { picker().click() })
+    act(() => radios().find((r) => r.textContent?.startsWith(label))!.click())
+  }
+
+  beforeEach(() => window.localStorage.clear())
+
+  it('choosing a window sends select and the label reads Switching… (greyed)', async () => {
+    render()
+    ownAccount()
+    await firstFrame()
+    surface()
+    expect(picker().textContent).toBe('Main Display')
+    await picked('Terminal')
+    expect(client().selectSurface).toHaveBeenCalledWith('window', 4242)
+    expect(picker().textContent).toBe('Switching…')
+    expect(picker().getAttribute('aria-disabled')).toBe('true')
+  })
+
+  it('the surface message for that pick sets the label and shows Showing <name> with no failure', async () => {
+    render()
+    ownAccount()
+    await firstFrame()
+    surface()
+    await picked('Terminal')
+    surface({ e: 2, kind: 'window', id: 4242, name: 'Terminal — zsh', w: 1280, h: 800 })
+    expect(picker().textContent).toBe('Terminal — zsh')
+    expect(notice()?.textContent).toBe('Showing Terminal — zsh')
+    expect(notice()?.getAttribute('role')).toBeNull()
+    advance(5000)
+    expect(notice()).toBeNull()
+    expect(container.textContent).not.toContain('Reconnecting')
+  })
+
+  it('with no surface message within 5 s the label reverts and a failure notice reads Couldn\'t switch (role alert)', async () => {
+    render()
+    ownAccount()
+    await firstFrame()
+    surface()
+    await picked('Terminal')
+    advance(4999)
+    expect(picker().textContent).toBe('Switching…')
+    advance(1)
+    expect(picker().textContent).toBe('Main Display')
+    expect(notice()?.textContent).toBe("Couldn't switch to Terminal — zsh. Still showing Main Display.")
+    expect(notice()?.getAttribute('role')).toBe('alert')
+    advance(5000 + 150)
+    expect(notice()).toBeNull()
+  })
+
+  it('select_failed reverts at once with the same notice', async () => {
+    render()
+    ownAccount()
+    await firstFrame()
+    surface()
+    await picked('Display 2')
+    act(() => client().emit('selectFailed', { code: 'switch_failed' }))
+    expect(picker().textContent).toBe('Main Display')
+    expect(notice()?.textContent).toBe("Couldn't switch to Display 2. Still showing Main Display.")
+    advance(6000) // the old timer must not fire a second notice
+    expect(notice()).toBeNull()
+  })
+
+  it('a stray select_failed with no pick in flight says nothing', async () => {
+    render()
+    ownAccount()
+    await firstFrame()
+    surface()
+    act(() => client().emit('selectFailed', { code: 'busy' }))
+    expect(notice()).toBeNull()
+  })
+
+  it.each([
+    ['window_closed', 'The shared window closed; showing the main display'],
+    ['display_gone', 'The shared display disconnected; showing the main display'],
+  ] as const)('a surface message with reason %s shows its fallback notice for 5 s', async (reason, text) => {
+    render()
+    ownAccount()
+    await firstFrame()
+    surface()
+    surface({ e: 2, kind: 'window', id: 4242, name: 'Terminal — zsh' })
+    surface({ e: 3, reason })
+    expect(notice()?.textContent).toBe(text)
+    advance(4999)
+    expect(notice()).not.toBeNull()
+    advance(1 + 150)
+    expect(notice()).toBeNull()
+    expect(picker().textContent).toBe('Main Display')
+  })
+
+  it('another viewer\'s switch shows Showing <name>; the main display reads Showing the main display; the first message says nothing', async () => {
+    render()
+    ownAccount()
+    await firstFrame()
+    surface()
+    expect(notice()).toBeNull()
+    surface({ e: 2, id: 2, name: 'Display 2', w: 1920, h: 1080 })
+    expect(notice()?.textContent).toBe('Showing Display 2')
+    surface({ e: 3 })
+    expect(notice()?.textContent).toBe('Showing the main display')
+  })
+
+  it('a new epoch for the same surface (a failed switch told to everyone) says nothing', async () => {
+    render()
+    ownAccount()
+    await firstFrame()
+    surface()
+    surface({ e: 2 })
+    expect(notice()).toBeNull()
+  })
+
+  it('a phone sees the surface notices too, with no bar', async () => {
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (q: string) => ({ matches: true, media: q, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList,
+    )
+    render()
+    act(() => client().emit('rights', { control: true, clipboard: true, surface: true }))
+    await firstFrame()
+    surface()
+    surface({ e: 2, kind: 'window', id: 4242, name: 'Terminal — zsh' })
+    expect(container.querySelector('[role="toolbar"]')).toBeNull()
+    expect(notice()?.textContent).toBe('Showing Terminal — zsh')
+    surface({ e: 3, reason: 'window_closed' })
+    expect(notice()?.textContent).toBe('The shared window closed; showing the main display')
   })
 })
 
