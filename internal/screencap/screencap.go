@@ -29,6 +29,20 @@ type Surface struct {
 	ID   uint32
 }
 
+// SurfaceInfo describes one thing that can be shared, as ListSurfaces reports
+// it. Sizes and positions are in points. A window's Name is "App — Title" (or
+// just the app), a display's "Main Display" or "Display N"; names are for
+// viewers only and never logged.
+type SurfaceInfo struct {
+	Kind           SurfaceKind
+	ID             uint32 // CGDirectDisplayID or CGWindowID
+	PID            int32  // owning process of a window, 0 for a display
+	Name           string
+	App, Title     string // windows only
+	X, Y, W, H     float64
+	Main, OnScreen bool // Main: the main display. OnScreen: a window that is not minimized or off screen
+}
+
 // Config is the capture and encode configuration of one Start.
 type Config struct {
 	Surface          Surface
@@ -93,8 +107,9 @@ var (
 //     the source: each call asks for one more keyframe.
 //   - Rebuild re-creates the encoder at the new dimensions; the next access
 //     unit is a keyframe carrying SPS and PPS.
-//   - SelectSurface with a SurfaceWindow returns ErrSurfaceUnsupported in
-//     Phase 19 (Phase 20 implements it).
+//   - SelectSurface on a running source switches it live to a display or a
+//     window (the encoder is rebuilt at the new size and the next unit is a
+//     keyframe); on a stopped one it records the surface for the next Start.
 type Source interface {
 	Start(ctx context.Context, cfg Config) error
 	Stop() error

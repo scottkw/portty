@@ -24,6 +24,7 @@ int pc_encoder_force_keyframe(void);
 int pc_encoder_rebuild(int w, int h);
 int pc_encoder_hardware(void);
 int pc_still_capture(int maxLong, uint8_t **out, int *n, char *errbuf, int errlen);
+uint32_t pc_main_display_id(void);
 */
 import "C"
 
@@ -320,6 +321,9 @@ func (d *DisplaySource) Rebuild(width, height int) error {
 	d.noteEncoder()
 	return nil
 }
+
+// MainDisplayID is the main display's CGDirectDisplayID (0 if it cannot be read).
+func MainDisplayID() uint32 { return uint32(C.pc_main_display_id()) }
 
 // HardwareEncoder reports the readback taken after the encoder session was
 // created or last rebuilt. known is false when the encoder did not say. A

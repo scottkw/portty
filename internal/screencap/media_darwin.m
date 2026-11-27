@@ -649,3 +649,12 @@ int pc_still_capture(int maxLong, uint8_t **out, int *n, char *errbuf, int errle
 		return kPCExceptionErr;
 	}
 }
+
+// The main display's CGDirectDisplayID (a plain window-server read, no capture).
+uint32_t pc_main_display_id(void) {
+	@try {
+		return (uint32_t)CGMainDisplayID();
+	} @catch (NSException *e) {
+		return 0;
+	}
+}
