@@ -226,6 +226,10 @@ func TestGuestRevoke_ConcurrentAndRepeatedCallsReleaseOnce(t *testing.T) {
 	if ups != 1 {
 		t.Errorf("%d key-ups, want exactly 1", ups)
 	}
+	// The viewer count drops (m.leave) just before the leave hook runs, so wait
+	// for the hook, then make sure it does not fire a second time.
+	eventually(t, 5*time.Second, "OnViewerLeave to fire", func() bool { return e.leaves.Load() >= 1 })
+	time.Sleep(50 * time.Millisecond)
 	if n := e.leaves.Load(); n != 1 {
 		t.Errorf("OnViewerLeave fired %d times, want 1", n)
 	}
