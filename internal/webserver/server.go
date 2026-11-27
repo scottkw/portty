@@ -823,6 +823,14 @@ func (ws *WebServer) handleSessionsMeta(w http.ResponseWriter, r *http.Request) 
 			URL:    sessionURL,
 		})
 	}
+	// Discovery for a same-account peer's Desktop row: only requireSameUser callers
+	// get here. The body stays the bare array; a reader that ignores headers is
+	// unaffected, and a reader branches on the exact value "always".
+	if ws.desktop != nil {
+		if _, on := ws.desktop.DesktopGrant(); on {
+			w.Header().Set(tailnet.DesktopHeader, tailnet.DesktopAlways)
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(items) //nolint:errcheck
 }
