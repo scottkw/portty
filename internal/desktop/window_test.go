@@ -56,6 +56,16 @@ type fakeWindow struct {
 	raises     []raiseCall
 	raiseHook  func(f *fakeWindow) (int, error) // runs with mu released; nil focuses the window
 	raiseBlock chan struct{}                    // when set, Raise waits for it to close
+
+	// The element that holds keyboard focus. Unless keyOverride is set it is the
+	// focused window (the usual case); a test that sets it models a non-activating
+	// panel holding key focus while the focused app stays the same.
+	keyOverride bool
+	keyPID      int32
+	keyFrame    [4]float64
+	keyOK       bool
+	keyErr      error
+	keyReads    int
 }
 
 func newFakeWindow() *fakeWindow {
@@ -72,6 +82,18 @@ func (f *fakeWindow) Focus() (int32, float64, float64, float64, float64, bool, e
 	defer f.mu.Unlock()
 	fr := f.focusFrame
 	return f.focusPID, fr[0], fr[1], fr[2], fr[3], f.focusOK, f.focusErr
+}
+
+func (f *fakeWindow) KeyFocus() (int32, float64, float64, float64, float64, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.keyReads++
+	if !f.keyOverride {
+		fr := f.focusFrame
+		return f.focusPID, fr[0], fr[1], fr[2], fr[3], f.focusOK, f.focusErr
+	}
+	fr := f.keyFrame
+	return f.keyPID, fr[0], fr[1], fr[2], fr[3], f.keyOK, f.keyErr
 }
 
 func (f *fakeWindow) WindowInfo(uint32) (int32, float64, float64, float64, float64, bool, error) {

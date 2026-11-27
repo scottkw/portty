@@ -38,6 +38,12 @@ type WindowBridge interface {
 	// Focus reads, live, the focused application's pid and its focused window's
 	// frame; ok is false when there is no focused window.
 	Focus() (pid int32, x, y, w, h float64, ok bool, err error)
+	// KeyFocus reads, live, the owner pid of the element that actually holds
+	// keyboard focus and the frame of that element's window; ok is false when no
+	// element or window is found. It differs from Focus when a non-activating
+	// panel (Spotlight, Alfred, Raycast) takes key focus without changing the
+	// focused application (Phase 20 review M-05).
+	KeyFocus() (pid int32, x, y, w, h float64, ok bool, err error)
 	// WindowInfo reads a window's owner and frame and whether it is on screen.
 	WindowInfo(id uint32) (pid int32, x, y, w, h float64, onScreen bool, err error)
 	// Minimized reports whether the window with this frame (title breaks a tie) is minimized.
@@ -146,12 +152,22 @@ func windowFocused(wb WindowBridge, pid int32, f rect) bool {
 	return err == nil && ok && fpid == pid && rect{x, y, w, h}.near(f)
 }
 
+// keyFocused reports whether, right now, the element holding keyboard focus is
+// in the shared window's app and window. Anything else, an error included, is
+// no: a key must never land in a panel the viewer cannot see.
+func keyFocused(wb WindowBridge, pid int32, f rect) bool {
+	kpid, x, y, w, h, ok, err := wb.KeyFocus()
+	return err == nil && ok && kpid == pid && rect{x, y, w, h}.near(f)
+}
+
 // windowAllows gates a press, move, wheel or text message while a window is
 // shared; pressAllowed calls it only then. Reasons: window_unavailable (no
 // bridge or an unreadable window: fail closed), raising (focus was elsewhere or
 // the window was off screen: a raise runs and this press is dropped), outside
-// (the point is not inside the window) and covered (another window is on top at
-// the point; the shared app's own pop-ups do not count, see sameAppPopup).
+// (the point is not inside the window), covered (another window is on top at
+// the point; the shared app's own pop-ups do not count, see sameAppPopup) and,
+// for keys and text, window_key_focus (the element holding keyboard focus is not
+// the shared window; no raise starts, a panel on top is the user's own action).
 func (m *Manager) windowAllows(msg inputMsg) (bool, string) {
 	sel, info := m.currentSurface()
 	if sel.Kind != screencap.SurfaceWindow {
@@ -210,7 +226,14 @@ func (m *Manager) windowAllows(msg inputMsg) (bool, string) {
 		}
 		px, py = cx, cy
 	default:
-		return true, "" // keys and text go to the focused window, which was just confirmed
+		// Keys and text go to whoever holds keyboard focus. The focused app and
+		// window were just confirmed, but a non-activating panel takes key focus
+		// without changing them, so key focus is read too. Releases never come
+		// here, so a held key is still let go.
+		if !keyFocused(wb, info.PID, fresh) {
+			return false, "window_key_focus"
+		}
+		return true, ""
 	}
 	top, err := wb.TopmostAt(px, py)
 	if err != nil {
