@@ -1,0 +1,10 @@
+1 5686 PROBE ready vis=visible
+2 5723 PROBE focus=textarea active=ta
+3 5723 PROBE mode=page
+4 30697 KEYDOWN KeyA key="a" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=ta
+5 30705 KEYUP KeyA key="a" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=ta
+6 40283 PROBE focus=none active=other
+7 45007 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+8 45123 KEYDOWN Comma key="," meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+9 45175 MENU menu:settings
+10 45386 KEYUP MetaLeft key="Meta" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=other

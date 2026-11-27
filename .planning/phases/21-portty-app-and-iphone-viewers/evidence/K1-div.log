@@ -1,0 +1,67 @@
+matrix row=K1-div focus=div mode=page textarea 179574175418049
+=== Cmd+Q code=12 mods=[cmd] gui=14994  window=yes
+163 194694 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+164 194751 KEYDOWN KeyQ key="q" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+165 194862 KEYUP MetaLeft key="Meta" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+=== Cmd+W code=13 mods=[cmd] gui=14994  window=yes
+172 200495 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+173 200558 KEYDOWN KeyW key="w" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+174 200671 KEYUP MetaLeft key="Meta" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+=== Cmd+C code=8 mods=[cmd] gui=14994  window=yes
+181 206264 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+182 206376 KEYDOWN KeyC key="c" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+183 206548 KEYUP MetaLeft key="Meta" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+=== Cmd+V code=9 mods=[cmd] gui=14994  window=yes
+190 212238 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+191 212298 KEYDOWN KeyV key="v" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+192 212409 KEYUP MetaLeft key="Meta" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+=== Cmd+X code=7 mods=[cmd] gui=14994  window=yes
+199 218142 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+200 218209 KEYDOWN KeyX key="x" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+201 218322 KEYUP MetaLeft key="Meta" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+=== Cmd+Z code=6 mods=[cmd] gui=14994  window=yes
+208 224185 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+209 224265 KEYDOWN KeyZ key="z" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+210 224414 KEYUP MetaLeft key="Meta" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+=== Cmd+A code=0 mods=[cmd] gui=14994  window=yes
+217 230119 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+218 230179 KEYDOWN KeyA key="a" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+219 230288 KEYUP MetaLeft key="Meta" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+=== Cmd+T code=17 mods=[cmd] gui=14994  window=yes
+226 236335 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+227 236395 KEYDOWN KeyT key="t" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+228 236504 KEYUP MetaLeft key="Meta" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+=== Cmd+H code=4 mods=[cmd] gui=14994  window=yes
+235 242048 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+236 242116 KEYDOWN KeyH key="h" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+237 242224 KEYUP MetaLeft key="Meta" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+=== Cmd+M code=46 mods=[cmd] gui=14994  window=yes
+244 247751 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+245 247814 KEYDOWN KeyM key="m" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+246 247920 KEYUP MetaLeft key="Meta" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+=== Cmd+comma code=43 mods=[cmd] gui=14994  window=yes
+253 253629 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+254 253706 KEYDOWN Comma key="," meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+255 253813 KEYUP MetaLeft key="Meta" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+=== Ctrl+Cmd+S code=1 mods=[ctrl cmd] gui=14994  window=yes
+262 259346 KEYDOWN ControlLeft key="Control" meta=0 ctrl=1 alt=0 shift=0 rep=0 tgt=div
+263 259389 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=1 alt=0 shift=0 rep=0 tgt=div
+264 259456 KEYDOWN KeyS key="s" meta=1 ctrl=1 alt=0 shift=0 rep=0 tgt=div
+265 259561 KEYUP MetaLeft key="Meta" meta=0 ctrl=1 alt=0 shift=0 rep=0 tgt=div
+266 259594 KEYUP ControlLeft key="Control" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+=== Ctrl+Cmd+F code=3 mods=[ctrl cmd] gui=14994  window=yes
+273 265235 KEYDOWN ControlLeft key="Control" meta=0 ctrl=1 alt=0 shift=0 rep=0 tgt=div
+274 265274 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=1 alt=0 shift=0 rep=0 tgt=div
+275 265345 KEYDOWN KeyF key="f" meta=1 ctrl=1 alt=0 shift=0 rep=0 tgt=div
+276 265455 KEYUP MetaLeft key="Meta" meta=0 ctrl=1 alt=0 shift=0 rep=0 tgt=div
+277 265480 KEYUP ControlLeft key="Control" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+=== Cmd+Option+H code=4 mods=[cmd opt] gui=14994  window=yes
+284 271090 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+285 271132 KEYDOWN AltLeft key="Alt" meta=1 ctrl=0 alt=1 shift=0 rep=0 tgt=div
+286 271212 KEYDOWN KeyH key="˙" meta=1 ctrl=0 alt=1 shift=0 rep=0 tgt=div
+287 271331 KEYUP AltLeft key="Alt" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+288 271363 KEYUP MetaLeft key="Meta" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+=== Backspace code=51 mods=[] gui=14994  window=yes
+295 276907 KEYDOWN Backspace key="Backspace" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+296 276983 KEYUP Backspace key="Backspace" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=div
+matrix done
