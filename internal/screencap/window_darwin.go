@@ -2,7 +2,8 @@ package screencap
 
 // window_darwin.go: the cgo side of window_darwin.m, what the window gate of a
 // window share reads and does: the live Accessibility focus, a window's frame,
-// whether it is minimized, a raise and the topmost window at a point. Every
+// whether it is minimized, a raise and the topmost window at a point (id, owner,
+// layer and frame). Every
 // method refuses under testing.Testing(), so no test reads or changes
 // Accessibility state on the host.
 
@@ -15,7 +16,7 @@ int pc_ax_focus(int *pid, double *x, double *y, double *w, double *h, int *ok);
 int pc_window_info(uint32_t id, int *pid, double *x, double *y, double *w, double *h, int *onScreen);
 int pc_window_minimized(int pid, double x, double y, double w, double h, const char *title, int *minimized);
 int pc_window_raise(int pid, double x, double y, double w, double h, const char *title);
-int pc_window_topmost(double x, double y, uint32_t *id);
+int pc_window_topmost(double x, double y, uint32_t *id, int *pid, int *layer, double *fx, double *fy, double *fw, double *fh);
 */
 import "C"
 
@@ -109,15 +110,25 @@ func (*WindowBridge) Raise(pid int32, x, y, w, h float64, title string) (rung in
 	return int(rc), nil
 }
 
-// TopmostAt returns the ID of the topmost on-screen window at a global point
-// (0 when none is there).
-func (*WindowBridge) TopmostAt(x, y float64) (windowID uint32, err error) {
+// TopWindow is the topmost on-screen window at a point: its ID, owner pid,
+// window layer (0 is a normal window; menus and pop-ups sit above) and frame.
+type TopWindow struct {
+	ID         uint32
+	PID, Layer int32
+	X, Y, W, H float64
+}
+
+// TopmostAt returns the topmost on-screen window at a global point (ID 0 when
+// none is there).
+func (*WindowBridge) TopmostAt(x, y float64) (TopWindow, error) {
 	if testing.Testing() {
-		return 0, ErrRefusedInTest
+		return TopWindow{}, ErrRefusedInTest
 	}
 	var id C.uint32_t
-	if rc := C.pc_window_topmost(C.double(x), C.double(y), &id); rc != 0 {
-		return 0, windowErr("finding the topmost window", rc)
+	var pid, layer C.int
+	var fx, fy, fw, fh C.double
+	if rc := C.pc_window_topmost(C.double(x), C.double(y), &id, &pid, &layer, &fx, &fy, &fw, &fh); rc != 0 {
+		return TopWindow{}, windowErr("finding the topmost window", rc)
 	}
-	return uint32(id), nil
+	return TopWindow{uint32(id), int32(pid), int32(layer), float64(fx), float64(fy), float64(fw), float64(fh)}, nil
 }

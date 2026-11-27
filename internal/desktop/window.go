@@ -44,8 +44,8 @@ type WindowBridge interface {
 	Minimized(pid int32, x, y, w, h float64, title string) (bool, error)
 	// Raise brings the window to the front and returns the rung that confirmed it.
 	Raise(pid int32, x, y, w, h float64, title string) (rung int, err error)
-	// TopmostAt returns the ID of the topmost on-screen window at a global point.
-	TopmostAt(x, y float64) (windowID uint32, err error)
+	// TopmostAt returns the topmost on-screen window at a global point.
+	TopmostAt(x, y float64) (screencap.TopWindow, error)
 }
 
 // rect is a window frame in global points.
@@ -151,7 +151,7 @@ func windowFocused(wb WindowBridge, pid int32, f rect) bool {
 // bridge or an unreadable window: fail closed), raising (focus was elsewhere or
 // the window was off screen: a raise runs and this press is dropped), outside
 // (the point is not inside the window) and covered (another window is on top at
-// the point).
+// the point; the shared app's own pop-ups do not count, see sameAppPopup).
 func (m *Manager) windowAllows(msg inputMsg) (bool, string) {
 	sel, info := m.currentSurface()
 	if sel.Kind != screencap.SurfaceWindow {
@@ -216,10 +216,25 @@ func (m *Manager) windowAllows(msg inputMsg) (bool, string) {
 	if err != nil {
 		return false, "window_unavailable"
 	}
-	if top != info.ID {
+	if top.ID != info.ID && !sameAppPopup(top, info.PID, fresh) {
 		return false, "covered"
 	}
 	return true, ""
+}
+
+// sameAppPopup reports whether a window on top of the shared one is the shared
+// app's own pop-up: a menu, pop-up or popover (any layer above 0), or a sheet or
+// panel (layer 0) lying entirely inside the shared window. The app's other
+// document windows and every other app's windows are not.
+func sameAppPopup(top screencap.TopWindow, pid int32, shared rect) bool {
+	if top.PID != pid {
+		return false
+	}
+	if top.Layer != 0 {
+		return true
+	}
+	return top.X >= shared.x && top.Y >= shared.y &&
+		top.X+top.W <= shared.x+shared.w && top.Y+top.H <= shared.y+shared.h
 }
 
 // startRaise raises the shared window on its own goroutine, one at a time (a
