@@ -1,0 +1,27 @@
+530 513452 BLUR
+531 520153 FOCUS
+532 587347 VIS hidden
+533 608384 PROBE focus=none active=other
+534 641283 VIS visible
+535 648962 PROBE focus=none active=other
+536 654368 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+537 654430 KEYDOWN KeyQ key="q" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+538 654435 MENU app:quit-requested
+539 654540 KEYUP MetaLeft key="Meta" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=other
+540 659199 KEYDOWN Tab key="Tab" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=other
+541 659250 KEYUP Tab key="Tab" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=other
+542 662429 KEYDOWN Enter key="Enter" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=other
+543 662496 VIS hidden
+544 662496 BLUR
+545 687433 PROBE focus=none active=other
+546 751931 VIS visible
+547 752036 FOCUS
+548 767255 PROBE focus=none active=other
+549 772767 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+550 772825 KEYDOWN KeyM key="m" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+551 773431 VIS hidden
+552 773432 BLUR
+553 783279 FOCUS
+554 783280 VIS visible
+555 804257 BLUR
+556 998877 FOCUS

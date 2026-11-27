@@ -1,0 +1,79 @@
+matrix row=K1-ctl focus=none mode=page div 179574186228673
+=== Cmd+Q code=12 mods=[cmd] gui=14994  window=yes
+309 289559 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+310 289614 KEYDOWN KeyQ key="q" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+311 289622 MENU app:quit-requested
+312 289724 KEYUP MetaLeft key="Meta" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=other
+=== Cmd+W code=13 mods=[cmd] gui=14994  window=yes
+319 295156 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+320 295206 KEYDOWN KeyW key="w" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+321 295207 MENU menu:close-tab
+322 295316 KEYUP MetaLeft key="Meta" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+=== Cmd+C code=8 mods=[cmd] gui=14994  window=yes
+329 300811 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+330 300867 KEYDOWN KeyC key="c" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+331 300871 COPY tgt=body
+332 301083 KEYUP MetaLeft key="Meta" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+=== Cmd+V code=9 mods=[cmd] gui=14994  window=yes
+339 306468 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+340 306523 KEYDOWN KeyV key="v" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+341 306531 PASTE tgt=body
+342 306633 KEYUP MetaLeft key="Meta" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+=== Cmd+X code=7 mods=[cmd] gui=14994  window=yes
+349 312961 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+350 313107 KEYDOWN KeyX key="x" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+351 313147 CUT tgt=body
+352 313248 KEYUP MetaLeft key="Meta" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+=== Cmd+Z code=6 mods=[cmd] gui=14994  window=yes
+359 318881 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+360 318948 KEYDOWN KeyZ key="z" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+361 319088 KEYUP MetaLeft key="Meta" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+=== Cmd+A code=0 mods=[cmd] gui=14994  window=yes
+368 324929 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+369 325003 KEYDOWN KeyA key="a" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+370 325016 SELECTSTART tgt=body
+371 325124 KEYUP MetaLeft key="Meta" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+=== Cmd+T code=17 mods=[cmd] gui=14994  window=yes
+378 331116 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+379 331194 KEYDOWN KeyT key="t" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+380 331215 MENU menu:new-session
+381 331388 KEYUP MetaLeft key="Meta" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=other
+=== Cmd+H code=4 mods=[cmd] gui=14994  window=no
+388 337178 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+389 337261 KEYDOWN KeyH key="h" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+390 337337 VIS hidden
+=== Cmd+M code=46 mods=[cmd] gui=14994  window=no
+398 343865 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+399 343937 KEYDOWN KeyM key="m" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+400 345162 VIS hidden
+401 345163 BLUR
+=== Cmd+comma code=43 mods=[cmd] gui=14994  window=yes
+410 350440 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+411 350517 KEYDOWN Comma key="," meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+412 350520 MENU menu:settings
+413 350696 KEYUP MetaLeft key="Meta" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=other
+=== Ctrl+Cmd+S code=1 mods=[ctrl cmd] gui=14994  window=yes
+420 356495 KEYDOWN ControlLeft key="Control" meta=0 ctrl=1 alt=0 shift=0 rep=0 tgt=body
+421 356532 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=1 alt=0 shift=0 rep=0 tgt=body
+422 356602 KEYDOWN KeyS key="s" meta=1 ctrl=1 alt=0 shift=0 rep=0 tgt=body
+423 356609 MENU menu:toggle-sidebar
+424 356709 KEYUP MetaLeft key="Meta" meta=0 ctrl=1 alt=0 shift=0 rep=0 tgt=body
+425 356751 KEYUP ControlLeft key="Control" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+=== Ctrl+Cmd+F code=3 mods=[ctrl cmd] gui=14994  window=yes
+432 362556 KEYDOWN ControlLeft key="Control" meta=0 ctrl=1 alt=0 shift=0 rep=0 tgt=body
+433 362600 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=1 alt=0 shift=0 rep=0 tgt=body
+434 362684 KEYDOWN KeyF key="f" meta=1 ctrl=1 alt=0 shift=0 rep=0 tgt=body
+435 362822 KEYUP MetaLeft key="Meta" meta=0 ctrl=1 alt=0 shift=0 rep=0 tgt=body
+436 362846 KEYUP ControlLeft key="Control" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+437 362847 VIS hidden
+438 363786 VIS visible
+=== Cmd+Option+H code=4 mods=[cmd opt] gui=14994  window=yes
+446 369033 KEYDOWN MetaLeft key="Meta" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+447 369048 KEYDOWN AltLeft key="Alt" meta=1 ctrl=0 alt=1 shift=0 rep=0 tgt=body
+448 369320 KEYDOWN KeyH key="˙" meta=1 ctrl=0 alt=1 shift=0 rep=0 tgt=body
+449 369544 KEYUP AltLeft key="Alt" meta=1 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+450 369548 KEYUP MetaLeft key="Meta" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+=== Backspace code=51 mods=[] gui=14994  window=yes
+457 376372 KEYDOWN Backspace key="Backspace" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+458 376387 KEYUP Backspace key="Backspace" meta=0 ctrl=0 alt=0 shift=0 rep=0 tgt=body
+matrix done
