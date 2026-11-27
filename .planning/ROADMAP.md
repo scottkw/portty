@@ -329,7 +329,7 @@ Plans:
   3. The sharer can stop the share or revoke one viewer at any time, which ends that connection at once, and the link stops working when the share ends. The shared Mac shows join and leave notifications and a persistent "shared with N" indicator with one-click stop. (DSHR-05, DSHR-06)
   4. Every join, leave and control grant is written to a local audit log on the shared Mac. (DSHR-07)
   5. With several viewers allowed to control, whoever typed last holds control for about 2 seconds while the others wait. The person physically at the shared Mac always wins over remote input. (DCTL-04)
-**Plans**: 12/13 plans executed
+**Plans**: 13/13 plans executed
 
 Plans:
 **Wave 1**
@@ -363,7 +363,7 @@ Plans:
 - [x] 22-12-PLAN.md — Tart VM rows G-01..G-10 and SC1 on portty-test/portty-test-2 (user checkpoints: VM permission clicks, optional second Tailscale user, real-Mac items; Appendix B recorded PARTIAL)
 
 **Wave 10** *(blocked on Wave 9 completion)*
-- [ ] 22-13-PLAN.md — TESTING.md (M-NN at run time), README access-rules paragraph, recorded security review 22-SECURITY.md
+- [x] 22-13-PLAN.md — TESTING.md (M-NN at run time), README access-rules paragraph, recorded security review 22-SECURITY.md
 
 Every plan opens with a hard `test -f` gate on the upstream 20-/21-/22- SUMMARY.md files it needs and stops if one is missing.
 **Notes**: This phase widens who can reach a desktop. MOB-05 still holds for terminal links. The phase therefore gets a recorded security review covering admit, revoke, cross-token and wrong-identity cases.
@@ -437,5 +437,5 @@ Plans:
 | 19. Unattended Desktop Viewing | v2.0 | 17/17 | Complete    | 2026-11-26 |
 | 20. Remote Control | v2.0 | 11/11 | Complete    | 2026-11-27 |
 | 21. Portty App and iPhone Viewers | v2.0 | 13/13 | Complete    | 2026-11-27 |
-| 22. Click-to-Share for Tailnet People | v2.0 | 12/13 | In Progress | - |
+| 22. Click-to-Share for Tailnet People | v2.0 | 13/13 | In Progress | - |
 | 23. Audio, Adaptive Quality, Unlock and Release | v2.0 | 5/16 | In Progress | - |
