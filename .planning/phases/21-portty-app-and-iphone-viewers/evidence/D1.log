@@ -1,0 +1,89 @@
+1 1915 PROBE ready stats
+2 2476 WINHIDDEN hidden=false
+3 124505 STATS status=connecting state= viewers=0 fd=0 fw=0 fh=0 bytes=0 csp=0
+4 124769 PC new id=1
+5 124807 ICEGATHER id=1 gathering
+6 125511 STATS status=connecting state= viewers=0 fd=0 fw=0 fh=0 bytes=0 csp=0
+7 126515 STATS status=connecting state= viewers=0 fd=0 fw=0 fh=0 bytes=0 csp=0
+8 127523 STATS status=connecting state= viewers=0 fd=0 fw=0 fh=0 bytes=0 csp=0
+9 128528 STATS status=connecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+10 129700 STATS status=connecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+11 130533 STATS status=connecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+12 131536 STATS status=connecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+13 132540 STATS status=connecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+14 133546 STATS status=connecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+15 134558 STATS status=connecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+16 135560 STATS status=connecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+17 136564 STATS status=connecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+18 137571 STATS status=connecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+19 138574 STATS status=connecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+20 139577 STATS status=connecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+21 140583 STATS status=reconnecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+22 140910 PC new id=2
+23 140914 ICEGATHER id=2 gathering
+24 141588 STATS status=reconnecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+25 142592 STATS status=reconnecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+26 143597 STATS status=reconnecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+27 144604 STATS status=reconnecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+28 145612 STATS status=reconnecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+29 146616 STATS status=reconnecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+30 147621 STATS status=reconnecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+31 148628 STATS status=reconnecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+32 149633 STATS status=reconnecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+33 150636 STATS status=reconnecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+34 151641 STATS status=reconnecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+35 152644 STATS status=reconnecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+36 153653 STATS status=reconnecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+37 154658 STATS status=unreachable state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+38 155659 STATS status=unreachable state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+39 156664 STATS status=unreachable state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+40 156719 PC new id=3
+41 156723 ICEGATHER id=3 gathering
+42 157669 STATS status=unreachable state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+43 158672 STATS status=unreachable state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+44 159679 STATS status=unreachable state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+45 160681 STATS status=unreachable state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+46 161688 STATS status=unreachable state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+47 162694 STATS status=unreachable state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+48 163697 STATS status=unreachable state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+49 164701 STATS status=unreachable state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+50 165707 STATS status=unreachable state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+51 166712 STATS status=unreachable state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+52 167719 STATS status=unreachable state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+53 168722 STATS status=unreachable state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+54 169727 STATS status=unreachable state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+55 170735 STATS status=unreachable state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+56 171738 STATS status=unreachable state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+57 172740 STATS status=unreachable state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+58 173747 STATS status=unreachable state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+59 174495 PC new id=4
+60 174498 ICEGATHER id=4 gathering
+61 174750 STATS status=unreachable state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+62 214016 STATS status=connecting state= viewers=0 fd=0 fw=0 fh=0 bytes=0 csp=0
+63 214418 PC new id=5
+64 214431 ICEGATHER id=5 gathering
+65 215006 STATS status=connecting state= viewers=0 fd=0 fw=0 fh=0 bytes=0 csp=0
+66 216013 STATS status=connecting state= viewers=0 fd=0 fw=0 fh=0 bytes=0 csp=0
+67 217017 STATS status=connecting state= viewers=0 fd=0 fw=0 fh=0 bytes=0 csp=0
+68 218023 STATS status=connecting state= viewers=0 fd=0 fw=0 fh=0 bytes=0 csp=0
+69 219026 STATS status=connecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+70 220031 STATS status=connecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+71 221033 STATS status=connecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+72 222038 STATS status=connecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+73 223043 STATS status=connecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+74 224047 STATS status=connecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+75 225049 STATS status=connecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+76 226055 STATS status=connecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+77 227058 STATS status=connecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+78 228061 STATS status=connecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+79 229070 STATS status=connecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+80 230075 STATS status=reconnecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+81 230571 PC new id=6
+82 230574 ICEGATHER id=6 gathering
+83 231077 STATS status=reconnecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+84 232083 STATS status=reconnecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+85 233085 STATS status=reconnecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+86 234095 STATS status=reconnecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+87 235096 STATS status=reconnecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+88 236102 STATS status=reconnecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0
+89 237106 STATS status=reconnecting state=streaming viewers=1 fd=0 fw=0 fh=0 bytes=0 csp=0

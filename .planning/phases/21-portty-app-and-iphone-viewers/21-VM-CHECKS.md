@@ -29,3 +29,22 @@ KEYROUTE: page
 CMDKEYUP: swallowed
 RELEASE_CHORD: taken
 HIDDEN_VISIBILITY: closed=hidden menubar=hidden minimized=hidden occluded=visible
+
+# Plan 21-11: the real app on the home guest viewing the office guest (rows D1 and D2)
+
+Rig: `rig/p21-rig.sh` (new commands `build-home`, `ax2`, `wait-text2`, `stats2`, `office-viewers`, `office-assertions`, `safari2-front`, `ln-prompt2`, `tailnet-health`; `rig/keyprobe/apply.sh --stats` plus `rig/keyprobe/StatsProbe.ts`). Roles: portty-test is the office (the desktop being viewed), portty-test-2 is the home (the real Portty.app, Developer ID, identifier app.portty.Portty). Everything below ran inside the guests; the host only built bundles and streamed them. Both guests were `online=yes` (`tailnet-health`, tailscale status run inside each guest) before anything was deployed, so no re-key was needed. The office already held Screen Recording and Accessibility for the Developer ID identity (`GET /desktop/permissions` gave sr true, ax true).
+
+Builds (every build from the repo HEAD at the time; the repo tree stayed clean, `git status --porcelain --untracked-files=no -- frontend internal` printed nothing):
+
+| Build | Tree | Tags and signing |
+|-------|------|------------------|
+| office | HEAD `b845c93f` | `wailsassets vmdesktop`, Developer ID, hardened runtime, version 21.11.2, through `p19-rig.sh build ... --skip-frontend` (the same call `p20-rig.sh build20` makes; `--skip-frontend` because pnpm cannot run in a worktree) |
+| home | HEAD `b845c93f` plus the stats probe (scratch copy only: `ProbeLog` binding, `statsProbe.ts` imported first by `main.tsx`; it sets the existing `portty:desktop-debug` flag, wraps `RTCPeerConnection` to log ICE, connection and gathering state changes, and forwards `__desktopStats` counts and the `portty:window-hidden` window event to `~/p21/keyprobe.log`) | `wailsassets`, Developer ID, hardened runtime, entitlements from the tree |
+
+The first pair of builds (HEAD `51d8f9f9`) did not start: the real GUI died with SIGSEGV seconds after launch on both guests (see D1 and the Deviations of the 21-11 summary). The fix is commit `b845c93f` (occlusion event emitted off the Cocoa callback); every row below ran on builds that contain it.
+
+Setup: office GUI started once so launchd runs the daemon, `enable-desktop` (always-available on), GUI quit (daemon stays), one shell started and shared so the sidebar has a session row to compare against. Home GUI started with `start2`.
+
+| Row | Requirement | Steps (short) | Verdict | Evidence |
+|-----|-------------|---------------|---------|----------|
+| D1 | DVWR-01 (ROADMAP SC1; the picture half is 21-12's row D3) | `ax2` on the home app; `click2` on the Desktop row; `ln-prompt2`; `ax2` for the tab and card; the stats probe log; the tab closed and the row clicked again to catch the first card (`D1-connecting`) | PASS up to the prompt. Sidebar: group "Other Macs", host OFFICE (Reachable dot), its first row is the button `Desktop` (y 174), the shared session row `shell` is below it (y 202). A click opens one tab, radio button `Desktop · OFFICE` (selected). First card: heading `Connecting…`, body `Waiting for the first picture from the other Mac. If macOS asks to find devices on local networks, choose Allow.` The macOS prompt is on screen within 3 s of the click: title `Allow “Portty” to find devices on local networks?`, body `Portty needs this to show your other Mac's desktop in a tab.` (the usage string exactly), buttons `Don’t Allow` and `Allow`; its window is the topmost on screen (window layer 8, above Portty's layer 0; `ln-prompt2`: open=yes frontmost=yes names_portty=yes). Stats while the prompt stays unanswered: framesDecoded 0 throughout, peer connection 1 created with ICE gathering "gathering" and no ICE state change after that (ICE stayed `new`), the daemon reports state streaming and 1 viewer, client status connecting for 16 s, then reconnecting (peer connection 2), unreachable after 14 s more (peer connection 3), and peer connections keep being rebuilt. The Local Network card ("Portty needs Local Network access to show this desktop") was already showing at the first dump taken about 13 s after the click, with the prompt still open: the card is driven by ICE staying new for 10 s after the answer is applied, not by the user's choice. Office side: `office-viewers` state idle, viewers 0 before the click. Build note: with the first pair of builds the app crashed at launch, which blocked this row until the fix. | `evidence/D1.ax`, `evidence/D1-connecting.ax`, `evidence/D1.log` |
