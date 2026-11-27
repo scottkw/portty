@@ -24,7 +24,57 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/scottkw/portty/internal/relay"
+	"github.com/scottkw/portty/internal/tailnet"
 )
+
+// Close codes the proxy gives the web view when the peer refuses the handshake.
+// Their reasons are fixed literals: a token never reaches a close frame.
+const (
+	closeDesktopToken     websocket.StatusCode = 4401 // token refused, also after one refresh
+	closeDesktopOff       websocket.StatusCode = 4410 // the peer's always-available desktop is off
+	closeDesktopForbidden websocket.StatusCode = 4403 // the peer runs Portty on another account
+
+	// desktopReasonHeader is the header the peer's refusals carry (webserver).
+	desktopReasonHeader = "X-Portty-Desktop"
+)
+
+var desktopCloseReasons = map[websocket.StatusCode]string{
+	closeDesktopToken:             "token",
+	closeDesktopOff:               "off",
+	closeDesktopForbidden:         "forbidden",
+	websocket.StatusTryAgainLater: "remote unreachable",
+}
+
+func closeDesktopRefused(c *websocket.Conn, code websocket.StatusCode) {
+	_ = c.Close(code, desktopCloseReasons[code])
+}
+
+// refusalCode maps a refused upstream handshake to the web view's close code.
+func refusalCode(status int, marker bool, reason string) websocket.StatusCode {
+	switch {
+	case status == http.StatusUnauthorized && reason == "token":
+		return closeDesktopToken
+	case status == http.StatusGone:
+		return closeDesktopOff
+	case status == http.StatusForbidden && marker:
+		return closeDesktopForbidden
+	}
+	return websocket.StatusTryAgainLater
+}
+
+// refreshFailureStatus maps a failed token refresh the same way.
+func refreshFailureStatus(err error) websocket.StatusCode {
+	var f *peerDesktopFail
+	if errors.As(err, &f) {
+		switch f.body.Error {
+		case PeerErrDesktopOff:
+			return closeDesktopOff
+		case PeerErrForbidden:
+			return closeDesktopForbidden
+		}
+	}
+	return websocket.StatusTryAgainLater
+}
 
 // handleRemoteDesktopWS proxies an inbound web view WebSocket to the peer's
 // desktop signalling socket. It is a dumb pipe: the peer enforces the token,
@@ -48,37 +98,61 @@ func (a *API) handleRemoteDesktopWS(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return // Accept already wrote the HTTP error response
 	}
-	defer clientConn.CloseNow()
+	defer func() { _ = clientConn.CloseNow() }()
 
 	u, perr := url.Parse(baseURL)
 	if perr != nil {
-		clientConn.Close(websocket.StatusInternalError, "bad base url")
+		_ = clientConn.Close(websocket.StatusInternalError, "bad base url")
 		return
 	}
 	u.Scheme = "wss"
 	u.Path = "/desktop/ws"
-	u.RawQuery = url.Values{"cap": {token}}.Encode()
-
-	// viewer-diag lines log only the upstream hostname, never the URL or its query.
 	host := u.Hostname()
+
+	// viewer-diag lines log only the upstream hostname, never the URL or its
+	// query. redact strips the whole query first (a dial error quotes the URL),
+	// then the raw token.
+	var rawQuery, curTok string
 	redact := func(err error) string {
-		return redactCapTokenFromError(errors.New(strings.ReplaceAll(err.Error(), u.RawQuery, "<redacted>")), token)
+		return redactCapTokenFromError(errors.New(strings.ReplaceAll(err.Error(), rawQuery, "<redacted>")), curTok)
 	}
-	dialStart := time.Now()
-	dialCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
 	hdr := http.Header{}
 	hdr.Set("Origin", strings.TrimRight(baseURL, "/")) // byte-exact match to the peer's BaseURL()
-	upstream, _, derr := websocket.Dial(dialCtx, u.String(), &websocket.DialOptions{
-		HTTPClient: a.peerClient(host, ip),
-		HTTPHeader: hdr,
-	})
+	dial := func(tok string) (*websocket.Conn, *http.Response, error) {
+		curTok = tok
+		u.RawQuery = url.Values{"cap": {tok}}.Encode()
+		rawQuery = u.RawQuery
+		// 10 s dial context under the long-lived request context.
+		dialCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+		return websocket.Dial(dialCtx, u.String(), &websocket.DialOptions{
+			HTTPClient: a.peerClient(host, ip),
+			HTTPHeader: hdr,
+		})
+	}
+	dialStart := time.Now()
+	upstream, resp, derr := dial(token)
+	if derr != nil && resp != nil && resp.StatusCode == http.StatusUnauthorized && resp.Header.Get(desktopReasonHeader) == "token" {
+		// A stale token heals once: fetch a fresh one and redial. A second refusal is final.
+		if rerr := a.refreshPeerDesktopCap(r.Context(), hostKey); rerr != nil {
+			log.Printf("viewer-diag: desktop proxy token refresh failed host=%s err=%s", host, rerr)
+			closeDesktopRefused(clientConn, refreshFailureStatus(rerr))
+			return
+		}
+		if _, _, fresh, ok := a.desktopCaps.Get(hostKey); ok {
+			upstream, resp, derr = dial(fresh)
+		}
+	}
 	if derr != nil {
 		log.Printf("viewer-diag: desktop proxy dial failed host=%s err=%s", host, redact(derr))
-		clientConn.Close(websocket.StatusTryAgainLater, "remote unreachable")
+		code := websocket.StatusTryAgainLater
+		if resp != nil {
+			code = refusalCode(resp.StatusCode, resp.Header.Get(tailnet.MarkerHeader) == tailnet.MarkerValue, resp.Header.Get(desktopReasonHeader))
+		}
+		closeDesktopRefused(clientConn, code)
 		return
 	}
-	defer upstream.CloseNow()
+	defer func() { _ = upstream.CloseNow() }()
 	log.Printf("viewer-diag: desktop proxy open host=%s dial=%s", host, time.Since(dialStart))
 	opened := time.Now()
 

@@ -90,7 +90,7 @@ func TestPeerDesktop_Tracer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial desktop proxy: %v", err)
 	}
-	defer conn.CloseNow()
+	defer func() { _ = conn.CloseNow() }()
 	writeWS(ctx, t, conn, map[string]any{"type": "hello", "v": 1, "caps": map[string]int{"video": 1}})
 	readWSType(ctx, t, conn, "hello")
 }
