@@ -24,6 +24,7 @@ import {
   createDesktopClient,
   type ClientStatus,
   type ClipOutcome,
+  type DesktopClientOptions,
   type DesktopControlMsg,
   type DesktopClient,
   type DesktopStateMsg,
@@ -213,6 +214,20 @@ export interface DesktopViewProps {
   onReleaseChord?: () => void
   /** Reload Page; a Home Screen web app has no browser reload. Defaults to location.reload. */
   onReload?: () => void
+  /**
+   * Phase 21-08, the Portty app's Desktop tab embeds this view. Every prop below is optional and its
+   * default leaves the /desktop/ page as Phase 20 built it.
+   * Connection options for createDesktopClient (the loopback transport and its hooks); read once at mount.
+   */
+  clientOptions?: DesktopClientOptions
+  /** Inside a tab: no page title, no splash removal, and the root is contained by the tab, not fixed to the window. */
+  embedded?: boolean
+  /** The client, once created, and null when it is torn down. */
+  onClient?: (c: DesktopClient | null) => void
+  /** Every status the client reports. */
+  onStatus?: (s: ClientStatus) => void
+  /** The Mac's last state message; null when the connection that sent it is gone. */
+  onDesktopState?: (s: DesktopStateMsg | null) => void
 }
 
 /**
@@ -229,6 +244,11 @@ export function DesktopView({
   menuOpen = false,
   onControlChange,
   onReleaseChord,
+  clientOptions,
+  embedded = false,
+  onClient,
+  onStatus,
+  onDesktopState,
 }: DesktopViewProps = {}): React.ReactElement {
   const rootRef = useRef<HTMLDivElement>(null)
   const controlSegRef = useRef<HTMLButtonElement>(null)
@@ -243,6 +263,13 @@ export function DesktopView({
   chordCb.current = onReleaseChord
   const changeCb = useRef(onControlChange)
   changeCb.current = onControlChange
+  const optionsRef = useRef(clientOptions)
+  const clientCb = useRef(onClient)
+  clientCb.current = onClient
+  const statusCb = useRef(onStatus)
+  statusCb.current = onStatus
+  const stateCb = useRef(onDesktopState)
+  stateCb.current = onDesktopState
   const capturedRef = useRef(false)
   const noticeSeq = useRef(0)
 
@@ -331,20 +358,23 @@ export function DesktopView({
   }, [notice])
 
   useEffect(() => {
-    document.title = TITLE
-    let meta = document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-title"]')
-    if (!meta) {
-      meta = document.createElement('meta')
-      meta.name = 'apple-mobile-web-app-title'
-      document.head.appendChild(meta)
+    // Inside the app, the window's title and splash are App's, not this view's.
+    if (!embedded) {
+      document.title = TITLE
+      let meta = document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-title"]')
+      if (!meta) {
+        meta = document.createElement('meta')
+        meta.name = 'apple-mobile-web-app-title'
+        document.head.appendChild(meta)
+      }
+      meta.content = TITLE
+      // index.html's static splash belongs to the Wails window (App hides it on mount). The viewer never
+      // mounts App, so left alone it sits opaque over the picture and takes every pointer event (20-09, E1).
+      document.getElementById('splash-static')?.remove()
     }
-    meta.content = TITLE
-    // index.html's static splash belongs to the Wails window (App hides it on mount). The viewer never
-    // mounts App, so left alone it sits opaque over the picture and takes every pointer event (20-09, E1).
-    document.getElementById('splash-static')?.remove()
     // React sets the muted property but not the attribute; Safari's autoplay policy reads the attribute.
     videoRef.current?.setAttribute('muted', '')
-  }, [])
+  }, [embedded])
 
   const updateRect = useCallback(() => {
     const v = videoRef.current
@@ -373,8 +403,9 @@ export function DesktopView({
   }, [])
 
   useEffect(() => {
-    const client = createDesktopClient()
+    const client = createDesktopClient(optionsRef.current)
     clientRef.current = client
+    clientCb.current?.(client)
     const phone = isPhone()
     let lastEpoch: number | null = null
     const offs = [
@@ -476,12 +507,17 @@ export function DesktopView({
       client.on('state', (s) => {
         setDesk(s)
         setViewers(s.viewers)
+        stateCb.current?.(s)
       }),
       client.on('size', updateRect),
       client.on('status', (s) => {
         setStatus(s)
         // A state card describes the connection that is gone; the next state message replaces it.
-        if (s.kind !== 'streaming' && s.kind !== 'connecting') setDesk(null)
+        if (s.kind !== 'streaming' && s.kind !== 'connecting') {
+          setDesk(null)
+          stateCb.current?.(null)
+        }
+        statusCb.current?.(s)
       }),
     ]
     client.start()
@@ -491,6 +527,7 @@ export function DesktopView({
       inputCtl.current = null
       client.stop()
       clientRef.current = null
+      clientCb.current?.(null)
     }
   }, [startPlay, updateRect, pushNotice, typingStays])
 
@@ -757,7 +794,10 @@ export function DesktopView({
   const card = cardKey ? CARDS[cardKey] : null
 
   return (
-    <div ref={rootRef} className={canControl ? 'desktop-view desktop-view--bar' : 'desktop-view'}>
+    <div
+      ref={rootRef}
+      className={`desktop-view${canControl ? ' desktop-view--bar' : ''}${embedded ? ' desktop-view--embedded' : ''}`}
+    >
       <div
         className={active && !paused ? 'desktop-stage desktop-stage--live' : 'desktop-stage'}
         ref={stageRef}

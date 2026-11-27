@@ -7,6 +7,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { ClientStatus, DesktopEvents } from '../../lib/desktopClient'
+import { createDesktopClient } from '../../lib/desktopClient'
 import { DesktopView, videoContentRect, type DesktopViewProps, type VideoRect } from '../DesktopView'
 
 type Listener = (v: never) => void
@@ -1822,5 +1823,51 @@ describe('style.css', () => {
     const rule = css.match(/\.desktop-view__video\s*\{([^}]*)\}/)![1]
     expect(rule).toMatch(/object-fit:\s*contain/)
     expect(rule).not.toMatch(/transform|zoom|image-rendering/)
+  })
+})
+
+describe('embedding in the Portty app (Phase 21-08)', () => {
+  it('hands clientOptions to createDesktopClient and the client to onClient, null at teardown', () => {
+    const clientOptions = { check: async () => 'ok' as const }
+    const seen: unknown[] = []
+    render({ clientOptions, onClient: (c) => seen.push(c) })
+    expect(vi.mocked(createDesktopClient)).toHaveBeenCalledWith(clientOptions)
+    expect(seen).toEqual([client()])
+    act(() => root.render(<div />))
+    expect(seen).toEqual([client(), null])
+  })
+
+  it('with no new props the page still sets its title and removes the static splash', () => {
+    document.title = 'before'
+    const splash = document.createElement('div')
+    splash.id = 'splash-static'
+    document.body.appendChild(splash)
+    render()
+    expect(document.title).toBe('Portty Desktop')
+    expect(document.getElementById('splash-static')).toBeNull()
+    expect(container.querySelector('.desktop-view--embedded')).toBeNull()
+  })
+
+  it('embedded leaves the window title and the splash alone and marks the root as contained', () => {
+    document.title = 'Portty'
+    const splash = document.createElement('div')
+    splash.id = 'splash-static'
+    document.body.appendChild(splash)
+    render({ embedded: true })
+    expect(document.title).toBe('Portty')
+    expect(document.getElementById('splash-static')).not.toBeNull()
+    expect(container.querySelector('.desktop-view')?.classList.contains('desktop-view--embedded')).toBe(true)
+    splash.remove()
+  })
+
+  it('reports each status and the Mac state through onStatus and onDesktopState, state null once the connection is gone', () => {
+    const statuses: string[] = []
+    const states: unknown[] = []
+    render({ onStatus: (s) => statuses.push(s.kind), onDesktopState: (s) => states.push(s?.state ?? null) })
+    status({ kind: 'streaming' })
+    state({ state: 'display_asleep', viewers: 1, locked: false })
+    status({ kind: 'reconnecting' })
+    expect(statuses).toEqual(['streaming', 'reconnecting'])
+    expect(states).toEqual(['display_asleep', null])
   })
 })

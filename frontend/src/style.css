@@ -2543,8 +2543,8 @@ html.is-desktop :is(.sidebar, .tab-bar) input {
    message sits on a popover chip or card. The video carries only
    object-fit: the browser downsamples the stream to the window's device
    pixels, so nothing else may touch its size or sampling. */
-html:has(.desktop-view),
-html:has(.desktop-view) body {
+html:has(.desktop-view:not(.desktop-view--embedded)),
+html:has(.desktop-view:not(.desktop-view--embedded)) body {
   background: var(--color-viewer-bg);
   overscroll-behavior: none;
 }
@@ -2966,4 +2966,25 @@ html:has(.desktop-view) body {
 }
 .desktop-popover .button[aria-disabled='true'] {
   opacity: var(--opacity-disabled);
+}
+
+/* ─── Desktop tab in the Portty app (Phase 21-08, 21-UI-SPEC Surface 2) ──
+   The tab paints its own opaque viewer background, because the app window is translucent and the
+   letterbox must never show the wallpaper. A tab behind another tab is hidden with opacity and
+   pointer-events (never display: none), so its video keeps decoding. Tokens only. */
+.desktop-tab {
+  position: absolute;
+  inset: 0;
+  background: var(--color-viewer-bg);
+}
+.desktop-tab--hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+/* Contained by the tab, not fixed to the window; no safe-area padding in the app. */
+.desktop-view--embedded {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  background: var(--color-viewer-bg);
 }

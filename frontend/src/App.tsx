@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo, useSyncExtern
 import type { IProgressState } from '@xterm/addon-progress'
 import { TabBar, type Tab } from './components/TabBar'
 import { EmptyState } from './components/EmptyState'
-import { hostlessWebSessionId, nextActiveTabId, peerTabsRemoved, renameInList, tabLabel, webSessionTabId } from './lib/tabs'
+import { desktopTabId, hostlessWebSessionId, nextActiveTabId, peerTabsRemoved, renameInList, tabLabel, webSessionTabId } from './lib/tabs'
 import { RegenerateKeyModal } from './components/RegenerateKeyModal'
 import { Sidebar } from './components/Sidebar'
 import { SettingsSheet, type Appearance } from './components/SettingsSheet'
@@ -40,6 +40,7 @@ import {
 } from './wailsjs/go/main/App'
 import { aggregateProgress } from './lib/aggregateProgress'
 import type { SessionInfo, RemotePeerSessions } from './wailsjs/go/main/App'
+import type { RemotePeerSessions as SidebarPeer } from './lib/remoteSession'
 import { daemon } from './wailsjs/go/models'
 type PluginSettings = daemon.PluginSettings
 import { EventsOn } from './wailsjs/wailsjs/runtime/runtime'
@@ -49,7 +50,7 @@ import { menuShareError, menuStopError } from './lib/shareCopy'
 import { adaptRemoteSession } from './lib/remoteAdapter'
 import { peerConnectVerdict } from './lib/closeReasons'
 import type { ReconnectVerdict } from './lib/relayClient'
-import { peerView, shortHost } from './lib/sidebarPeers'
+import { desktopConnectHost, peerView, shortHost } from './lib/sidebarPeers'
 import type { AdaptedRemoteSessionInfo } from './lib/remoteAdapter'
 import { ExclamationTriangleIcon, InformationCircleIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { TailscaleBanner } from './components/TailscaleBanner'
@@ -58,6 +59,7 @@ import { WebShareSessionView } from './components/WebShareSessionView'
 import { LinkNoLongerWorks } from './components/LinkNoLongerWorks'
 import { UserRefused } from './components/UserRefused'
 import { TerminalPanel } from './components/TerminalPanel'
+import { DesktopTab } from './components/DesktopTab'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { UpdateBanner } from './components/UpdateBanner'
 import type { UpdateStatus } from './components/UpdateBanner'
@@ -1019,6 +1021,17 @@ function App(): React.ReactElement {
     [tabs, openWebSessionTab],
   )
 
+  // DVWR-01: a peer's Desktop row opens its one Desktop tab, or focuses it. The tab itself connects
+  // (DesktopTab calls ConnectPeerDesktop), so the tab shows its Connecting card at once.
+  const handleOpenDesktop = useCallback((peer: SidebarPeer) => {
+    const connectHost = desktopConnectHost(peer)
+    const id = desktopTabId(connectHost)
+    setTabs((prev) => (prev.some((t) => t.id === id)
+      ? prev
+      : [...prev, { id, sessionId: id, name: `${shortHost(peer.hostname)} › Desktop`, type: 'desktop', peerHost: peer.hostname, connectHost }]))
+    setActiveId(id)
+  }, [])
+
   // Portty 05-05 (SHAR-07): run before each peer-tab redial. Re-running the
   // connect re-checks same-account access and Share, refills this daemon's cap
   // store, and the relay port may be new after a daemon restart. It must not
@@ -1163,6 +1176,7 @@ function App(): React.ReactElement {
         onOpenLocal={handleOpenSessionTab}
         peerView={peerView(tailscaleOff, remoteLoaded, remotePeers, reconnectingHost)}
         onOpenPeer={(peer, s) => void handleOpenRemoteSession(adaptRemoteSession(peer, s))}
+        onOpenDesktop={handleOpenDesktop}
         tailscaleHealth={tailscaleHealth}
         onHide={() => setSidebarHidden(true)}
         onRename={(id, name) => void renameSession(id, name)}
@@ -1406,7 +1420,7 @@ function App(): React.ReactElement {
         )}
         {relayPort != null && relayPort > 0 &&
           tabs.map((tab) => {
-            if (tab.type === 'web-session' || tab.type === 'preview') return null
+            if (tab.type === 'web-session' || tab.type === 'preview' || tab.type === 'desktop') return null
             const isActive = tab.id === activeId
             return (
               <div
@@ -1433,6 +1447,27 @@ function App(): React.ReactElement {
                   onProgressChange={handleProgressChange}
                   onPreview={(ev) => handlePreview(tab.id, ev)}
                 />
+                </ErrorBoundary>
+              </div>
+            )
+          })}
+        {/* DVWR-01: a Desktop tab is never a terminal. Its panel stays mounted and connected behind another
+            tab: hidden with opacity and inert, never display none, so the video keeps decoding. */}
+        {relayPort != null && relayPort > 0 &&
+          tabs.map((tab) => {
+            if (tab.type !== 'desktop') return null
+            const hidden = tab.id !== activeId
+            return (
+              <div
+                key={tab.id}
+                id={`tabpanel-${tab.id}`}
+                role="tabpanel"
+                className={hidden ? 'desktop-tab desktop-tab--hidden' : 'desktop-tab'}
+                aria-hidden={hidden || undefined}
+                inert={hidden}
+              >
+                <ErrorBoundary label="desktop">
+                  <DesktopTab tab={tab} />
                 </ErrorBoundary>
               </div>
             )
