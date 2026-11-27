@@ -291,7 +291,7 @@ dc.OnOpen(func() {
 **Apply to:** `DesktopSoundButton.tsx`, `DesktopUnlockPanel.tsx` (heroicons `24/outline`, no new npm package, no new token)
 
 ### TESTING.md standing rule
-**Source:** `/Users/ken/dev/portty/CLAUDE.md` + `TESTING.md:2221`
+**Source:** `CLAUDE.md` + `TESTING.md:2221`
 **Apply to:** every plan that adds a test file: add to Section 2, add Section 4 row for each v4.0+ requirement, add M-NN in Section 5, run `bash tests/check-traceability-paths.sh`.
 
 ## No Analog Found
