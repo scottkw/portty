@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"mime"
+	"net"
 	"net/http"
 	"time"
 
@@ -146,6 +147,118 @@ func (ws *WebServer) requireSameUserPage(next http.HandlerFunc) http.HandlerFunc
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.WriteHeader(status)
 		_, _ = w.Write(page)
+	}
+}
+
+// PeerIdentity is who is on the other end of a guest connection, taken from
+// WhoIs on that connection's remote address and never from a token. The text
+// fields are raw WhoIs strings: whatever shows them (the GUI, the audit log)
+// sanitizes them first, and this package never logs a name.
+type PeerIdentity struct {
+	UserID      int64
+	LoginName   string
+	DisplayName string
+	NodeName    string
+	StableID    string
+	IP          string
+}
+
+// tailnetPeer is the guest-family identity decision: any person on the tailnet
+// whose device the Mac can name. It refuses a tagged node, a node shared in from
+// another tailnet, a zero user ID, a missing profile (the Admit prompt could not
+// name the person) and, as sameUser does, a tagged or shared-in Mac of its own.
+// It does not compare the caller's user with self: that is the widening, and
+// sameUser stays the gate for every other route.
+func tailnetPeer(who *apitype.WhoIsResponse, self *ipnstate.PeerStatus) (PeerIdentity, bool) {
+	if who == nil || who.Node == nil || who.UserProfile == nil || self == nil {
+		return PeerIdentity{}, false
+	}
+	if who.Node.IsTagged() || who.Node.Sharer != 0 || who.Node.User == 0 {
+		return PeerIdentity{}, false
+	}
+	if self.Tags != nil && self.Tags.Len() > 0 {
+		return PeerIdentity{}, false
+	}
+	if self.AltSharerUserID != 0 || self.UserID == 0 {
+		return PeerIdentity{}, false
+	}
+	return PeerIdentity{
+		UserID:      int64(who.Node.User),
+		LoginName:   who.UserProfile.LoginName,
+		DisplayName: who.UserProfile.DisplayName,
+		NodeName:    who.Node.ComputedName,
+		StableID:    string(who.Node.StableID),
+	}, true
+}
+
+// tailnetPeerStatus is the one guest-family decision, shaped like
+// sameUserStatus: 0 admits the caller and returns who they are, 403 means
+// refused (another tailnet, a tagged node, no profile, or no tailnet peer at
+// all), 503 means this Mac's tailscaled failed to answer. Every error fails
+// closed.
+func (ws *WebServer) tailnetPeerStatus(r *http.Request) (int, PeerIdentity) {
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	st, err := ws.whois.StatusWithoutPeers(ctx)
+	if err != nil || st == nil || st.Self == nil {
+		slog.Debug("webserver: tailnet-peer check: no self status", "err", err)
+		return http.StatusServiceUnavailable, PeerIdentity{}
+	}
+	who, err := ws.whois.WhoIs(ctx, r.RemoteAddr)
+	if err != nil && !errors.Is(err, local.ErrPeerNotFound) {
+		slog.Debug("webserver: tailnet-peer check: whois failed", "err", err)
+		return http.StatusServiceUnavailable, PeerIdentity{}
+	}
+	var id PeerIdentity
+	ok := false
+	if err == nil {
+		id, ok = tailnetPeer(who, st.Self)
+	}
+	if !ok {
+		var peerUser int64
+		if who != nil && who.Node != nil {
+			peerUser = int64(who.Node.User)
+		}
+		// Numeric IDs only, no names.
+		slog.Debug("webserver: tailnet-peer check refused", "peer_user", peerUser, "self_user", int64(st.Self.UserID), "err", err)
+		return http.StatusForbidden, PeerIdentity{}
+	}
+	if host, _, splitErr := net.SplitHostPort(r.RemoteAddr); splitErr == nil {
+		id.IP = host
+	} else {
+		id.IP = r.RemoteAddr
+	}
+	return 0, id
+}
+
+type peerIdentityKey struct{}
+
+func withPeerIdentity(ctx context.Context, id PeerIdentity) context.Context {
+	return context.WithValue(ctx, peerIdentityKey{}, id)
+}
+
+// peerIdentityFrom returns the identity requireTailnetPeer stored; false means
+// the handler was reached without the gate, which the caller must refuse.
+func peerIdentityFrom(ctx context.Context) (PeerIdentity, bool) {
+	id, ok := ctx.Value(peerIdentityKey{}).(PeerIdentity)
+	return id, ok
+}
+
+// requireTailnetPeer admits a person on this Mac's tailnet whose device
+// tailnetPeer accepts, and hands the handler their identity in the request
+// context. Only the /desktop/guest/ family uses it (TestGuestRouteTable_AST
+// pins that). 403 with the marker for a refusal, 503 with none when this Mac's
+// tailscaled cannot answer.
+func (ws *WebServer) requireTailnetPeer(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch status, id := ws.tailnetPeerStatus(r); status {
+		case 0:
+			next(w, r.WithContext(withPeerIdentity(r.Context(), id)))
+		case http.StatusForbidden:
+			refuseOtherUser(w)
+		default:
+			refuseLocalFault(w)
+		}
 	}
 }
 

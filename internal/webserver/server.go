@@ -749,6 +749,10 @@ func (ws *WebServer) setupRoutes() {
 
 	// Phase 19: the always-available desktop link (/desktop/ and /desktop/ws).
 	ws.setupDesktopRoutes(mux)
+
+	// Phase 22: the guest family (/desktop/guest/). The only routes behind
+	// requireTailnetPeer; every route above keeps requireSameUser(Page).
+	ws.setupDesktopGuestRoutes(mux)
 }
 
 // serveIndex serves the React bundle's index.html with the correct
