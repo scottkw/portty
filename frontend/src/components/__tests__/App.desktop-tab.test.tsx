@@ -226,6 +226,28 @@ describe('App: the tab feeds the sidebar row and closes cleanly (Task 2)', () =>
     expect(muted(c)).toBeNull()
   })
 
+  it('closing the tab takes its muted line with it while the peer still announces the desktop', async () => {
+    const c = await mountApp(impl())
+    const t = await connected(c)
+    await say(t, 'locked', true)
+    expect(muted(c)).toBe('Locked')
+    await click(c.querySelector<HTMLButtonElement>('button.tab__close[aria-label^="Close Desktop"]')!)
+    expect(desktopTabs(c)).toHaveLength(0)
+    expect(desktopRow(c)).toBeDefined()
+    expect(muted(c)).toBeNull()
+  })
+
+  it('a failed probe (peer not reachable) does not drop a still-true Locked line', async () => {
+    const c = await mountApp(impl())
+    const t = await connected(c)
+    await say(t, 'locked', true)
+    peers = [{ ...peer, reachable: false, desktop: false }]
+    await poll()
+    peers = [peer]
+    await poll()
+    expect(muted(c)).toBe('Locked')
+  })
+
   it('closing the tab unmounts the viewer, disconnects, and activates the neighbour', async () => {
     const c = await mountApp(impl())
     await click(desktopRow(c)!)

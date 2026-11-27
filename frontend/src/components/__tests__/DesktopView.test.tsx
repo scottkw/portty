@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { ClientStatus, DesktopEvents } from '../../lib/desktopClient'
 import { createDesktopClient } from '../../lib/desktopClient'
+import type { HomeClipboard } from '../../lib/controlMode'
 import { DesktopView, videoContentRect, type DesktopViewProps, type VideoRect } from '../DesktopView'
 
 type Listener = (v: never) => void
@@ -388,6 +389,30 @@ describe('control on the stage (Phase 20-06 Task 1)', () => {
     expect(client().sendInput).not.toHaveBeenCalled()
     pointerdown(stage(), 500, 250)
     expect(client().sendInput).toHaveBeenCalledWith(expect.objectContaining({ t: 'btn', b: 0, d: true, x: 0.5, y: 0.5, e: 1 }), false)
+  })
+
+  it('a later hello that drops a right takes the matching UI and input away, and a regrant brings it back', async () => {
+    const onControlChange = vi.fn()
+    render({ onControlChange })
+    ownAccount()
+    await firstFrame()
+    const clipboardBtn = () => container.querySelector('button[aria-label="Clipboard"]')
+    expect(clipboardBtn()).not.toBeNull()
+    pointerdown(stage(), 500, 250)
+    expect(client().sendInput).toHaveBeenCalledWith(expect.objectContaining({ t: 'btn', d: true }), false)
+    client().sendInput.mockClear()
+    act(() => client().emit('rights', { control: true, clipboard: false, surface: false }))
+    expect(clipboardBtn()).toBeNull()
+    act(() => client().emit('rights', { control: false, clipboard: false, surface: false }))
+    expect(onControlChange).toHaveBeenLastCalledWith(expect.objectContaining({ available: false }))
+    client().sendInput.mockClear()
+    pointerdown(stage(), 500, 250)
+    expect(client().sendInput).not.toHaveBeenCalled()
+    act(() => client().emit('rights', { control: true, clipboard: true, surface: true }))
+    expect(onControlChange).toHaveBeenLastCalledWith(expect.objectContaining({ available: true }))
+    expect(clipboardBtn()).not.toBeNull()
+    pointerdown(stage(), 500, 250)
+    expect(client().sendInput).toHaveBeenCalledWith(expect.objectContaining({ t: 'btn', d: true }), false)
   })
 
   it('creates no controller when the hello does not grant control', () => {
@@ -1383,6 +1408,44 @@ describe('Paste to Mac and the popovers (Phase 20-08 Task 2)', () => {
       resolve({ outcome: 'ok' })
       await flush()
       expect(notice()?.textContent).toBe("Sent to the Mac's clipboard; press ⌘V")
+    })
+
+    describe('with a readClipboard bridge (the app)', () => {
+      const run = async (read: () => Promise<HomeClipboard>) => {
+        const readText = vi.fn(async () => 'browser text')
+        stubClipboard({ readText })
+        render({ readClipboard: read })
+        ownAccount()
+        await firstFrame()
+        await choose('Paste to Mac')
+        await flush()
+        return readText
+      }
+
+      it('reads through the bridge, never navigator.clipboard, and sends the text', async () => {
+        const readText = await run(async () => ({ outcome: 'ok', text: 'bridge text' }))
+        expect(readText).not.toHaveBeenCalled()
+        expect(client().pasteToMac).toHaveBeenCalledWith('bridge text')
+        expect(notice()?.textContent).toBe("Sent to the Mac's clipboard; press ⌘V")
+      })
+
+      it.each([
+        ['concealed', 'Your clipboard holds a hidden item (password manager); not sent', 'status'],
+        ['too_large', 'Your clipboard text is too large to send (limit 1 MB)', 'status'],
+        ['empty', 'Your clipboard has no text', 'status'],
+        ['failed', "Couldn't send to the Mac. Try again.", 'alert'],
+      ])('%s sends nothing and says so', async (outcome, text, kind) => {
+        await run(async () => ({ outcome: outcome as HomeClipboard['outcome'], text: outcome === 'concealed' ? 'secret' : '' }))
+        expect(client().pasteToMac).not.toHaveBeenCalled()
+        expect(notice()?.textContent).toBe(text)
+        expect(notice()?.getAttribute('role')).toBe(kind === 'alert' ? 'alert' : null)
+      })
+
+      it('a rejected bridge call fails closed', async () => {
+        await run(async () => { throw new Error('boom') })
+        expect(client().pasteToMac).not.toHaveBeenCalled()
+        expect(notice()?.textContent).toBe("Couldn't send to the Mac. Try again.")
+      })
     })
 
     it.each(['failed', 'forbidden', 'busy', 'waiting_approval'])('a %s outcome shows Couldn\'t send to the Mac. Try again. (role alert)', async (outcome) => {

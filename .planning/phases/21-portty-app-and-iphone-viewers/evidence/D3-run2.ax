@@ -1,0 +1,64 @@
+trusted: true
+AXWindow [AXStandardWindow] Title=Portty @40,30 1200x690
+ AXGroup @40,30 1200x690
+  AXGroup @0,30 1200x690
+   AXScrollArea DOMClassList=( ) @40,30 1200x690
+    AXWebArea Description=Portty Desktop (debug fd=1447 fw=2560 csp=0 st=streaming) DOMClassList=( ) @40,30 1200x690
+     AXGroup [AXEmptyGroup] DOMClassList=(     "visually-hidden" ) @39,29 1x1
+     AXGroup [AXLandmarkNavigation] Title=Sessions Description=Sessions DOMClassList=(     sidebar ) @40,30 248x690
+      AXButton Title=Hide Sidebar Description=Hide Sidebar DOMClassList=(     "sidebar__hide" ) @251,42 28x28
+      AXGroup [AXLandmarkRegion] Title=This Mac Description=This Mac DOMClassList=(     "sidebar__group",     "sidebar__group--empty" ) @48,86 231x52
+       AXHeading Title=This Mac Value=2 DOMIdentifier=sidebar-group-local DOMClassList=(     "sidebar__group-header" ) @56,88 191x16
+        AXStaticText Value=This Mac DOMClassList=( ) @80,89 50x14
+       AXButton Title=New Session Description=New Session DOMClassList=(     "sidebar__group-add" ) @251,86 20x20
+       AXList [AXContentList] DOMClassList=(     "sidebar__rows" ) @48,110 231x28
+        AXGroup DOMClassList=( ) @48,110 231x28
+         AXButton Title=New Session Description=New Session DOMClassList=(     "sidebar__row",     "sidebar__row--action" ) @48,110 231x28
+      AXGroup [AXLandmarkRegion] Title=Other Macs Description=Other Macs DOMClassList=(     "sidebar__group" ) @48,154 231x104
+       AXHeading Title=Other Macs Value=2 DOMIdentifier=sidebar-group-peers DOMClassList=(     "sidebar__group-header" ) @56,154 215x16
+        AXStaticText Value=Other Macs DOMClassList=( ) @80,155 64x14
+       AXList [AXContentList] DOMClassList=(     "sidebar__rows" ) @48,174 231x84
+        AXGroup Value=OFFICE Reachable DOMClassList=(     "sidebar__host-item" ) @48,174 231x84
+         AXGroup DOMClassList=(     "sidebar__host" ) @48,174 231x28
+          AXStaticText Value=OFFICE DOMClassList=( ) @80,180 102x16
+          AXImage Title=Reachable Description=Reachable DOMClassList=(     "sidebar__dot",     "sidebar__dot--on" ) @263,184 8x8
+         AXList [AXContentList] Title=OFFICE Description=OFFICE DOMClassList=(     "sidebar__rows",     "sidebar__rows--nested" ) @48,202 231x56
+          AXGroup DOMClassList=( ) @48,202 231x28
+           AXButton Title=Desktop DOMClassList=(     "sidebar__row" ) @48,202 231x28
+          AXGroup DOMClassList=( ) @48,230 231x28
+           AXButton Title=shell DOMClassList=(     "sidebar__row" ) @48,230 231x28
+      AXGroup [AXApplicationStatus] DOMClassList=(     "sidebar__footer" ) @40,692 247x28
+       AXStaticText Value=Tailscale connected · HOME DOMClassList=( ) @72,700 192x13
+     AXTabGroup Title=Open sessions Description=Open sessions DOMClassList=(     "tab-list" ) @300,30 652x51
+      AXGroup DOMClassList=(     tab,     "tab--active" ) @300,41 220x29
+       AXRadioButton Title=Desktop · OFFICE Value=1 DOMIdentifier=tab-desktop:TAILNET-NAME DOMClassList=(     "tab__label" ) @312,41 180x29
+       AXButton Title=Close Desktop · OFFICE Description=Close Desktop · OFFICE DOMClassList=(     "tab__close" ) @496,45 20x21
+       AXGroup [AXEmptyGroup] DOMClassList=(     "tab__progress" ) @300,41 220x10
+     AXButton Title=New Session Description=New Session DOMClassList=(     "tab-bar__icon-button" ) @960,41 28x29
+     AXGroup [AXApplicationStatus] Description=While you control OFFICE, every key goes to that Mac, including Cmd+Q, Cmd+W and Cmd+C. Press Ctrl+Option+Cmd+Shift+Return to get Portty's shortcuts back. DOMClassList=(     "toolbar-chip",     "toolbar-chip--desktop" ) @996,37 232x37
+      AXStaticText Value=On OFFICE DOMClassList=( ) @1008,39 123x17
+      AXStaticText Value=Click the picture to control DOMClassList=( ) @1008,57 151x15
+     AXStaticText Value=While you control OFFICE, every key goes to that Mac, including Cmd+Q, Cmd+W and Cmd+C. Press Ctrl+Option+Cmd+Shift+Return to get Portty's shortcuts back. DOMClassList=( ) @299,56 1048x16
+     AXGroup [AXTabPanel] DOMIdentifier=tabpanel-desktop:TAILNET-NAME DOMClassList=(     "desktop-tab" ) @288,82 952x638
+      AXGroup DOMClassList=( ) @288,82 952x638
+       AXGroup [AXWebApplication] Title=Mac desktop Description=Mac desktop DOMClassList=(     "desktop-stage",     "desktop-stage--live" ) @288,82 952x638
+        AXGroup [AXEmptyGroup] Title=Mac desktop Description=Mac desktop DOMClassList=(     "desktop-view__video" ) @288,82 952x638
+        AXStaticText Value=While this has focus, your keyboard and pointer control the Mac. To give the keyboard back, press Control, Option, Command, Shift and Return together. DOMClassList=( ) @287,718 1102x20
+        AXTextArea Title=Mac desktop Description=Mac desktop DOMClassList=(     "desktop-stage__input" ) @288,81 2x2
+       AXGroup [AXApplicationStatus] DOMClassList=(     "desktop-status__text" ) @288,82 952x10
+        AXStaticText Value=Streaming DOMClassList=( ) @763,399 75x20
+       AXGroup [AXEmptyGroup] DOMClassList=(     "desktop-notice-slot" ) @288,82 952x10
+       AXToolbar Title=Desktop controls Description=Desktop controls DOMClassList=(     "desktop-bar",     "desktop-bar--hidden" ) @386,82 756x36
+        AXPopUpButton Title=Main Display Description=Main Display DOMClassList=(     "desktop-bar__item",     "desktop-bar__picker" ) @391,83 144x31
+        AXSplitter DOMClassList=(     "desktop-bar__divider" ) @542,92 2x16
+        AXPopUpButton Title=Send Keys Description=Send Keys DOMClassList=(     "desktop-bar__item" ) @551,86 130x28
+        AXPopUpButton Title=Clipboard Description=Clipboard DOMClassList=(     "desktop-bar__item" ) @684,86 126x28
+        AXSplitter DOMClassList=(     "desktop-bar__divider" ) @817,92 2x16
+        AXCheckBox [AXToggle] Title=Swap Ctrl and Cmd Description=Swap Ctrl and Cmd Value=0 DOMClassList=(     "desktop-bar__item",     "desktop-bar__toggle" ) @826,86 163x28
+        AXRadioGroup Title=Control mode Description=Control mode Value=<AXUIElement 0x74dec106f0> {pid=42214} DOMClassList=(     "share-segbar",     "desktop-bar__segbar" ) @992,86 145x28
+         AXRadioButton Title=View Only Value=0 DOMClassList=(     "share-seg" ) @994,88 71x24
+         AXRadioButton Title=Control Value=1 DOMClassList=(     "share-seg",     "is-active" ) @1064,88 71x24
+ AXButton [AXCloseButton] @58,48 16x16
+ AXButton [AXFullScreenButton] @104,48 16x16
+  AXGroup @105,49 14x14
+ AXButton [AXMinimizeButton] @81,48 16x16

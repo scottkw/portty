@@ -156,7 +156,9 @@ func TestPeerDesktop_CapRouteFailures(t *testing.T) {
 	}
 }
 
-func TestPeerDesktop_RefusedSharePortIsDesktopOff(t *testing.T) {
+// A refused share port is the peer daemon restarting or just waking, not "off":
+// only a 404 is terminal, so this stays retryable and the held token is kept.
+func TestPeerDesktop_RefusedSharePortIsRetryable(t *testing.T) {
 	peer := newFakeDesktopPeer(t, echoWS)
 	a := newViewerFor(t, peer.srv.URL)
 	peer.srv.Close()
@@ -164,11 +166,11 @@ func TestPeerDesktop_RefusedSharePortIsDesktopOff(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, body := postPeerDesktop(t, a, officeFQDN)
-	if e := decodeConnectErr(t, body); code != http.StatusConflict || e.Error != PeerErrDesktopOff {
-		t.Fatalf("POST = %d %s; want 409 desktop_off", code, body)
+	if e := decodeConnectErr(t, body); code != http.StatusBadGateway || e.Error != PeerErrUnreachable {
+		t.Fatalf("POST = %d %s; want 502 unreachable", code, body)
 	}
-	if _, _, _, ok := a.desktopCaps.Get(officeFQDN); ok {
-		t.Fatal("the stored token survived a refused share port")
+	if _, _, held, ok := a.desktopCaps.Get(officeFQDN); !ok || held != "previous" {
+		t.Fatal("a refused share port dropped the held token")
 	}
 }
 
@@ -185,6 +187,29 @@ func TestPeerDesktop_HostResolutionFailures(t *testing.T) {
 	a.SetPeerSeamsForTest(func(context.Context) ([]tailnet.Peer, error) { return nil, context.DeadlineExceeded }, nil, nil)
 	if code, body := postPeerDesktop(t, a, officeFQDN); code != http.StatusServiceUnavailable || decodeConnectErr(t, body).Error != PeerErrTailscaleOff {
 		t.Fatalf("discover error = %d %s; want 503 tailscale_off", code, body)
+	}
+}
+
+// AR-21-01: connect re-resolves the host against the (own-account-filtered)
+// discovery list on the daemon side. A host the UI names that discovery does not
+// list, such as a node shared in from another account, is refused before any
+// cap is fetched or stored.
+func TestPeerDesktop_RefusesHostMissingFromDiscovery(t *testing.T) {
+	a, peer := capRoute(t, 0, "tok")
+	const sharedIn = "sharedin-air.example"
+	for _, host := range []string{sharedIn, "sharedin-air"} {
+		if code, body := postPeerDesktop(t, a, host); code != http.StatusNotFound || decodeConnectErr(t, body).Error != PeerErrUnknownHost {
+			t.Fatalf("POST %q = %d %s; want 404 unknown_host", host, code, body)
+		}
+	}
+	peer.mu.Lock()
+	posts := peer.capPosts
+	peer.mu.Unlock()
+	if posts != 0 {
+		t.Fatalf("cap route hit %d times for a host discovery does not list", posts)
+	}
+	if _, _, _, ok := a.desktopCaps.Get(sharedIn); ok {
+		t.Fatal("a cap was stored for a host discovery does not list")
 	}
 }
 

@@ -204,6 +204,25 @@ type Deps struct {
 	Pasteboard PasteboardBridge
 	// Notify posts the approval-lapse notification when the daemon is its sender; nil means log-only.
 	Notify func(id, title, body string)
+	// OnViewerJoin and OnViewerLeave fire once per viewer, own-account or guest,
+	// after the join succeeds and after the viewer is removed. Both run outside
+	// every Manager lock; nil means nothing.
+	OnViewerJoin, OnViewerLeave func(Viewer)
+	// PeerIdentity resolves a media peer address to the user ID and stable node
+	// ID that tailscaled reports for it. A guest's selected ICE pair is checked
+	// against the admitted identity through it (media_binding.go); nil closes
+	// every guest, an own-account viewer is never checked.
+	PeerIdentity func(ctx context.Context, addr string) (userID int64, stableID string, err error)
+
+	// Physical reports what the listen-only input tap knows about the person at
+	// the Mac; nil means TapPhysicalSource. StartTap, StopTap and TapState drive
+	// that tap (nil means the screencap functions; StartTap refuses under tests)
+	// and SecureInputOn reads Secure Event Input. Tests replace every one.
+	Physical      PhysicalSource
+	StartTap      func() error
+	StopTap       func()
+	TapState      func() (running, enabled bool)
+	SecureInputOn func() bool
 
 	// The native reads and actions below default (when nil) to the screencap
 	// bridges and the real prober, so a host that does not care wires nothing;
@@ -268,6 +287,16 @@ type viewer struct {
 	inputCap int                 // the viewer's hello caps input, 1 when it can send input
 	in       *viewerInput        // its input state, guarded by Manager.in.mu
 	dc       *webrtc.DataChannel // its accepted input channel, guarded by Manager.vmu
+
+	gs       *GuestShare // the share a guest was admitted to; nil for an own-account viewer
+	mediaCut atomic.Bool // a media identity check already cut this guest
+	cut      atomic.Bool // CloseViewer or CloseGuests already cut this viewer
+	// leaseReady is set once the answer is sent: lease messages start then.
+	leaseReady atomic.Bool
+
+	// rights is the live Rights, changed by SetRights and read by the press gate
+	// and the clipboard handlers; Viewer.Rights is only the starting record.
+	rights atomic.Uint32
 }
 
 // Manager owns the media socket, the shared track, the capture source and the
@@ -304,6 +333,15 @@ type Manager struct {
 
 	// clip is the clipboard's state (clipboard.go).
 	clip clipState
+
+	// arb decides who may type right now (arbiter.go); lease is what viewers are
+	// told about it and the input tap's life cycle (lease.go).
+	arb   *arbiter
+	lease leaseCtl
+
+	// rmu serialises SetRights, so the live bits and the admission's stored grants
+	// stay in the same order; a leaf lock.
+	rmu sync.Mutex
 
 	vmu      sync.Mutex
 	viewers  map[ViewerID]*viewer
@@ -430,6 +468,21 @@ func NewManager(d Deps) (*Manager, error) {
 	if d.Window == nil {
 		d.Window = screencap.NewWindowBridge()
 	}
+	if d.Physical == nil {
+		d.Physical = TapPhysicalSource()
+	}
+	if d.StartTap == nil {
+		d.StartTap = screencap.StartInputTap
+	}
+	if d.StopTap == nil {
+		d.StopTap = screencap.StopInputTap
+	}
+	if d.TapState == nil {
+		d.TapState = screencap.InputTapState
+	}
+	if d.SecureInputOn == nil {
+		d.SecureInputOn = screencap.SecureInputOn
+	}
 	if d.Pasteboard == nil {
 		d.Pasteboard = screencap.NewPasteboard()
 	}
@@ -437,6 +490,9 @@ func NewManager(d Deps) (*Manager, error) {
 		d: d, ctx: context.Background(), viewers: make(map[ViewerID]*viewer),
 		reasons: make(map[string]string), kick: make(chan struct{}, 1), tickViewers: stateTickViewers, tickIdle: stateTickIdle,
 	}
+	m.arb = newArbiter(d.Now, d.Physical)
+	m.lease.kick = make(chan struct{}, 1)
+	m.lease.sent = make(map[ViewerID]msgLease)
 	m.in.epoch.Store(1)
 	m.in.counts = make(map[string]uint64)
 	m.in.wake = make(chan struct{}, 1)
@@ -487,6 +543,8 @@ func (m *Manager) Start(ctx context.Context) error {
 	go m.surfaceLoop(lctx, m.surf.done)
 	m.win.done = make(chan struct{})
 	go m.windowLoop(lctx, m.win.done)
+	m.lease.done = make(chan struct{})
+	go m.leaseLoop(lctx, m.lease.done)
 
 	// The input goroutine outlives the state loop's context, and the caller's:
 	// the daemon cancels ctx before it calls Close, and Close drains the queued
@@ -559,6 +617,13 @@ func newViewerID() (string, error) {
 // admits nobody). Logs carry counts, viewer ID prefixes and error codes
 // only: never a token, SDP or address.
 func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn, admit func() bool) {
+	m.ServeDesktopViewerAs(ctx, c, admit, Identity{})
+}
+
+// ServeDesktopViewerAs is ServeDesktopViewer for a caller that knows who the
+// own-account viewer is; the identity is recorded on the Viewer. The wire is
+// the same as ServeDesktopViewer's.
+func (m *Manager) ServeDesktopViewerAs(ctx context.Context, c *websocket.Conn, admit func() bool, ident Identity) {
 	defer recoverLog()
 	defer func() { _ = c.CloseNow() }()
 	c.SetReadLimit(readLimit)
@@ -606,6 +671,23 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn, adm
 		return
 	}
 
+	v := &viewer{Viewer: Viewer{ID: ViewerID(id), Rights: rights, JoinedAt: m.d.Now(), Mode: ModeOwn, Identity: ident}, ws: c, inputCap: inputCap, in: &viewerInput{}}
+	v.setRightsBits(rights)
+	m.serveAdmitted(ctx, c, v, admit, nil)
+}
+
+// readResult is one frame read off a viewer's socket on another goroutine.
+type readResult struct {
+	in  inbound
+	err error
+}
+
+// serveAdmitted is everything after the hello: the offer, the answer, the join
+// and the read loop. v is fully built (ID, rights, mode, identity). pend, when
+// not nil, is a read already in flight on c (a guest's wait loop leaves one
+// running); its result is taken before the socket is read again.
+func (m *Manager) serveAdmitted(ctx context.Context, c *websocket.Conn, v *viewer, admit func() bool, pend <-chan readResult) {
+	id := string(v.ID)
 	// offer: a ping before it is answered, anything else is refused.
 	offerDeadline := time.Now().Add(offerTimeout)
 	var offer string
@@ -614,7 +696,19 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn, adm
 		if rem <= 0 {
 			return // read treats a zero wait as unbounded: pings must not extend the handshake
 		}
-		in, err := read(ctx, c, rem)
+		var in inbound
+		var err error
+		if pend != nil {
+			select {
+			case r := <-pend:
+				in, err = r.in, r.err
+				pend = nil
+			case <-time.After(rem):
+				return
+			}
+		} else {
+			in, err = read(ctx, c, rem)
+		}
 		if err != nil {
 			if errors.Is(err, errBadMessage) {
 				reject(ctx, c, errCodeBadMessage)
@@ -638,7 +732,6 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn, adm
 		}
 	}
 
-	v := &viewer{Viewer: Viewer{ID: ViewerID(id), Rights: rights, JoinedAt: m.d.Now()}, ws: c, inputCap: inputCap, in: &viewerInput{}}
 	pc, answerSDP, err := m.answer(ctx, v, offer)
 	if err != nil {
 		slog.Warn("desktop: offer failed", "viewer", id[:8])
@@ -657,12 +750,19 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn, adm
 			v.ready = true
 			m.vmu.Unlock()
 			m.requestKeyframe("connected")
+			if v.Mode == ModeGuest {
+				m.checkSelectedPair(v)
+			}
 		case webrtc.PeerConnectionStateFailed:
 			// Close the socket so the viewer rebuilds from scratch, not a zombie
 			// that keeps capture running.
 			go func() { _ = c.Close(websocket.StatusGoingAway, "media failed") }()
 		}
 	})
+
+	if v.Mode == ModeGuest {
+		m.bindGuestMedia(v, pc)
+	}
 
 	// Capture starts only after a successful answer, so a refused offer never
 	// starts the source.
@@ -672,18 +772,53 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn, adm
 			return
 		}
 		if errors.Is(err, errRevoked) {
-			_ = c.Close(CloseTokenRejected, "token rejected")
+			reason := "token rejected"
+			if v.Mode == ModeGuest {
+				reason = guestReasonTokenInvalid // a fixed code the guest page reads
+			}
+			_ = c.Close(CloseTokenRejected, reason)
 			return
 		}
 		slog.Warn("desktop: join failed", "viewer", id[:8], "err", err)
 		_ = c.Close(websocket.StatusInternalError, "capture unavailable")
 		return
 	}
-	defer m.leave(v)
+	joined := false
+	defer func() {
+		m.leave(v)
+		if joined && m.d.OnViewerLeave != nil {
+			m.d.OnViewerLeave(v.Viewer)
+		}
+	}()
+	if v.gs != nil {
+		// Registered above, so a Stop or revoke either finds v and cuts it or has
+		// already happened and is seen here: neither can be missed.
+		select {
+		case <-v.gs.Ended():
+			_ = c.Close(CloseShareEnded, guestReasonShareEnded)
+			return
+		default:
+		}
+		if v.gs.IsDenied(v.Identity.UserID) {
+			_ = c.Close(CloseGuestRevoked, guestReasonRevoked)
+			return
+		}
+		key := AdmissionKey{UserID: v.Identity.UserID, StableID: v.Identity.StableID}
+		v.gs.attach(key, v.ID, func() { _ = c.Close(websocket.StatusNormalClosure, guestReasonReplaced) })
+		defer v.gs.detach(key, v.ID)
+	}
+	joined = true
+	m.syncTap() // the first controller starts the tap before its first press
+	m.kickLease()
+	if m.d.OnViewerJoin != nil {
+		m.d.OnViewerJoin(v.Viewer)
+	}
 
 	if err := send(ctx, c, msgAnswer{Type: typeAnswer, SDP: answerSDP}); err != nil {
 		return
 	}
+	v.leaseReady.Store(true) // lease messages follow the answer, never precede it
+	m.kickLease()
 	m.broadcastState(ctx)
 	if w, h, ok := m.size(); ok {
 		_ = send(ctx, c, msgSize{Type: typeSize, W: w, H: h})
@@ -846,6 +981,7 @@ func (m *Manager) restartSource() error {
 // only runs while someone is watching).
 func (m *Manager) leave(v *viewer) {
 	m.ReleaseViewer(v.ID, "left")
+	m.arb.forget(v.ID)
 	m.clip.drop(v.ID)
 	m.mu.Lock()
 	m.vmu.Lock()
@@ -859,6 +995,8 @@ func (m *Manager) leave(v *viewer) {
 		m.releaseViewerHolds()
 	}
 	m.mu.Unlock()
+	m.syncTap()
+	m.kickLease()
 	m.kickLoop()
 	slog.Info("desktop: viewer left", "viewer", string(v.ID)[:8], "viewers", n)
 	m.broadcastState(context.Background())
@@ -1043,12 +1181,14 @@ func (m *Manager) Viewers() int {
 }
 
 // ViewerList returns a copy of every connected viewer's record, oldest first.
-// Later phases read rights from it.
+// Rights is the live value.
 func (m *Manager) ViewerList() []Viewer {
 	m.vmu.Lock()
 	out := make([]Viewer, 0, len(m.viewers))
 	for _, v := range m.viewers {
-		out = append(out, v.Viewer)
+		vw := v.Viewer
+		vw.Rights = Rights(v.rights.Load())
+		out = append(out, vw)
 	}
 	m.vmu.Unlock()
 	sort.Slice(out, func(i, j int) bool { return out[i].JoinedAt.Before(out[j].JoinedAt) })
@@ -1103,14 +1243,16 @@ func (m *Manager) Close() error {
 		m.in.mu.Unlock()
 	}
 	m.mu.Lock()
-	cancel, done, surfDone, winDone := m.loopCancel, m.loopDone, m.surf.done, m.win.done
+	cancel, done, surfDone, winDone, leaseDone := m.loopCancel, m.loopDone, m.surf.done, m.win.done, m.lease.done
 	m.mu.Unlock()
 	if cancel != nil {
 		cancel()
 		<-done
 		<-surfDone
 		<-winDone
+		<-leaseDone
 	}
+	m.syncTap() // closed is set: no controller counts, so the tap stops
 
 	m.CloseAll(websocket.StatusServiceRestart, "server stopping")
 	m.kmu.Lock()

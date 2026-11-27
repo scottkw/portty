@@ -158,6 +158,74 @@ int pc_ax_focus(int *pid, double *x, double *y, double *w, double *h, int *ok) {
 	}
 }
 
+// Reads the element that holds keyboard focus: the system-wide focused UI
+// element, not the focused application's focused window, because a
+// non-activating panel (Spotlight, Alfred, Raycast) holds key focus without
+// becoming the focused application. Reports the element's owner pid and the
+// frame of its window. ok is NO when there is no element or no window (fail
+// closed); any other Accessibility failure is returned as is.
+static AXError pcKeyFocusRead(pid_t *pid, CGRect *frame, BOOL *ok) {
+	*ok = NO;
+	AXUIElementRef sys = AXUIElementCreateSystemWide();
+	if (sys == NULL) return kAXErrorFailure;
+	CFTypeRef el = NULL;
+	AXError e = AXUIElementCopyAttributeValue(sys, kAXFocusedUIElementAttribute, &el);
+	CFRelease(sys);
+	if (e == kAXErrorNoValue) return kAXErrorSuccess;
+	if (e != kAXErrorSuccess) return e;
+	if (el == NULL) return kAXErrorFailure;
+	AXUIElementSetMessagingTimeout((AXUIElementRef)el, kPCAXTimeout);
+	pid_t p = 0;
+	if (AXUIElementGetPid((AXUIElementRef)el, &p) != kAXErrorSuccess) {
+		CFRelease(el);
+		return kAXErrorFailure;
+	}
+	*pid = p;
+	CFTypeRef win = NULL;
+	AXError we = AXUIElementCopyAttributeValue((AXUIElementRef)el, kAXWindowAttribute, &win);
+	AXError result = kAXErrorSuccess;
+	if (we == kAXErrorSuccess && win != NULL) {
+		*ok = pcAXFrame((AXUIElementRef)win, frame);
+	} else if (we == kAXErrorNoValue || we == kAXErrorAttributeUnsupported) {
+		// The focused element may itself be the window.
+		CFTypeRef role = NULL;
+		if (AXUIElementCopyAttributeValue((AXUIElementRef)el, kAXRoleAttribute, &role) == kAXErrorSuccess && role != NULL &&
+		    CFGetTypeID(role) == CFStringGetTypeID() && CFEqual(role, kAXWindowRole)) {
+			*ok = pcAXFrame((AXUIElementRef)el, frame);
+		}
+		if (role != NULL) CFRelease(role);
+	} else {
+		result = we; // a hung or failing app: the caller fails closed
+	}
+	if (win != NULL) CFRelease(win);
+	CFRelease(el);
+	return result;
+}
+
+int pc_ax_key_focus(int *pid, double *x, double *y, double *w, double *h, int *ok) {
+	@autoreleasepool {
+		@try {
+			pcAXInit();
+			pid_t p = 0;
+			CGRect f = CGRectZero;
+			BOOL have = NO;
+			AXError e = pcKeyFocusRead(&p, &f, &have);
+			if (e != kAXErrorSuccess) return (int)e;
+			*ok = have ? 1 : 0;
+			if (have) {
+				*pid = p;
+				*x = f.origin.x;
+				*y = f.origin.y;
+				*w = f.size.width;
+				*h = f.size.height;
+			}
+			return 0;
+		} @catch (NSException *ex) {
+			return kPCWindowExceptionErr;
+		}
+	}
+}
+
 // The frame, owner and on-screen flag of one window by its CGWindowID; a window
 // that no longer exists is kPCWindowNilErr.
 int pc_window_info(uint32_t wid, int *pid, double *x, double *y, double *w, double *h, int *onScreen) {

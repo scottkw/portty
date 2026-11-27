@@ -6,6 +6,10 @@ import { desktopTabId, hostlessWebSessionId, nextActiveTabId, peerTabsRemoved, r
 import { RegenerateKeyModal } from './components/RegenerateKeyModal'
 import { Sidebar } from './components/Sidebar'
 import { SettingsSheet, type Appearance } from './components/SettingsSheet'
+import { ShareDesktopSheet } from './components/ShareDesktopSheet'
+import { AdmitSheet } from './components/AdmitSheet'
+import { ShareBanner } from './components/ShareBanner'
+import { useDesktopShare, NO_SHARE_EVENTS } from './lib/desktopShare'
 import { stripAnsi } from './lib/stripAnsi'
 import { sanitizeFilename } from './lib/sanitizeFilename'
 import { detectMode, readWebModeParams } from './lib/webMode'
@@ -145,6 +149,10 @@ function App(): React.ReactElement {
   const [tailscaleHealth, setTailscaleHealth] = useState<TailscaleHealth | null>(null)
   // NET-01: null means "not checked yet" (and always in web mode), which is not "off".
   const tailscaleOff = tailscaleHealth !== null && !tailscaleHealth.connected
+  // Phase 22 click-to-share: the tray, a notification or Settings opens the sheet. No Wails events in web mode.
+  const share = useDesktopShare(mode === 'web' ? NO_SHARE_EVENTS : undefined)
+  // Secure Event Input blinds the physical-input check only while someone could be typing remotely.
+  const secureInputBanner = share.state.secureInput && share.state.anyController
   const [daemonError, setDaemonError] = useState<string | null>(null)
   // Plugin settings state (PLUG-03): updated by GetPluginSettings on mount
   // and by the EventsOn('settings:plugins') subscription. Threaded into every
@@ -811,9 +819,10 @@ function App(): React.ReactElement {
         if (!cancelled) {
           setRemotePeers(peers ?? [])
           setRemoteLoaded(true)
-          // A peer that stopped announcing its desktop takes its muted line with it.
+          // A peer that answered and stopped announcing its desktop takes its muted line with it. A peer that
+          // did not answer (one failed probe) says nothing: the Mac only sends its state on change.
           setDesktopStates((prev) => {
-            const keep = Object.entries(prev).filter(([host]) => (peers ?? []).some((p) => (p.dnsName || p.hostname) === host && p.desktop === true))
+            const keep = Object.entries(prev).filter(([host]) => !(peers ?? []).some((p) => desktopConnectHost(p) === host && p.reachable && p.desktop !== true))
             return keep.length === Object.keys(prev).length ? prev : Object.fromEntries(keep)
           })
         }
@@ -1259,9 +1268,14 @@ function App(): React.ReactElement {
           ((webglContextLost || webglSoftwareDetected) && !webglBannerDismissed) ||
           saveBanner !== null ||
           shareFailure !== null ||
+          secureInputBanner ||
+          share.stoppedNotice ||
           pluginToggleBanners.length > 0) && (
           <div className="banner-stack">
             {tailscaleOff && <TailscaleBanner />}
+            {secureInputBanner && <ShareBanner kind="secure-input" />}
+            {/* closeSheet is the dismiss: it clears the notice, and the sheet cannot be open under a click here. */}
+            {share.stoppedNotice && <ShareBanner kind="stopped" onShare={share.openSheet} onDismiss={share.closeSheet} />}
             {/* UPGR-04: no action here may end sessions; relaunching hands off or asks (DEBT-08). */}
             {updateNeeded !== '' && (
               <div className="banner banner--warning" role="status">
@@ -1440,6 +1454,17 @@ function App(): React.ReactElement {
             onPluginToggleSideEffect={handlePluginToggleSideEffect}
             onAppearanceChange={setAppearance}
             onTerminalFontChange={setTerminalFont}
+            share={{ active: share.state.active, viewers: share.state.viewers.length, onOpen: share.openSheet }}
+          />
+        )}
+        {/* Phase 22: after the Settings sheet in the DOM, so it is topmost when opened from Settings. */}
+        {mode !== 'web' && (
+          <ShareDesktopSheet
+            open={share.sheetOpen}
+            onClose={share.closeSheet}
+            tailscaleHealth={tailscaleHealth}
+            state={share.state}
+            stoppedNotice={share.stoppedNotice}
           />
         )}
         {showEmptyState && (
@@ -1589,6 +1614,7 @@ function App(): React.ReactElement {
         <QuitConfirmModal
           isOpen={showQuitModal}
           sessions={quitSessions}
+          sharing={share.state.active}
           onQuitGUI={() => { setShowQuitModal(false); void QuitGUIOnly() }}
           onQuitAll={() => { setShowQuitModal(false); void QuitAll() }}
           onCancel={() => setShowQuitModal(false)}
@@ -1617,6 +1643,8 @@ function App(): React.ReactElement {
         onCancel={() => { setRestartPrompt(0); void AnswerDaemonRestart(false) }}
       />
 
+      {/* Phase 22: the last modal in the DOM, so a knock is topmost over every sheet and confirm. */}
+      {mode !== 'web' && <AdmitSheet pending={share.state.pending} />}
     </div>
   )
 }

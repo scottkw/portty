@@ -26,6 +26,26 @@
 #   winfo2                 portty-test-2: x y w h of the Portty window, or "none"
 #   sh2 CMD...             portty-test-2: run CMD in the VM (open, osascript ... for the K4/K5 steps)
 #
+# 21-11 (the real app on the home guest viewing the office guest; office = portty-test, home = portty-test-2):
+#   build-home OUTDIR      host: like build-probe but with keyprobe/apply.sh --stats (the stats probe only,
+#                          no KeyProbe overlay) and a Developer ID signature (Local Network TCC follows the
+#                          signing identity). The office build is p19-rig.sh build ... --tags "wailsassets
+#                          vmdesktop" --sign devid (p20-rig.sh build20), then p19-rig.sh deploy/start-gui.
+#   ax2 [ROW [BUNDLE]]     home: accessibility tree of BUNDLE (default app.portty.Portty), scrubbed; with
+#                          ROW also saved as evidence/ROW.ax
+#   wait-text2 TEXT SECS [BUNDLE]   home: poll the tree each second until TEXT shows; prints seconds
+#   stats2 SECS            home: the STATS/ICE/PC lines the stats probe logs during the next SECS seconds
+#   office-viewers         office: GET /desktop on the daemon socket: state, viewers, locked only
+#   office-assertions      office: pmset assertions naming Portty (p19-rig.sh assertions)
+#   safari2-front          home: Safari's front document path only (no host, no query, no fragment)
+#   ln-prompt2             home: is a Local Network prompt for Portty open, and is it frontmost
+#   tailnet-health         both guests: tailscale status run inside the guest, online yes or no only
+#
+# 21-12 (Allow heals the tab, control mode, held keys; rig/axswitch.swift and rig/keystate.swift):
+#   tools12                host compiles both helpers, installs axswitch (home) and keystate (both) in ~/p21
+#   axswitch [LABEL [press]]   home: System Settings switches (Local Network page), or AXPress one
+#   keystate [office|home] which of Cmd, Shift, Option, Control, C, V, W, Q, A, Return the OS holds down
+#
 # It lives under .planning on purpose (like p19-rig.sh). Every launch, key post, log read and removal
 # runs inside portty-test-2 through ssh; the host side only builds a scratch copy, streams the bundle
 # and writes scrubbed evidence. Nothing here posts input on, captures, or touches the host, contacts the
@@ -65,9 +85,12 @@ gui_pids() { ps -axww -o pid=,args= | awk '"'"'$2 ~ /\/Portty\.app\/Contents\/Ma
 daemon_pids() { ps -axww -o pid=,args= | awk '"'"'$2 ~ /\/Portty\.app\/Contents\/MacOS\/Portty$/ && $3 == "daemon" {print $1}'"'"'; }
 '
 
-cmd_build_probe() {
-  [ $# -eq 1 ] || die "usage: build-probe OUTDIR"
-  local out=$1 nm
+# scratch_build OUT SIGN APPLY_ARGS...: a git archive of HEAD in OUT/tree (scratch, never the repo), the
+# repo's frontend/node_modules linked in, keyprobe/apply.sh APPLY_ARGS run there, then frontend build and
+# wails build (tags wailsassets), signed with identifier app.portty.Portty (adhoc or devid).
+scratch_build() {
+  local out=$1 sign=$2 nm
+  shift 2
   [ ! -e "$out/Portty.app" ] || die "$out/Portty.app already exists; use a fresh OUTDIR"
   case "$(cd "$(dirname "$out")" && pwd -P)/$(basename "$out")" in
     "$(cd "$ROOT" && pwd -P)"/*) die "OUTDIR must be outside the repo (scratch directory)" ;;
@@ -80,14 +103,32 @@ cmd_build_probe() {
   git -C "$ROOT" archive HEAD | tar -x -C "$out/tree"
   touch "$out/tree/.p21-scratch"
   ln -s "$nm" "$out/tree/frontend/node_modules"
-  bash "$HERE/keyprobe/apply.sh" "$out/tree"
+  bash "$HERE/keyprobe/apply.sh" "$@" "$out/tree"
   # The package.json build script, run directly: pnpm run would re-verify (and try to write) node_modules.
   (cd "$out/tree/frontend" && ./node_modules/.bin/tsc && ./node_modules/.bin/vite build)
   (cd "$out/tree" && GOTOOLCHAIN="${GOTOOLCHAIN:-go1.26.11}" wails build -s -platform darwin/arm64 -tags wailsassets)
   cp -R "$out/tree/build/bin/Portty.app" "$out/Portty.app"
-  codesign --deep --force --identifier app.portty.Portty --sign - "$out/Portty.app"
+  if [ "$sign" = devid ]; then
+    local hash
+    hash=$(security find-identity -v -p codesigning | awk '/"Developer ID Application: / {print $2; exit}')
+    [ -n "$hash" ] || die "no Developer ID Application identity"
+    codesign --deep --force --options runtime --timestamp --entitlements "$out/tree/build/entitlements.plist" \
+      --identifier app.portty.Portty --sign "$hash" "$out/Portty.app"
+  else
+    codesign --deep --force --identifier app.portty.Portty --sign - "$out/Portty.app"
+  fi
   codesign -dv "$out/Portty.app" 2>&1 | grep -E '^(Identifier|Signature|TeamIdentifier)=' || true
   echo "$out/Portty.app"
+}
+
+cmd_build_probe() {
+  [ $# -eq 1 ] || die "usage: build-probe OUTDIR"
+  scratch_build "$1" adhoc
+}
+
+cmd_build_home() {
+  [ $# -eq 1 ] || die "usage: build-home OUTDIR"
+  scratch_build "$1" devid --stats
 }
 
 cmd_tools2() {
@@ -144,6 +185,8 @@ cmd_start2() {
   vm2sh "$secs" <<EOF
 $VM_COMMON
 mkdir -p \$P; touch \$P/started
+# an older run's "PROBE ready" line must not end the wait below
+[ -f \$P/keyprobe.log ] && mv -f \$P/keyprobe.log \$P/keyprobe.log.prev
 caffeinate -u -t 1
 open --stdout \$P/gui.log --stderr \$P/gui.log "\$APP"
 for i in \$(seq 1 \$1); do
@@ -271,12 +314,149 @@ exit 0
 EOF
 }
 
+# ---- 21-11: the real app in the home guest viewing the office guest -------------------------------
+
+VM1_NAME="${P21_VM1_NAME:-portty-test}"
+P19="$ROOT/.planning/phases/19-unattended-desktop-viewing/rig/p19-rig.sh"
+SOCKQ='"$HOME/Library/Application Support/portty/daemon.sock"'
+
+# vm_ssh NAME CMD...: ssh into a running guest by tart name (never anything else).
+vm_ssh() {
+  local n=$1
+  shift
+  tart list | awk -v n="$n" '$2 == n && $NF == "running" {f = 1} END {exit !f}' || die "$n is not running (tart list)"
+  ssh -i "$HOME/.ssh/transom_demo_ed25519" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR "admin@$(tart ip "$n")" "$@"
+}
+# scrub_ax: scrub plus the guests' short names (a tab name carries the office's), so a name never
+# lands in evidence as a tailnet hostname.
+scrub_ax() { scrub | sed -E -e 's#portty-vm-office#OFFICE#g' -e 's#portty-vm-home#HOME#g'; }
+
+cmd_ax2() {
+  local row=${1:-} bundle=${2:-app.portty.Portty}
+  require_vm2
+  if [ -n "$row" ]; then
+    mkdir -p "$PHASE_DIR/evidence"
+    vm2 "~/ptest/axdump2 $bundle" | scrub_ax | tee "$PHASE_DIR/evidence/$row.ax"
+  else
+    vm2 "~/ptest/axdump2 $bundle" | scrub_ax
+  fi
+}
+
+cmd_wait_text2() {
+  [ $# -ge 2 ] || die "usage: wait-text2 TEXT SECS [BUNDLE]"
+  require_vm2
+  vm2sh "$(printf '%s' "$1" | base64)" "$2" "${3:-app.portty.Portty}" <<'EOF'
+text=$(printf '%s' "$1" | base64 -D); secs=$2; b=$3
+start=$SECONDS
+while [ $((SECONDS - start)) -le "$secs" ]; do
+  if ~/ptest/axdump2 "$b" 2>/dev/null | grep -qF -- "$text"; then echo "found after $((SECONDS - start))s"; exit 0; fi
+  sleep 1
+done
+echo "not found in ${secs}s"
+exit 1
+EOF
+}
+
+# stats2 SECS: the probe's lines that arrive during the next SECS seconds. Each line carries the app's
+# monotonic ms, so a guest clock step cannot fake a gap.
+cmd_stats2() {
+  local secs=${1:-10}
+  require_vm2
+  vm2sh "$secs" <<'EOF' | scrub
+n=$(wc -l < ~/p21/keyprobe.log); sleep "$1"
+tail -n +$((n + 1)) ~/p21/keyprobe.log | grep -E ' (STATS|ICE|ICEGATHER|PC|PCSTATE|PROBE) '
+exit 0
+EOF
+}
+
+cmd_office_viewers() {
+  vm_ssh "$VM1_NAME" "curl -s -m 5 --unix-socket $SOCKQ http://localhost/desktop" |
+    jq -c '{alwaysAvailable, state, viewers, locked}'
+}
+
+cmd_office_assertions() { bash "$P19" assertions | scrub; }
+
+# safari2-front: Safari's front window through the accessibility tree (no Apple events: a consent
+# prompt would be one more thing on screen). Only the path is kept: no host, no query, no fragment.
+cmd_safari2_front() {
+  require_vm2
+  vm2 '~/ptest/axdump2 com.apple.Safari 2>&1' |
+    awk '/AXTextField/ && /Value=/ {v=$0; sub(/.*Value=/, "", v); sub(/ DOMClassList=.*/, "", v); print v; exit}' |
+    sed -E -e 's#^https?://##' -e 's#^[^/]*##' -e 's#[?\#].*$##' -e 's#^#safari2-front path=#'
+}
+
+# ln-prompt2: a Local Network prompt for Portty on screen? "open" is any on-screen window of the
+# system's user-notification process whose tree names Portty and local networks; "frontmost" means no
+# other app's window sits above it in the window list.
+cmd_ln_prompt2() {
+  require_vm2
+  vm2sh <<'EOF'
+cg=$(~/p20/ax20 cgwin x 2>/dev/null)
+top=$(printf '%s\n' "$cg" | grep -v -E 'owner=(Window Server|Dock|Finder|Control Center|SystemUIServer|Notification Center|TextInputMenuAgent)' | head -1 | sed -E 's/.*owner=([^=]*) pid=.*/\1/')
+unc=$(printf '%s\n' "$cg" | grep -c 'owner=UserNotificationCenter')
+txt=$(~/ptest/axdump2 com.apple.UserNotificationCenter 2>/dev/null)
+names=no; printf '%s' "$txt" | grep -qi 'portty' && printf '%s' "$txt" | grep -qi 'local network' && names=yes
+open=no; [ "$names" = yes ] && open=yes
+front=no; [ "$open" = yes ] && [ "$top" = UserNotificationCenter ] && front=yes
+echo "ln-prompt open=$open frontmost=$front names_portty=$names notif_windows=$unc topmost_owner=$top"
+printf '%s' "$txt" | grep -E 'AXStaticText|AXButton' | sed -E 's/ DOMClassList=.*//' | head -12
+exit 0
+EOF
+}
+
+cmd_tailnet_health() {
+  local n out
+  for n in "$VM1_NAME" "$VM2_NAME"; do
+    out=$(vm_ssh "$n" '/usr/local/bin/tailscale status --json 2>/dev/null' | jq -r 'if (.Self.Online // false) then "yes" else "no" end' 2>/dev/null) || out=unreachable
+    echo "$n online=${out:-unreachable}"
+  done
+}
+
+# ---- 21-12: Allow heals the tab, control mode keys -----------------------------------------------
+
+# tools12: compile rig/axswitch.swift and rig/keystate.swift on the host (nothing is run there) and install
+# axswitch in the home guest and keystate in both guests, under ~/p21.
+cmd_tools12() {
+  local tmp n
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/p21-12.XXXXXX")
+  swiftc -O "$HERE/axswitch.swift" -o "$tmp/axswitch" 2>&1 | grep -v warning || true
+  swiftc -O "$HERE/keystate.swift" -o "$tmp/keystate" 2>&1 | grep -v warning || true
+  vm_ssh "$VM2_NAME" 'mkdir -p ~/p21 && cat > ~/p21/axswitch && chmod +x ~/p21/axswitch' < "$tmp/axswitch"
+  for n in "$VM1_NAME" "$VM2_NAME"; do
+    vm_ssh "$n" 'mkdir -p ~/p21 && cat > ~/p21/keystate && chmod +x ~/p21/keystate' < "$tmp/keystate"
+  done
+  rm -rf "$tmp"
+  echo "tools12: axswitch in $VM2_NAME, keystate in both guests"
+}
+
+# axswitch [LABEL [press]]: the switches in System Settings of the home guest (Local Network page open),
+# read, or one pressed with AXPress. No click lands on a banner that slid over the switch.
+cmd_axswitch() { vm_ssh "$VM2_NAME" "~/p21/axswitch com.apple.systempreferences $*"; }
+
+# keystate [office|home]: which keys the OS of that guest believes are held (default office).
+cmd_keystate() {
+  case "${1:-office}" in office) vm_ssh "$VM1_NAME" '~/p21/keystate' ;; home) vm_ssh "$VM2_NAME" '~/p21/keystate' ;; *) die "keystate [office|home]" ;; esac
+}
+
 main() {
   local c=${1:-}
   [ -n "$c" ] || die "usage: p21-rig.sh COMMAND ... (see the header)"
   shift
   case "$c" in
     build-probe) cmd_build_probe "$@" ;;
+    build-home) cmd_build_home "$@" ;;
+    ax2) cmd_ax2 "$@" ;;
+    wait-text2) cmd_wait_text2 "$@" ;;
+    stats2) cmd_stats2 "$@" ;;
+    office-viewers) cmd_office_viewers "$@" ;;
+    office-assertions) cmd_office_assertions "$@" ;;
+    safari2-front) cmd_safari2_front "$@" ;;
+    ln-prompt2) cmd_ln_prompt2 "$@" ;;
+    tailnet-health) cmd_tailnet_health "$@" ;;
+    tools12) cmd_tools12 "$@" ;;
+    axswitch) cmd_axswitch "$@" ;;
+    keystate) cmd_keystate "$@" ;;
     tools2) cmd_tools2 "$@" ;;
     vm2-idle) cmd_vm2_idle "$@" ;;
     deploy2) cmd_deploy2 "$@" ;;

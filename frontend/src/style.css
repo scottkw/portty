@@ -2986,7 +2986,6 @@ html:has(.desktop-view:not(.desktop-view--embedded)) body {
   position: absolute;
   inset: 0;
   padding: 0;
-  background: var(--color-viewer-bg);
 }
 
 /* Toolbar label of the Desktop tab (21-UI-SPEC "Toolbar label"). Fixed width in every state, so entering or
@@ -2998,7 +2997,6 @@ html:has(.desktop-view:not(.desktop-view--embedded)) body {
   width: 232px;
   max-width: 232px;
   height: 36px;
-  padding: 0 12px;
   box-sizing: border-box;
   border-radius: var(--hub-radius-sm);
   overflow: visible;
@@ -3126,4 +3124,178 @@ html:has(.desktop-view:not(.desktop-view--embedded)) body {
   .desktop-ripple {
     animation: none;
   }
+}
+
+/* ─── Share Desktop sheet (Phase 22-10, 22-UI-SPEC Surface 2) ───────────
+   Built on .dialog--setup (560px): the body scrolls, title and footer stay put.
+   Tokens only; no animation, rows appear and go at once. */
+.dialog--share .share-desktop__note {
+  margin-top: 8px;
+}
+/* Watching header: Caption 12/600, secondary, above the list. */
+.share-desktop__watching {
+  margin-top: 16px;
+}
+.share-desktop__watching-header {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  color: var(--color-text-secondary);
+}
+/* The Status row sits in the Link group and wraps its words rather than clipping them. */
+.share-desktop__status .ts-status {
+  flex-wrap: wrap;
+}
+/* Stop Sharing at the left edge of the footer; the other buttons stay right-aligned. */
+.share-desktop__footer .share-desktop__stop {
+  margin-right: auto;
+}
+.share-desktop__footer .button[aria-disabled='true'] {
+  opacity: var(--opacity-disabled);
+}
+
+/* A person in the Watching list: the settings-row rhythm with four lines 8px apart. */
+.viewer-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+.viewer-row__head,
+.viewer-row__controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.viewer-row__head {
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.viewer-row__name {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+/* Login name wraps and never truncates; the device may end in an ellipsis (full text in title). */
+.viewer-row__identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 4px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-text-secondary);
+}
+.viewer-row__login {
+  overflow-wrap: anywhere;
+}
+.viewer-row__device {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.viewer-row__controls {
+  gap: 16px;
+}
+.viewer-row__switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.viewer-row__disconnect {
+  margin-left: auto;
+}
+.viewer-row__caption {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+.viewer-row__error {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-error-text);
+}
+/* View only, Controlling, Own account: an icon and words, never colour alone. */
+.viewer-badge {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  min-height: 24px;
+  padding: 0 8px;
+  background: var(--color-chip);
+  border: 1px solid var(--color-control-border);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+.viewer-badge__icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* ─── Admit sheet (Phase 22-10 styles, 22-11 uses them; Surface 3) ──────
+   The default 480px .dialog, last in the DOM. Neither button is primary. */
+.admit__identity {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  background: var(--color-group);
+  border: 1px solid var(--color-group-border);
+  border-radius: 8px;
+}
+.admit__name {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 22px;
+  overflow-wrap: anywhere;
+}
+.admit__fact {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.admit__fact-label {
+  flex-shrink: 0;
+  min-width: 80px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-text-secondary);
+}
+.admit__fact-value {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+.admit__paragraph {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-text-secondary);
+}
+/* The dialog takes focus itself (tabindex=-1); no ring on the container. */
+.admit:focus {
+  outline: none;
+}
+.admit .dialog__buttons .button {
+  min-width: 96px;
+}
+.admit .dialog__buttons .button[aria-disabled='true'] {
+  opacity: var(--opacity-disabled);
 }

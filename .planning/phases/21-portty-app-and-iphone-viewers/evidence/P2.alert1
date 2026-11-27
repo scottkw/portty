@@ -1,0 +1,5 @@
+cgwin owner=Portty pid=42209 layer=0 id=522 @40,30 1200x690
+cgwin owner=System Settings pid=39116 layer=0 id=440 @270,46 740x625
+cgwin owner=Install Command Line Developer  pid=2109 layer=0 id=90 @409,160 461x203
+---
+trusted: true

@@ -230,6 +230,10 @@ describe('barAvailability (Task 3)', () => {
   it('streaming: everything enabled', () => {
     expect(view(a())).toEqual({ picker: 'ok', sendKeys: 'ok', clipboard: 'ok', swap: 'ok', control: 'ok', fullscreen: 'ok' })
   })
+  it('embedded (the app tab, Mac to Mac) hides Swap only', () => {
+    expect(a({ embedded: true }).swap.hidden).toBe(true)
+    expect(a().swap.hidden).toBe(false)
+  })
   it('locked: what sends is greyed Locked; Swap and Full Screen stay', () => {
     expect(view(a({ locked: true }))).toEqual({
       picker: 'Locked', sendKeys: 'Locked', clipboard: 'Locked', swap: 'ok', control: 'Locked', fullscreen: 'ok',
@@ -393,6 +397,13 @@ describe('bar behaviour (Task 3)', () => {
       e.classList.contains('desktop-bar__divider') ? '|' : e.getAttribute('aria-label'),
     )
     expect(seen).toEqual(['Main Display', '|', 'Send Keys', 'Clipboard', '|', 'Swap Ctrl and Cmd', null, null, '|', 'Full Screen'])
+  })
+
+  it('embedded renders no Swap button and keeps the View Only and Control segment', () => {
+    render(props({ state: { embedded: true } }))
+    expect(btn('Swap Ctrl and Cmd')).toBeNull()
+    expect(radio('View Only')).toBeTruthy()
+    expect(radio('Control')).toBeTruthy()
   })
 
   it('greyed items are aria-disabled, never disabled, carry the reason as title and as linked text, and ignore clicks', () => {

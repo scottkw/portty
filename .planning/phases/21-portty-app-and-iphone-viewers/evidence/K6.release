@@ -1,0 +1,4 @@
+keystate held=none
+       AXRadioButton Title=Desktop · OFFICE Value=1 DOMIdentifier=tab-desktop:TAILNET-NAME DOMClassList=(     
+      AXStaticText Value=Click the picture to control DOMClassList=( ) @1008,57 151x15
+keystate held=none

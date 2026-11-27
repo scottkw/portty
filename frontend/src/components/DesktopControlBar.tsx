@@ -50,6 +50,12 @@ export interface BarState {
   fullscreenAvailable: boolean
   /** The hello grants the clipboard right; without it the Clipboard button is not offered. */
   canClipboard: boolean
+  /** The viewer holds the control right (a guest's changes live); false hides Send Keys, Swap, the segment and Full Screen. Absent means true. */
+  canControl?: boolean
+  /** A guest page (22-07): the display picker is never offered. */
+  guest?: boolean
+  /** The Portty app's Desktop tab, Mac to Mac: Swap is not offered. */
+  embedded?: boolean
 }
 
 export interface ItemAvailability {
@@ -68,22 +74,30 @@ export interface ItemAvailability {
 export function barAvailability(s: BarState): Record<BarItem, ItemAvailability> {
   const lost = s.locked ? 'Locked' : s.reconnecting ? 'Reconnecting' : undefined
   const grey = (reason: string | undefined): ItemAvailability => ({ hidden: false, disabled: reason !== undefined, reason })
+  // Without the control right (a guest granted only the clipboard) nothing that drives the Mac is offered.
+  const noControl = s.canControl === false
   return {
     picker: {
       ...grey(lost ?? (s.switching ? 'Switching…' : undefined)),
-      hidden: !s.canSurface,
+      hidden: !s.canSurface || s.guest === true,
     },
-    sendKeys: grey(
-      lost ?? (s.accessNeeded ? 'Control needs Accessibility' : s.mode === 'view' ? 'Turn on Control first' : undefined),
-    ),
+    sendKeys: {
+      ...grey(
+        lost ?? (s.accessNeeded ? 'Control needs Accessibility' : s.mode === 'view' ? 'Turn on Control first' : undefined),
+      ),
+      hidden: noControl,
+    },
     clipboard: { ...grey(lost), hidden: !s.canClipboard },
-    swap: grey(undefined),
-    control: lost
-      ? grey(lost)
-      : s.accessNeeded
-        ? { hidden: false, disabled: true, reason: 'Control needs Accessibility', controlOnly: true }
-        : grey(undefined),
-    fullscreen: { ...grey(undefined), hidden: !s.fullscreenAvailable },
+    swap: { ...grey(undefined), hidden: noControl || s.embedded === true },
+    control: {
+      ...(lost
+        ? grey(lost)
+        : s.accessNeeded
+          ? { hidden: false, disabled: true, reason: 'Control needs Accessibility', controlOnly: true }
+          : grey(undefined)),
+      hidden: noControl,
+    },
+    fullscreen: { ...grey(undefined), hidden: !s.fullscreenAvailable || noControl },
   }
 }
 
@@ -124,6 +138,8 @@ export interface DesktopControlBarProps {
   popoverOpen?: boolean
   /** The chord the Control tooltip names. */
   releaseChord?: string
+  /** A guest page (22-07): no display picker and no Lock Screen… in Send Keys. */
+  guest?: boolean
 }
 
 type PickerList = { state: 'loading' } | { state: 'failed' } | { state: 'ready'; list: DesktopSurfacesMsg }
@@ -277,7 +293,7 @@ function BarButton({ label, avail, children, onActivate, ref, className, extra }
  */
 export function DesktopControlBar({
   state, surface, requestSurfaces, onSelectSurface, sendChord, onMenuOpenChange, onSendKeysDone,
-  swapOn, onSwapChange, onModeChange, fullscreen, onFullscreen, controlRef, onCopy, onPaste, clipBusy, clipboardRef, popoverOpen, releaseChord = DEFAULT_RELEASE_CHORD,
+  swapOn, onSwapChange, onModeChange, fullscreen, onFullscreen, controlRef, onCopy, onPaste, clipBusy, clipboardRef, popoverOpen, releaseChord = DEFAULT_RELEASE_CHORD, guest = false,
 }: DesktopControlBarProps): React.ReactElement {
   const barRef = useRef<HTMLDivElement>(null)
   const sendKeysBtn = useRef<HTMLButtonElement>(null)
@@ -295,7 +311,7 @@ export function DesktopControlBar({
   // A press on a trigger closes its open menu (the menu's outside-press close); the click must not reopen it.
   const pressedWhileOpen = useRef(false)
 
-  const avail = barAvailability(state)
+  const avail = barAvailability(guest ? { ...state, guest } : state)
   const windowShare = surface?.kind === 'window'
   const menuOpen = sendKeys !== null || picker !== null || clipMenu !== null || popoverOpen === true
   const revealed = useReveal(barRef, menuOpen, `${state.locked}|${state.accessNeeded}|${surface?.kind}:${surface?.id}`)
@@ -426,20 +442,23 @@ export function DesktopControlBar({
     )
   }
   // Send Keys and Clipboard are one group: what the viewer sends to the Mac.
-  const sendGroup: React.ReactNode[] = [
-    <BarButton
-      key="sendKeys"
-      ref={sendKeysBtn}
-      label="Send Keys"
-      avail={avail.sendKeys}
-      onActivate={sendKeysTrigger.onActivate}
-      extra={{ 'aria-haspopup': 'menu', 'aria-expanded': sendKeys !== null, onMouseDown: sendKeysTrigger.onMouseDown }}
-    >
-      <KeyIcon className="desktop-bar__icon" aria-hidden="true" />
-      <span className="desktop-bar__label">Send Keys</span>
-      <ChevronDownIcon className="desktop-bar__icon" aria-hidden="true" />
-    </BarButton>,
-  ]
+  const sendGroup: React.ReactNode[] = []
+  if (!avail.sendKeys.hidden) {
+    sendGroup.push(
+      <BarButton
+        key="sendKeys"
+        ref={sendKeysBtn}
+        label="Send Keys"
+        avail={avail.sendKeys}
+        onActivate={sendKeysTrigger.onActivate}
+        extra={{ 'aria-haspopup': 'menu', 'aria-expanded': sendKeys !== null, onMouseDown: sendKeysTrigger.onMouseDown }}
+      >
+        <KeyIcon className="desktop-bar__icon" aria-hidden="true" />
+        <span className="desktop-bar__label">Send Keys</span>
+        <ChevronDownIcon className="desktop-bar__icon" aria-hidden="true" />
+      </BarButton>,
+    )
+  }
   if (!avail.clipboard.hidden) {
     sendGroup.push(
       <BarButton
@@ -456,23 +475,25 @@ export function DesktopControlBar({
       </BarButton>,
     )
   }
-  groups.push(<React.Fragment key="send">{sendGroup}</React.Fragment>)
-  groups.push(
+  if (sendGroup.length > 0) groups.push(<React.Fragment key="send">{sendGroup}</React.Fragment>)
+  if (!avail.control.hidden) groups.push(
     <React.Fragment key="mapping">
-      <BarButton
-        label="Swap Ctrl and Cmd"
-        avail={avail.swap}
-        className={swapOn ? 'desktop-bar__toggle is-on' : 'desktop-bar__toggle'}
-        onActivate={() => onSwapChange(!swapOn)}
-        extra={{ 'aria-pressed': swapOn }}
-      >
-        {swapOn ? (
-          <CheckIcon className="desktop-bar__icon" aria-hidden="true" />
-        ) : (
-          <ArrowsRightLeftIcon className="desktop-bar__icon" aria-hidden="true" />
-        )}
-        <span className="desktop-bar__label">Swap Ctrl and Cmd</span>
-      </BarButton>
+      {!avail.swap.hidden && (
+        <BarButton
+          label="Swap Ctrl and Cmd"
+          avail={avail.swap}
+          className={swapOn ? 'desktop-bar__toggle is-on' : 'desktop-bar__toggle'}
+          onActivate={() => onSwapChange(!swapOn)}
+          extra={{ 'aria-pressed': swapOn }}
+        >
+          {swapOn ? (
+            <CheckIcon className="desktop-bar__icon" aria-hidden="true" />
+          ) : (
+            <ArrowsRightLeftIcon className="desktop-bar__icon" aria-hidden="true" />
+          )}
+          <span className="desktop-bar__label">Swap Ctrl and Cmd</span>
+        </BarButton>
+      )}
       <div className="share-segbar desktop-bar__segbar" role="radiogroup" aria-label="Control mode" onKeyDown={onSegmentKeyDown}>
         <button
           ref={viewOnlyBtn}
@@ -514,9 +535,9 @@ export function DesktopControlBar({
   // The reasons for greyed items as real text, linked by aria-describedby; a tooltip alone is not enough.
   const reasons: [string, string][] = []
   if (avail.picker.reason && !avail.picker.hidden) reasons.push([pickerLabel, avail.picker.reason])
-  if (avail.sendKeys.reason) reasons.push(['Send Keys', avail.sendKeys.reason])
+  if (avail.sendKeys.reason && !avail.sendKeys.hidden) reasons.push(['Send Keys', avail.sendKeys.reason])
   if (avail.clipboard.reason && !avail.clipboard.hidden) reasons.push(['Clipboard', avail.clipboard.reason])
-  if (avail.control.reason) reasons.push(['control', avail.control.reason])
+  if (avail.control.reason && !avail.control.hidden) reasons.push(['control', avail.control.reason])
 
   return (
     <div
@@ -568,6 +589,7 @@ export function DesktopControlBar({
           anchor={sendKeys}
           invoker={sendKeysBtn.current}
           windowShare={windowShare}
+          guest={guest}
           disabledReason={avail.sendKeys.reason}
           sendChord={(codes) => {
             chose.current = true

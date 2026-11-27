@@ -60,7 +60,7 @@ Full details: `.planning/milestones/v1.2-ROADMAP.md`. Audit: `.planning/mileston
 - [x] **Phase 18.1: Apple Silicon Release Pipeline** (INSERTED) - One arm64-only build published under both DMG names, inside-out signing with the v1.2 designated requirement, every nested binary signed, notarized and verified in CI, minimum macOS 14 enforced at build time (completed 2026-11-26; SC2 runtime proof deferred to Phase 23 rc.1, see 18.1-UAT.md)
 - [x] **Phase 19: Unattended Desktop Viewing** - Always-available desktop for your own Macs: guided permissions, live view in Chrome and Safari with nobody at the Mac, visible state, display kept awake, automatic reconnect, media on the tailnet only (completed 2026-11-26; real-Mac verification deferred, see 19-UAT.md)
 - [x] **Phase 20: Remote Control** - Pointer, keyboard, Send-keys menu and explicit clipboard from any viewer; the sharer picks a display or a single window and switches displays mid-session (completed 2026-11-27; real-Mac verification deferred, see 20-UAT.md)
-- [ ] **Phase 21: Portty App and iPhone Viewers** - A Desktop tab opened from the sidebar in the Portty app, with Cmd shortcuts forwarded in control mode, and an iPhone viewer with trackpad mode and touch controls
+- [x] **Phase 21: Portty App and iPhone Viewers** - A Desktop tab opened from the sidebar in the Portty app, with Cmd shortcuts forwarded in control mode, and an iPhone viewer with trackpad mode and touch controls (completed 2026-11-27; real-device verification deferred, see 21-UAT.md)
 - [ ] **Phase 22: Click-to-Share for Tailnet People** - A desktop link other tailnet people can open, an Admit prompt by tailnet identity, view-only until granted, instant stop and revoke, a "shared with N" indicator, an audit log, and soft control hand-off
 - [ ] **Phase 23: Audio, Adaptive Quality, Unlock and Release** - System audio (starts muted), sharp-when-still and smooth-when-moving video, remote unlock shipped or cut per the spike, real-Mac hardening, and the v2.0 release (rc.1 dry run, then the real tag) on the Phase 18.1 pipeline
 
@@ -286,7 +286,7 @@ Plans:
   1. In the Portty app on another Mac, the sidebar lists a peer's desktop next to its sessions. Clicking it opens a Desktop tab that shows and controls that desktop, with the same state and reconnect behaviour as the browser viewer. If Phase 17 found WebRTC unusable in the Wails web view, the row opens the browser link instead and the docs say so. (DVWR-01)
   2. In control mode in a Desktop tab, Cmd+W, Cmd+Q and Cmd+C go to the remote Mac instead of closing the tab, quitting Portty or copying locally. Leaving control mode gives Portty its shortcuts back. (DVWR-04)
   3. On an iPhone, in Safari or from the Home Screen, the viewer offers trackpad mode, pinch-zoom, long-press for right-click, two-finger scroll and the soft keyboard, and it picks up again after the phone sleeps. (DVWR-03)
-**Plans**: 10/13 plans executed
+**Plans**: 13/13 plans executed
 
 Plans:
 **Wave 1**
@@ -310,13 +310,13 @@ Plans:
 - [x] 21-10-PLAN.md — iPhone viewer: touch layer, bottom bar and key bar, soft keyboard, Tap to start after sleep (gated on 20-01, 20-02, 20-06, 20-07, 20-08)
 
 **Wave 6** *(blocked on Wave 5 completion; gated on 20-06, 20-09)*
-- [ ] 21-11-PLAN.md — Tart VM rows: Desktop row and tab in the real app, Local Network denied state (user checkpoints)
+- [x] 21-11-PLAN.md — Tart VM rows: Desktop row and tab in the real app, Local Network denied state (user checkpoints)
 
 **Wave 7** *(blocked on Wave 6 completion; gated on 20-02, 20-05, 20-06, 20-08, 20-09)*
-- [ ] 21-12-PLAN.md — Tart VM rows: Local Network allowed and heal, hidden tab and window, one tab per peer, Cmd+W/Q/C forwarded and given back, no held keys, Cmd+V (user checkpoint)
+- [x] 21-12-PLAN.md — Tart VM rows: Local Network allowed and heal, hidden tab and window, one tab per peer, Cmd+W/Q/C forwarded and given back, no held keys, Cmd+V (user checkpoint)
 
 **Wave 8** *(blocked on Wave 7 completion; gated on 20-02, 20-11)*
-- [ ] 21-13-PLAN.md — TESTING.md Sections 2, 4, 5 (M-NN at run time), README Help paragraphs, real iPhone and real-Mac sessions (user checkpoint)
+- [x] 21-13-PLAN.md — TESTING.md Sections 2, 4, 5 (M-NN at run time), README Help paragraphs, real iPhone and real-Mac sessions (user checkpoint)
 **UI hint**: yes
 
 ### Phase 22: Click-to-Share for Tailnet People
@@ -329,35 +329,35 @@ Plans:
   3. The sharer can stop the share or revoke one viewer at any time, which ends that connection at once, and the link stops working when the share ends. The shared Mac shows join and leave notifications and a persistent "shared with N" indicator with one-click stop. (DSHR-05, DSHR-06)
   4. Every join, leave and control grant is written to a local audit log on the shared Mac. (DSHR-07)
   5. With several viewers allowed to control, whoever typed last holds control for about 2 seconds while the others wait. The person physically at the shared Mac always wins over remote input. (DCTL-04)
-**Plans**: 0/13 plans executed
+**Plans**: 11/13 plans executed
 
 Plans:
 **Wave 1**
-- [ ] 22-01-PLAN.md — Guest token (own HKDF key), `requireTailnetPeer(Page)`, `/desktop/guest/` page, assets and ws routes, two static pages, extended WhoIs fake, route-table and cross-token tests
-- [ ] 22-02-PLAN.md — JSON Lines audit appender (0600, 5 MiB rotation, never blocks a join) and the guest name sanitizer / Identity type
-- [ ] 22-03-PLAN.md — Listen-only event tap and Secure Event Input probe; pure arbiter: physical wins (fails closed on an unhealthy tap), 2 s lease
+- [x] 22-01-PLAN.md — Guest token (own HKDF key), `requireTailnetPeer(Page)`, `/desktop/guest/` page, assets and ws routes, two static pages, extended WhoIs fake, route-table and cross-token tests
+- [x] 22-02-PLAN.md — JSON Lines audit appender (0600, 5 MiB rotation, never blocks a join) and the guest name sanitizer / Identity type
+- [x] 22-03-PLAN.md — Listen-only event tap and Secure Event Input probe; pure arbiter: physical wins (fails closed on an unhealthy tap), 2 s lease
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 22-04-PLAN.md — Manager guest path: admission queue, limits, 5-minute timeout, deny by user ID, re-admit, no PeerConnection before Admit, media bound to the admitted node (gated on 20-04, 20-05)
+- [x] 22-04-PLAN.md — Manager guest path: admission queue, limits, 5-minute timeout, deny by user ID, re-admit, no PeerConnection before Admit, media bound to the admitted node (gated on 20-04, 20-05)
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 22-05-PLAN.md — Live grants (`SetRights`), revoke and Stop in the safe order with concurrent close, lease and physical-wins in `pressAllowed`, lease messages
+- [x] 22-05-PLAN.md — Live grants (`SetRights`), revoke and Stop in the safe order with concurrent close, lease and physical-wins in `pressAllowed`, lease messages
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 22-06-PLAN.md — Daemon guest share lifecycle, GUI events stream (doubles as GUI liveness), admit/deny/rights/disconnect on the daemon socket only, audit wiring (gated on 20-10)
-- [ ] 22-07-PLAN.md — Guest page mode in DesktopView and desktopClient: guest cards, chips, close reasons, bar restrictions (gated on 20-07, 20-08, 21-08, 21-10)
+- [x] 22-06-PLAN.md — Daemon guest share lifecycle, GUI events stream (doubles as GUI liveness), admit/deny/rights/disconnect on the daemon socket only, audit wiring (gated on 20-10)
+- [x] 22-07-PLAN.md — Guest page mode in DesktopView and desktopClient: guest cards, chips, close reasons, bar restrictions (gated on 20-07, 20-08, 21-08, 21-10)
 
 **Wave 5** *(blocked on Wave 4 completion)*
-- [ ] 22-08-PLAN.md — GUI holds the events stream; tray slot (Share Desktop…, Desktop shared with N, Stop Sharing) and sharing icon variant
+- [x] 22-08-PLAN.md — GUI holds the events stream; tray slot (Share Desktop…, Desktop shared with N, Stop Sharing) and sharing icon variant
 
 **Wave 6** *(blocked on Wave 5 completion)*
-- [ ] 22-09-PLAN.md — Wails bindings, Admit brings the window forward, coalesced join/leave notifications, Quit GUI Only ends the share
+- [x] 22-09-PLAN.md — Wails bindings, Admit brings the window forward, coalesced join/leave notifications, Quit GUI Only ends the share
 
 **Wave 7** *(blocked on Wave 6 completion)*
-- [ ] 22-10-PLAN.md — Share Desktop sheet, Watching list with grant switches, Settings row, Security string
+- [x] 22-10-PLAN.md — Share Desktop sheet, Watching list with grant switches, Settings row, Security string
 
 **Wave 8** *(blocked on Wave 7 completion)*
-- [ ] 22-11-PLAN.md — Admit sheet (no default button, Esc inert, 600 ms guard), Secure Event Input and Share-stopped banners, quit sentence
+- [x] 22-11-PLAN.md — Admit sheet (no default button, Esc inert, 600 ms guard), Secure Event Input and Share-stopped banners, quit sentence
 
 **Wave 9** *(blocked on Wave 8 completion)*
 - [ ] 22-12-PLAN.md — Tart VM rows G-01..G-10 and SC1 on portty-test/portty-test-2 (user checkpoints: VM permission clicks, optional second Tailscale user, real-Mac items; Appendix B recorded PARTIAL)
@@ -436,6 +436,6 @@ Plans:
 | 18.1. Apple Silicon Release Pipeline (INSERTED) | v2.0 | 4/4 | Complete    | 2026-11-26 |
 | 19. Unattended Desktop Viewing | v2.0 | 17/17 | Complete    | 2026-11-26 |
 | 20. Remote Control | v2.0 | 11/11 | Complete    | 2026-11-27 |
-| 21. Portty App and iPhone Viewers | v2.0 | 10/13 | In Progress | - |
-| 22. Click-to-Share for Tailnet People | v2.0 | 0/TBD | Not started | - |
+| 21. Portty App and iPhone Viewers | v2.0 | 13/13 | Complete    | 2026-11-27 |
+| 22. Click-to-Share for Tailnet People | v2.0 | 11/13 | In Progress | - |
 | 23. Audio, Adaptive Quality, Unlock and Release | v2.0 | 0/16 | Not started | - |

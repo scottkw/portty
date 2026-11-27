@@ -2,17 +2,17 @@
 gsd_state_version: "1.0"
 milestone: v2.0
 milestone_name: Desktop Sharing
-current_phase: 21
-current_phase_name: Portty App and iPhone Viewers
+current_phase: 22
+current_phase_name: Click-to-Share for Tailnet People
 status: executing
-stopped_at: Phase 20 complete (real-Mac verification deferred, see 20-UAT.md), Phase 21 executing
-last_updated: "2026-11-27T14:21:02.810Z"
+stopped_at: Phase 21 complete (real-device verification deferred, see 21-UAT.md), Phase 22 executing
+last_updated: "2026-11-27T17:17:54.217Z"
 last_activity: 2026-11-27
-last_activity_desc: "Phase 20 shipped as PR #13"
-state_head: 951908f487e7202c67a9819e930e7cb2e83c70a2
+last_activity_desc: "Phase 21 shipped as PR #14"
+state_head: 38dd7bf3944475b1decef22fa6afe4e4015eacee
 progress:
   total_phases: 8
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 96
   completed_plans: 62
   percent: 63
@@ -25,13 +25,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-24)
 
 **Core value:** A terminal session started on one Mac can be attached to from another Mac (or a browser) over the tailnet, and it survives any idle gap, from minutes to overnight, with history intact.
-**Current focus:** Phase 21 — Portty App and iPhone Viewers
+**Current focus:** Phase 22 — Click-to-Share for Tailnet People
 
 ## Current Position
 
-Phase: 21 (Portty App and iPhone Viewers) — EXECUTING
-Status: Phase 20 complete 2026-11-27 (verification human_needed 4/4, real-Mac items deferred; see Deferred Verification); Phase 21 executing
-Last activity: 2026-11-27 -- Phase 20 shipped as PR #13
+Phase: 22 (Click-to-Share for Tailnet People) — EXECUTING
+Status: Phase 21 complete 2026-11-27 (verification human_needed 4/5, real-device items deferred; see Deferred Verification); Phase 22 executing
+Last activity: 2026-11-27 -- Phase 21 shipped as PR #14
 
 ## Performance Metrics
 
@@ -466,6 +466,7 @@ Recent decisions affecting current work:
 | 261126-oq0 | Phase 19 ponytail-review fixes: PUT /desktop skips freeze gate, poller warms cert outside gate, desktop-only finalize never fails a handoff, CLI install resolves symlinks, lapse retry survives AX probe failure, runtime state fsync, process-wide native capture lock, Test Capture leak, dead FramesSeen removed | 2026-11-26 | c95728b9 | [261126-oq0-apply-accepted-phase-19-ponytail-review-](./quick/261126-oq0-apply-accepted-phase-19-ponytail-review-/) |
 | 261126-pn6 | A restart's /shutdown is pinned to the stale daemon it checked (one connection for /health and /shutdown), so a CLI --restart-daemon after launchdTakeover's 15 s timeout never stops the daemon a late launchd re-home moved the sessions to | 2026-11-26 | 9e884e05 | [261126-pn6-pin-restart-shutdown-to-stale-daemon](./quick/261126-pn6-pin-restart-shutdown-to-stale-daemon/) |
 | 261127-bb7 | Phase 20 ponytail-review fixes: encoder rebuild keeps old session on failure, chorded mouse buttons released, bar menu state reset on unmount, closed input channel unregistered, post-Close flush, repeat-after-release test, one flushInput/bridgeErr/utf8Len | 2026-11-27 | b41055f0 | [261127-bb7-apply-accepted-phase-20-ponytail-review-](./quick/261127-bb7-apply-accepted-phase-20-ponytail-review-/) |
+| 261127-fb9 | Phase 21 ponytail-review fixes (phone picker selectFailed notice, no Swap in app tab, sendChord gate, dead props/CSS, refresh-failure close tests) | 2026-11-27 | 7b60fe5f | [261127-fb9-phase-21-ponytail-review-fixes](./quick/261127-fb9-phase-21-ponytail-review-fixes/) |
 
 ## Deferred Items
 
@@ -528,6 +529,7 @@ Items acknowledged and deferred at milestone close, most recent first:
 | 18.1 | verification_deferred_human | /gsd-verify-work 18.1 |
 | 19 | verification_deferred_human | /gsd-verify-work 19 |
 | 20 | verification_deferred_human | /gsd-verify-work 20 |
+| 21 | verification_deferred_human | /gsd-verify-work 21 |
 
 Phase 2 UAT items 2-5 (peer attach, Share/Tailscale live state, web page appearance, VoiceOver) need both Macs. The user deferred them on 2026-11-16 ("push that UAT until later and move on"). Item 1 passed.
 
@@ -542,6 +544,8 @@ Phase 18.1: verification human_needed (3/4); closed 2026-11-26 by user decision.
 Phase 19: verification human_needed (5/5 must-haves, no blocking gaps); closed 2026-11-26 by user decision ("Close, merge, start 20"). Tracked in 19-UAT.md (11 items) and TESTING.md M-173..M-179: daemon-posted lapse notification on a notarized build (M-176), direct tailnet path and first-frame time (M-157, M-173), battery display-sleep (M-174), Retina sharpness (M-161), iPhone Home Screen link across restart and upgrade (M-175), real 30-day re-approval (M-160), office display sleep (M-159), FA-1 probe (M-163), Tailscale mode (M-164), look and feel (M-179), and the F5 upgrade tick gap with a viewer on the office Mac. Security 19-SECURITY.md threats_open 0.
 
 Phase 20: verification human_needed (4/4 must-haves, no blocking gaps); closed 2026-11-27 by user decision (per-phase close and merge for v2.0). Tracked in 20-UAT.md (9 items) and TESTING.md M-180..M-193: pointer accuracy on Retina and external displays (M-180), input methods and dead keys (M-181), held keys and Send Keys with the Ctrl/Cmd swap after H-02 (M-182, M-183), window share on the office Mac with sheets, panels and pop-up menus after e9dfa052 (M-184..M-187), display switching after M-01, M-03 and M-04 (M-188), clipboard in Chrome and Safari and Paste from Other Apps (M-189, M-190), Keyboard Lock, light and dark, password field and Caps Lock, hidden control bar after UI-1 (M-191, M-192), no Streaming before the first frame (M-193). Review finding M-05 (window-share key gate versus non-activating launcher panels) accepted by the user for Phase 20 only; Phase 22 must fix or re-accept it before guests. Security 20-SECURITY.md threats_open 0; UI review 18/24.
+
+Phase 21: verification human_needed (4/5 must-haves; DVWR-03 present and wired, behavior unverified on a real iPhone; no blocking gaps); closed 2026-11-27 by user decision (per-phase close and merge for v2.0). DVWR-01 and DVWR-04 proved in the Tart VMs (21-VM-CHECKS.md). Tracked in 21-UAT.md (13 items) and TESTING.md M-194..M-205: iPhone trackpad, tap, long-press right click, drag and two-finger scroll (M-194, M-195), pinch to 5x and no Safari tab overview (M-196), soft keyboard and armed modifiers (M-197), Send Keys and surface picker (M-198), sleep and resume (M-199), Home Screen relaunch and CSP (M-200), two real Macs with the Local Network prompt, sharpness and direct path (M-201), control mode chords and the release chord Ctrl+Option+Cmd+Shift+Return with the unreproduced K6 held-Control observation (M-202), Cmd+V with a password-manager item (M-203), hidden-window display sleep (M-204), Light and Dark legibility (M-205), plus a real-app re-check of review fixes WR-01..WR-05. Accepted risk AR-21-01 (viewer does not filter Desktop rows by Tailscale account) resolved by making the own-account filter a required Phase 22 item (f4c2f8e1). Security 21-SECURITY.md 48/48 closed, threats_open 0; UI review 18/24.
 
 Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verification 7/7, human_needed. Real-release items (M-93: first v* tag CI run with DMG identifier signing, notarize and staple; notarized DMG verify and reveal; delivered notification) need a public repo and release secrets, so they wait for the first real release. U-06 noasset re-run after WR-04 is still to do in the VM.
 

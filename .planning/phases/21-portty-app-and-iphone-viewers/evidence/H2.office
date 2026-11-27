@@ -1,0 +1,9 @@
+before hold: keystate held=none
+after Cmd+C held 1000 ms: keystate held=none
+{"control_input":"ok","control_window":"","counters":{"btn":10,"effect_hit":6,"hb":2,"key":24,"move":6,"text":1},"elapsed_ms":0,"op":"control","pseudo_counters":{"hb":1,"text":1}}
+
+mid-hold (instrument check): keystate held=none
+after the second hold: keystate held=Cmd
+3 s later, hold over: keystate held=none
+{"control_input":"ok","control_window":"","counters":{"btn":10,"effect_hit":6,"hb":5,"key":28,"move":6,"text":1},"elapsed_ms":0,"op":"control","pseudo_counters":{"hb":1,"text":1}}
+

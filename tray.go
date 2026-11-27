@@ -17,7 +17,9 @@ void updateTrayTooltip(const char *tooltip);
 void setTraySessionData(const char **names, const char **ids, int count);
 void setTrayUpdateItem(const char *title);
 void setTrayDesktopTitle(const char *title);
+void setTrayShareState(int active, const char *title);
 void setDockVisible(int visible);
+int isAppActiveAndVisible(void);
 */
 import "C"
 
@@ -39,6 +41,12 @@ var trayIconErrorBytes []byte
 
 //go:embed assets/tray_icon_error@2x.png
 var trayIconErrorBytes2x []byte
+
+//go:embed assets/tray_icon_sharing.png
+var trayIconSharingBytes []byte
+
+//go:embed assets/tray_icon_sharing@2x.png
+var trayIconSharingBytes2x []byte
 
 //go:embed assets/tray_icon_progress_25.png
 var trayIconProgress25Bytes []byte
@@ -115,6 +123,22 @@ func onTrayUpdate() {
 	}
 }
 
+//export onTrayShareDesktop
+func onTrayShareDesktop() {
+	app := trayCallbackApp // captured before the goroutine, like onTrayQuit
+	if app != nil {
+		go app.shareDesktopFromTray() // the menu callback must return at once
+	}
+}
+
+//export onTrayStopSharing
+func onTrayStopSharing() {
+	app := trayCallbackApp // captured before the goroutine, like onTrayQuit
+	if app != nil {
+		go app.stopSharingFromTray()
+	}
+}
+
 //export onNotificationClick
 func onNotificationClick(identifier *C.char) {
 	id := C.GoString(identifier) // copy now: the C string is only valid during this callback
@@ -131,11 +155,29 @@ func setTrayUpdateItem(title string) {
 	C.free(unsafe.Pointer(ct))
 }
 
+// setTrayShareState sets the click-to-share slot of the tray menu: active shows
+// title and Stop Sharing, inactive shows Share Desktop….
+func setTrayShareState(active bool, title string) {
+	ct := C.CString(title)
+	a := C.int(0)
+	if active {
+		a = 1
+	}
+	C.setTrayShareState(a, ct)
+	C.free(unsafe.Pointer(ct))
+}
+
 // setTrayDesktopLine sets the tray menu's dimmed desktop line; "" removes it.
 func (a *App) setTrayDesktopLine(line string) {
 	cl := C.CString(line)
 	C.setTrayDesktopTitle(cl)
 	C.free(unsafe.Pointer(cl))
+}
+
+// isAppActiveAndVisible reports whether Portty is the active app with a visible,
+// key or main window: the one case where an Admit request needs no banner.
+func isAppActiveAndVisible() bool {
+	return C.isAppActiveAndVisible() != 0
 }
 
 // setDockVisible shows or hides the macOS Dock icon by toggling the application
@@ -154,10 +196,15 @@ func (a *App) setDockVisible(visible bool) {
 //
 // Error precedence (Pitfall #8): when connected=false, always returns
 // the error pair regardless of a.lastTrayQuartile to ensure daemon-
-// disconnect is not masked by a progress glyph.
+// disconnect is not masked by a progress glyph. Next comes the sharing pair
+// while anyone is connected (a.trayViewers), then the progress quartiles.
 func (a *App) trayIconBytesForState(connected bool) (x1, x2 []byte) {
 	if !connected {
 		return trayIconErrorBytes, trayIconErrorBytes2x
+	}
+	// Sharing outranks progress: who is watching is a standing fact (UI-SPEC Surface 4).
+	if a.trayViewers.Load() > 0 {
+		return trayIconSharingBytes, trayIconSharingBytes2x
 	}
 	switch a.lastTrayQuartile.Load() {
 	case 1:

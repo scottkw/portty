@@ -14,8 +14,16 @@ import (
 	"time"
 
 	"tailscale.com/ipn/ipnstate"
+	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
+
+// ownUser is the fake status' own Tailscale account; selfNode is the Self entry
+// every discoverPeers test needs, because discovery fails closed without it
+// (AR-21-01).
+const ownUser tailcfg.UserID = 42
+
+var selfNode = &ipnstate.PeerStatus{UserID: ownUser, HostName: "self"}
 
 // fakeStatus returns a statusFunc that injects a canned *ipnstate.Status.
 func fakeStatus(s *ipnstate.Status) statusFunc {
@@ -37,8 +45,10 @@ func errorStatus(err error) statusFunc {
 
 func TestDiscoverPeers_OnlineOnly(t *testing.T) {
 	status := &ipnstate.Status{
+		Self: selfNode,
 		Peer: map[key.NodePublic]*ipnstate.PeerStatus{
 			key.NewNode().Public(): {
+				UserID:       ownUser,
 				HostName:     "online-host",
 				DNSName:      "online-host.ts.net.",
 				TailscaleIPs: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
@@ -46,6 +56,7 @@ func TestDiscoverPeers_OnlineOnly(t *testing.T) {
 				Online:       true,
 			},
 			key.NewNode().Public(): {
+				UserID:       ownUser,
 				HostName:     "offline-host",
 				DNSName:      "offline-host.ts.net.",
 				TailscaleIPs: []netip.Addr{netip.MustParseAddr("100.64.0.2")},
@@ -82,6 +93,7 @@ func TestDiscoverPeers_OnlineOnly(t *testing.T) {
 
 func TestDiscoverPeers_Empty(t *testing.T) {
 	status := &ipnstate.Status{
+		Self: selfNode,
 		Peer: map[key.NodePublic]*ipnstate.PeerStatus{},
 	}
 	peers, err := discoverPeers(context.Background(), fakeStatus(status))
@@ -104,6 +116,46 @@ func TestDiscoverPeers_Error(t *testing.T) {
 	}
 	if peers != nil {
 		t.Fatalf("expected nil peers on error, got %v", peers)
+	}
+}
+
+// AR-21-01: only peers owned by this node's own Tailscale account are offered.
+// A node shared in from another account must not become a terminal peer or a
+// Desktop row (it would receive control keys and Cmd+V text).
+func TestDiscoverPeers_OwnAccountOnly(t *testing.T) {
+	const otherUser tailcfg.UserID = 99
+	status := &ipnstate.Status{
+		Self: selfNode,
+		Peer: map[key.NodePublic]*ipnstate.PeerStatus{
+			key.NewNode().Public(): {UserID: ownUser, HostName: "mine", DNSName: "mine.ts.net.", Online: true},
+			key.NewNode().Public(): {UserID: otherUser, HostName: "shared-in", DNSName: "shared-in.ts.net.", Online: true},
+		},
+	}
+	peers, err := discoverPeers(context.Background(), fakeStatus(status))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(peers) != 1 || peers[0].Hostname != "mine" {
+		t.Fatalf("peers = %+v; want only the own-account peer", peers)
+	}
+}
+
+func TestDiscoverPeers_FailsClosedWithoutSelfIdentity(t *testing.T) {
+	peer := map[key.NodePublic]*ipnstate.PeerStatus{
+		key.NewNode().Public(): {UserID: ownUser, HostName: "mine", DNSName: "mine.ts.net.", Online: true},
+		key.NewNode().Public(): {HostName: "unowned", DNSName: "unowned.ts.net.", Online: true},
+	}
+	for name, status := range map[string]*ipnstate.Status{
+		"nil Self":         {Peer: peer},
+		"zero Self UserID": {Self: &ipnstate.PeerStatus{}, Peer: peer},
+	} {
+		peers, err := discoverPeers(context.Background(), fakeStatus(status))
+		if err != nil {
+			t.Fatalf("%s: unexpected error: %v", name, err)
+		}
+		if peers == nil || len(peers) != 0 {
+			t.Fatalf("%s: peers = %+v; want a non-nil empty list (fail closed)", name, peers)
+		}
 	}
 }
 
@@ -349,13 +401,16 @@ func TestDiscoverAndProbe_Integration(t *testing.T) {
 	// Test the composition of discoverPeers + probeAll directly, which is what
 	// DiscoverAndProbe does internally.
 	status := &ipnstate.Status{
+		Self: selfNode,
 		Peer: map[key.NodePublic]*ipnstate.PeerStatus{
 			key.NewNode().Public(): {
+				UserID:   ownUser,
 				HostName: "portty-peer",
 				DNSName:  "portty-peer.ts.net.",
 				Online:   true,
 			},
 			key.NewNode().Public(): {
+				UserID:   ownUser,
 				HostName: "other-peer",
 				DNSName:  "other-peer.ts.net.",
 				Online:   true,

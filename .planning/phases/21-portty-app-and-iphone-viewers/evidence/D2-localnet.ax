@@ -1,0 +1,164 @@
+trusted: true
+AXWindow [AXStandardWindow] Title=Local Network @270,46 740x625
+ AXGroup [AXHostingView] @270,46 740x625
+  AXSplitGroup @270,46 740x625
+   AXGroup [AXHostingView] @270,46 232x625
+    AXScrollArea @270,144 232x527
+     AXOutline Description=Sidebar @270,144 232x527
+      AXRow [AXOutlineRow] @270,144 215x0
+       AXCell @280,144 195x0
+        AXGroup [AXHostingView] @284,144 199x0
+      AXRow [AXOutlineRow] @270,144 215x46
+       AXCell @280,144 195x46
+        AXButton Description=Sign in, Apple Account @286,148 123x38
+      AXRow [AXOutlineRow] @270,203 215x0
+       AXCell @280,203 195x0
+        AXGroup [AXHostingView] @284,203 199x0
+      AXRow [AXOutlineRow] @270,203 215x45
+       AXCell @280,203 195x45
+        AXButton Description=Software Update Available Value=1 @286,207 183x37
+      AXRow [AXOutlineRow] @270,261 215x0
+       AXCell @280,261 195x0
+        AXGroup [AXHostingView] @284,261 199x0
+      AXRow [AXOutlineRow] @270,261 215x32
+       AXCell @280,261 195x32
+        AXButton Description=Wi-Fi @287,265 61x24
+      AXRow [AXOutlineRow] @270,293 215x32
+       AXCell @280,293 195x32
+        AXButton Description=Bluetooth @287,297 88x24
+      AXRow [AXOutlineRow] @270,325 215x32
+       AXCell @280,325 195x32
+        AXButton Description=Network @287,329 80x24
+      AXRow [AXOutlineRow] @270,357 215x32
+       AXCell @280,357 195x32
+        AXButton Description=VPN @287,361 55x24
+      AXRow [AXOutlineRow] @270,389 215x32
+       AXCell @280,389 195x32
+        AXButton Description=Energy @287,393 71x24
+      AXRow [AXOutlineRow] @270,434 215x0
+       AXCell @280,434 195x0
+        AXGroup [AXHostingView] @284,434 199x0
+      AXRow [AXOutlineRow] @270,434 215x32
+       AXCell @280,434 195x32
+        AXButton Description=General @287,438 76x24
+      AXRow [AXOutlineRow] @270,466 215x32
+       AXCell @280,466 195x32
+        AXButton Description=Accessibility @287,470 105x24
+      AXRow [AXOutlineRow] @270,498 215x32
+       AXCell @280,498 195x32
+        AXButton Description=Appearance @287,502 102x24
+      AXRow [AXOutlineRow] @270,530 215x32
+       AXCell @280,530 195x32
+        AXButton Description=Desktop & Dock @287,534 127x24
+      AXRow [AXOutlineRow] @270,562 215x32
+       AXCell @280,562 195x32
+        AXButton Description=Displays @287,566 80x24
+      AXRow [AXOutlineRow] @270,594 215x32
+       AXCell @280,594 195x32
+        AXButton Description=Menu Bar @287,598 87x24
+      AXRow [AXOutlineRow] @270,626 215x32
+       AXCell @280,626 195x32
+        AXButton Description=Siri @287,630 48x24
+      AXRow [AXOutlineRow] @270,658 215x32
+       AXCell @280,658 195x32
+        AXButton Description=Spotlight @287,662 84x24
+      AXRow [AXOutlineRow] @270,690 215x32
+       AXCell @280,690 195x32
+        AXButton Description=Wallpaper @0,720 0x0
+      AXRow [AXOutlineRow] @270,735 215x19
+       AXCell @280,735 195x19
+        AXGroup [AXHostingView] @284,735 199x0
+      AXRow [AXOutlineRow] @270,735 215x32
+       AXCell @280,754 195x32
+        AXButton Description=Notifications @0,720 0x0
+      AXRow [AXOutlineRow] @270,786 215x32
+       AXCell @280,786 195x32
+        AXButton Description=Sound @0,720 0x0
+      AXRow [AXOutlineRow] @270,818 215x32
+       AXCell @280,818 195x32
+        AXButton Description=Focus @0,720 0x0
+      AXRow [AXOutlineRow] @270,850 215x32
+       AXCell @280,850 195x32
+        AXButton Description=Screen Time @0,720 0x0
+      AXRow [AXOutlineRow] @270,895 215x19
+       AXCell @280,895 195x19
+        AXGroup [AXHostingView] @284,895 199x0
+      AXRow [AXOutlineRow] @270,895 215x32
+       AXCell @280,914 195x32
+        AXButton Description=Lock Screen @0,720 0x0
+      AXRow [AXOutlineRow] @270,946 215x32
+       AXCell @280,946 195x32
+        AXButton Description=Privacy & Security @0,720 0x0
+      AXRow [AXOutlineRow] @270,978 215x32
+       AXCell @280,978 195x32
+        AXButton Description=Touch ID & Password @0,720 0x0
+      AXRow [AXOutlineRow] @270,1010 215x32
+       AXCell @280,1010 195x32
+        AXButton Description=Users & Groups @0,720 0x0
+      AXRow [AXOutlineRow] @270,1055 215x19
+       AXCell @280,1055 195x19
+        AXGroup [AXHostingView] @284,1074 199x0
+      AXRow [AXOutlineRow] @270,1074 215x32
+       AXCell @280,1074 195x32
+        AXButton Description=Game Center @0,720 0x0
+      AXRow [AXOutlineRow] @270,1106 215x32
+       AXCell @280,1106 195x32
+        AXButton Description=iCloud @0,720 0x0
+      AXRow [AXOutlineRow] @270,1138 215x32
+       AXCell @280,1138 195x32
+        AXButton Description=Internet Accounts @0,720 0x0
+      AXRow [AXOutlineRow] @270,1170 215x32
+       AXCell @280,1170 195x32
+        AXButton Description=Wallet & Apple Pay @0,720 0x0
+      AXRow [AXOutlineRow] @270,1215 215x19
+       AXCell @280,1215 195x19
+        AXGroup [AXHostingView] @284,1215 199x0
+      AXRow [AXOutlineRow] @270,1215 215x32
+       AXCell @280,1215 195x32
+        AXButton Description=Keyboard @0,720 0x0
+      AXRow [AXOutlineRow] @270,1266 215x32
+       AXCell @280,1266 195x32
+        AXButton Description=Mouse @0,720 0x0
+      AXRow [AXOutlineRow] @270,1298 215x32
+       AXCell @280,1298 195x32
+        AXButton Description=Printers & Scanners @0,720 0x0
+      AXColumn @280,144 195x1196
+     AXScrollBar Value=0 @484,143 19x529
+      AXValueIndicator Value=0 @488,147 11x251
+      AXButton [AXIncrementArrow] @485,144 0x0
+      AXButton [AXDecrementArrow] @485,144 0x0
+      AXButton [AXIncrementPage] @488,399 11x269
+      AXButton [AXDecrementPage] @488,147 11x0
+   AXGroup [AXHostingView] @280,107 212x28
+    AXTextField [AXSearchField] @280,107 212x28
+     AXButton Description=Search @283,107 25x28
+   AXSplitter Value=231.5 @501,98 0x573
+   AXGroup [AXHostingView] @270,46 740x625
+    AXGroup [AXHostingView] @270,46 740x625
+     AXScrollArea @502,98 508x573
+      AXGroup @522,110 468x151
+       AXStaticText Value=Allow the applications below to find and communicate with devices on your local network. @532,120 427x32
+       AXScrollArea @522,163 468x74
+        AXOutline @522,163 468x74
+         AXRow [AXOutlineRow] @522,163 468x37
+          AXCell @522,163 468x37
+           AXStaticText Value=Portty @530,169 69x24
+           AXCheckBox [AXSwitch] Value=0 @944,175 36x16
+         AXRow [AXOutlineRow] @522,200 468x37
+          AXCell @522,200 468x37
+           AXStaticText Value=Google Chrome @530,206 127x24
+           AXCheckBox [AXSwitch] Value=1 @944,212 36x16
+         AXColumn @522,163 468x74
+       AXButton Description=Add @529,245 9x9
+       AXButton Description=Remove @554,249 9x1
+ AXToolbar @270,46 740x52
+  AXGroup @506,46 81x52
+   AXGroup @510,54 73x36
+    AXButton [AXSegment] Description=Go Back @510,54 36x36
+    AXMenuButton [AXSegment] Description=Go Forward @546,54 37x36
+ AXButton [AXCloseButton] @288,64 16x16
+ AXButton [AXZoomButton] @334,64 16x16
+  AXGroup @335,65 14x14
+   AXGroup @335,65 14x14
+ AXButton [AXMinimizeButton] @311,64 16x16
+ AXStaticText Value=Local Network @587,46 411x52

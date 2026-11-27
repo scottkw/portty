@@ -15,6 +15,16 @@ const MUTED_STATES: ReadonlySet<string> = new Set(['needs_permission', 'awaiting
 /** 21-02's KEYROUTE verdict is page: the stage's preventDefault keeps every chord off Portty's menu, so no native menu switch exists. */
 const NATIVE_MENU = false
 
+/** The only home-clipboard read in the app (the types-first Go bridge): a rejected call fails closed. */
+async function readHome(): Promise<HomeClipboard> {
+  try {
+    const r = await ReadHomeClipboard()
+    return { outcome: r.outcome as HomeClipboard['outcome'], text: r.text }
+  } catch {
+    return { outcome: 'failed' }
+  }
+}
+
 /** The sidebar's muted line for the Mac's last state; null for ready, streaming and the rest. */
 function rowState(s: DesktopStateMsg | null): DesktopRowState | null {
   if (!s) return null
@@ -37,8 +47,6 @@ export interface DesktopTabProps {
   onDesktopState(connectHost: string, s: DesktopRowState | null): void
   /** The toolbar label while this tab is active; null otherwise (Task 3). */
   onLabel?(l: DesktopLabel | null): void
-  /** The handle App's control mode uses to release keys and give the keyboard back (Task 3). */
-  controlRef?: React.Ref<DesktopControlHandle>
 }
 
 /**
@@ -46,7 +54,7 @@ export interface DesktopTabProps {
  * browser page uses) over the loopback connection 21-05 builds from the ConnectPeerDesktop binding.
  * The tab only ever knows the host, the loopback URL and error codes: the desktop token stays in the daemon.
  */
-export function DesktopTab({ tab, active, onDesktopState, onLabel, controlRef }: DesktopTabProps): React.ReactElement {
+export function DesktopTab({ tab, active, onDesktopState, onLabel }: DesktopTabProps): React.ReactElement {
   const connectHost = tab.connectHost ?? tab.peerHost ?? ''
   const [localNetwork, setLocalNetwork] = useState(false)
   // The client was stopped because the window stayed hidden; the Reconnecting chip shows until a picture or status returns.
@@ -71,9 +79,7 @@ export function DesktopTab({ tab, active, onDesktopState, onLabel, controlRef }:
   const handleRef = useRef<DesktopControlHandle | null>(null)
   const setHandle = useCallback((h: DesktopControlHandle | null) => {
     handleRef.current = h
-    if (typeof controlRef === 'function') controlRef(h)
-    else if (controlRef) (controlRef as React.MutableRefObject<DesktopControlHandle | null>).current = h
-  }, [controlRef])
+  }, [])
   const controlling = useRef(false)
   const control = useCallback((ev: ControlEvent) => {
     const next = controlReducer(controlling.current, ev, NATIVE_MENU)
@@ -119,15 +125,9 @@ export function DesktopTab({ tab, active, onDesktopState, onLabel, controlRef }:
       const replay = {
         code: e.code, key: e.key, metaKey: true, modifierCapsLock: e.getModifierState('CapsLock'), bubbles: true, cancelable: true,
       }
-      let read: HomeClipboard
-      try {
-        const r = await ReadHomeClipboard()
-        read = { outcome: r.outcome as HomeClipboard['outcome'], text: r.text }
-      } catch {
-        read = { outcome: 'failed' }
-      }
-      const d = pasteDecision(read, lastSent.current)
+      const d = pasteDecision(await readHome(), lastSent.current)
       if (d.notice) return notice(d.notice)
+      if (!controlling.current) return // control ended while the read was in flight: nothing goes to the Mac
       if (d.send !== null) {
         let outcome: string | undefined
         try {
@@ -162,6 +162,11 @@ export function DesktopTab({ tab, active, onDesktopState, onLabel, controlRef }:
   }, [])
   const labelCb = useRef(onLabel)
   labelCb.current = onLabel
+  // Closing the tab takes its sidebar line and toolbar label with it; the peer may keep announcing its desktop.
+  useEffect(() => () => {
+    stateCb.current(connectHost, null)
+    labelCb.current?.(null)
+  }, [connectHost])
   const label = pd.desktopTabLabel({ host: connectHost, ...view })
   useEffect(() => {
     // Only the active tab owns the toolbar label (like the On <host> chip).
@@ -269,6 +274,7 @@ export function DesktopTab({ tab, active, onDesktopState, onLabel, controlRef }:
             { label: pd.LOCAL_NETWORK_CARD.openBrowser, onClick: () => void OpenPeerDesktopInBrowser(connectHost).catch(() => {}) },
           ],
         } : null}
+        readClipboard={readHome}
         paused={paused}
         onReload={() => void reconnect()}
         onClient={onClient}

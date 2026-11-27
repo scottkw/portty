@@ -182,7 +182,11 @@ func TestOpenLocalNetworkSettings(t *testing.T) {
 	old := openSystemURL
 	openSystemURL = func(u string) error { opened = append(opened, u); return nil }
 	t.Cleanup(func() { openSystemURL = old })
-	if err := (&App{}).OpenLocalNetworkSettings(); err != nil || len(opened) != 1 || opened[0] != paneLocalNetwork {
-		t.Errorf("OpenLocalNetworkSettings = %v, opened %v; want %q once", err, opened, paneLocalNetwork)
+	// 21-11 VM row D2: on macOS 27 the Privacy_LocalNetwork anchor is ignored (the window lands on the
+	// top Privacy & Security page either way), so the pane is the plain Privacy & Security URL, which the
+	// card's wording ("go to Privacy & Security, then Local Network") matches.
+	const want = "x-apple.systempreferences:com.apple.preference.security"
+	if err := (&App{}).OpenLocalNetworkSettings(); err != nil || len(opened) != 1 || opened[0] != want {
+		t.Errorf("OpenLocalNetworkSettings = %v, opened %v; want %q once", err, opened, want)
 	}
 }

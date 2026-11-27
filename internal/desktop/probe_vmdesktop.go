@@ -62,6 +62,7 @@ func vm20Pseudo() *viewer {
 			Viewer: Viewer{ID: "probe-vm20", Rights: RightsControl | RightsSurface | RightsClipboard},
 			in:     &viewerInput{},
 		}
+		vm20Viewer.setRightsBits(vm20Viewer.Rights)
 	}
 	return vm20Viewer
 }
@@ -121,9 +122,9 @@ func (m *Manager) vm20Select(ctx context.Context, v *viewer, kind string, id uin
 		if err != nil {
 			return
 		}
-		pv := *v
-		pv.ws = c
-		m.handleSelect(ctx, &pv, kind, id)
+		pv := &viewer{Viewer: v.Viewer, ws: c, in: v.in}
+		pv.setRightsBits(m.rightsOf(v))
+		m.handleSelect(ctx, pv, kind, id)
 		_ = c.Close(websocket.StatusNormalClosure, "")
 	}))
 	defer srv.Close()

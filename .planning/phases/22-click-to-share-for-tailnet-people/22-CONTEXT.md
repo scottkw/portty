@@ -53,6 +53,8 @@ User delegation (2026-11-25): "I don't need to answer a bunch of questions". Rev
 ### Carried in from Phase 20 (required)
 - **M-05 window-share key gate (user decision 2026-11-27):** Phase 20 accepted that window-share keystrokes are checked only against the frontmost app, so a non-activating panel (Alfred, Raycast) can receive keys the viewer cannot see. Accepted only while viewers are the owner's own devices. Before guests can control a window share, Phase 22 must fix it (drop keys unless the shared window holds keyboard focus) or the user must re-accept it. Source: 20-REVIEW-FIX.md, M-05.
 
+- **AR-21-01 viewer peer account check (decided 2026-11-27, orchestrator; security-tightening, reversible):** the Portty app's Desktop rows and peer-desktop connect must only offer and connect to Macs owned by the viewer's own Tailscale account (filter by the peer's UserID before connectPeerDesktop / Desktop row creation). A shared-in node from another account must never receive control-mode keys or Cmd+V clipboard text. Guests reach a share through the /desktop/guest/ link instead. Apply the same filter to the terminal peer list if it is a small change; otherwise record it. Source: 21-SECURITY.md AR-21-01.
+
 ### Claude's Discretion
 User delegated: 'I don't need to answer a bunch of questions' (2026-11-25). Claude may adjust these during planning:
 - Entry point: a Share Desktop item in the tray menu and a Share Desktop button in the Settings Desktop group, both opening one sheet with Copy Link, the viewer list and Stop Sharing; no new toolbar button. Reason: the toolbar Share is per session and Phase 19 put desktop controls in Settings ▸ Sharing.

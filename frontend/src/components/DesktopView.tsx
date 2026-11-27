@@ -9,33 +9,41 @@ import {
   ComputerDesktopIcon,
   CursorArrowRaysIcon,
   ExclamationTriangleIcon,
+  EyeIcon,
   EyeSlashIcon,
   HandRaisedIcon,
   InformationCircleIcon,
   LockClosedIcon,
   MoonIcon,
+  NoSymbolIcon,
   PlayIcon,
   SignalSlashIcon,
+  StopIcon,
+  UserIcon,
   WindowIcon,
 } from '@heroicons/react/24/outline'
 import {
   CLIP_MAX_BYTES,
   clipByteLength,
   createDesktopClient,
+  defaultGuestMode,
   type ClientStatus,
   type ClipOutcome,
   type DesktopClientOptions,
   type DesktopControlMsg,
   type DesktopClient,
+  type DesktopLeaseMsg,
   type DesktopStateMsg,
   type DesktopSurfaceMsg,
 } from '../lib/desktopClient'
 import { HINT_KEY, createDesktopInput, type DesktopInput, type ReleaseReason } from '../lib/desktopInput'
 import { isPhone, usePhone } from '../lib/phoneQuery'
+import { PASTE_NOTICES as HOME_PASTE_WORDS, type HomeClipboard } from '../lib/controlMode'
 import { UserRefused } from './UserRefused'
 import { DesktopCopyPopover, DesktopPastePopover } from './DesktopClipboardPopover'
 import { DEFAULT_RELEASE_CHORD, DesktopControlBar, SWITCH_TIMEOUT_MS, type ControlMode, type SurfacePick } from './DesktopControlBar'
 import { DesktopPhoneLayer } from './DesktopPhoneLayer'
+import * as copy from '../lib/shareDesktopCopy'
 
 const TITLE = 'Portty Desktop'
 
@@ -117,6 +125,33 @@ const CARDS: Record<CardKey, { Icon: Icon; heading: string; body: string }> = {
   },
 }
 
+/** The guest page's cards (22-UI-SPEC Surface 6); the words are shareDesktopCopy's and `mac` is set as text. */
+type GuestCardKey = 'guest_waiting' | 'guest_denied' | 'guest_timeout' | 'guest_revoked' | 'guest_ended' | 'guest_link' | 'guest_connecting' | 'guest_unreachable'
+const guestCards = (mac: string): Record<GuestCardKey, { Icon: Icon; heading: string; body: string }> => ({
+  guest_waiting: { Icon: ClockIcon, heading: copy.guestWaitingHeading(mac), body: copy.GUEST_CARD_WAITING_BODY },
+  guest_denied: { Icon: NoSymbolIcon, heading: copy.GUEST_CARD_NOT_ADMITTED, body: copy.GUEST_CARD_DENIED_BODY },
+  guest_timeout: { Icon: ClockIcon, heading: copy.GUEST_CARD_NOT_ADMITTED, body: copy.GUEST_CARD_TIMEOUT_BODY },
+  guest_revoked: { Icon: NoSymbolIcon, heading: copy.GUEST_CARD_REVOKED, body: copy.GUEST_CARD_REVOKED_BODY },
+  guest_ended: { Icon: StopIcon, heading: copy.GUEST_CARD_ENDED, body: copy.GUEST_CARD_ENDED_BODY },
+  guest_link: { Icon: ExclamationTriangleIcon, heading: copy.GUEST_CARD_LINK, body: copy.GUEST_CARD_LINK_BODY },
+  guest_connecting: { Icon: ComputerDesktopIcon, heading: copy.GUEST_CARD_CONNECTING, body: copy.guestConnectingBody(mac) },
+  guest_unreachable: { Icon: SignalSlashIcon, heading: copy.GUEST_CARD_UNREACHABLE, body: copy.GUEST_CARD_UNREACHABLE_BODY },
+})
+/** The two guest cards that offer Reload Page. */
+const GUEST_RELOAD: ReadonlySet<GuestCardKey> = new Set<GuestCardKey>(['guest_timeout', 'guest_unreachable'])
+const GUEST_FINAL_CARDS = {
+  denied: 'guest_denied',
+  admit_timeout: 'guest_timeout',
+  revoked: 'guest_revoked',
+  share_ended: 'guest_ended',
+  token_invalid: 'guest_link',
+} as const
+
+/** The short host name: the first DNS label of the page's own host. */
+const isGuestCard = (k: CardKey | GuestCardKey): k is GuestCardKey => k.startsWith('guest_')
+
+const macLabel = (hostname: string): string => hostname.split('.')[0] || hostname
+
 /** What the host shell may do to a viewer in control mode (Task 3 fills the handle). */
 export interface DesktopControlHandle {
   releaseAll(): void
@@ -153,6 +188,8 @@ const SURFACE_FALLBACKS: Record<string, string | undefined> = {
   window_closed: 'The shared window closed; showing the main display',
   display_gone: 'The shared display disconnected; showing the main display',
 }
+/** "Someone is using this Mac" stays up at least this long, so a hand on the trackpad cannot make it flicker. */
+const PHYSICAL_MIN_MS = 2000
 const CHIP_SHOW_MS = 3000
 const CHIP_FADE_MS = 150
 /** A transfer that takes longer than this shows Copying from the Mac… or Sending to the Mac… until it ends. */
@@ -209,6 +246,7 @@ const PASTE_NOTICES: Partial<Record<ClipOutcome, NoticeSpec>> = {
   empty: { Icon: ClipboardIcon, text: 'Your clipboard has no text', dwell: 3000 },
   too_large: { Icon: ExclamationTriangleIcon, text: 'Your clipboard text is too large to send (limit 1 MB)', dwell: 5000 },
 }
+const PASTE_CONCEALED: NoticeSpec = { Icon: ExclamationTriangleIcon, text: HOME_PASTE_WORDS.concealed, dwell: 5000 }
 const PASTE_FAILED: NoticeSpec = { Icon: ExclamationTriangleIcon, text: "Couldn't send to the Mac. Try again.", dwell: 5000, alert: true }
 
 export type { ControlMode }
@@ -250,7 +288,7 @@ export interface DesktopViewProps {
    * Connection options for createDesktopClient (the loopback transport and its hooks); read once at mount.
    */
   clientOptions?: DesktopClientOptions
-  /** Inside a tab: no page title, no splash removal, and the root is contained by the tab, not fixed to the window. */
+  /** Inside a tab: no page title, no splash removal, and the root is contained by the tab, not fixed to the window. No Swap: it is Mac to Mac. */
   embedded?: boolean
   /** The client, once created, and null when it is torn down. */
   onClient?: (c: DesktopClient | null) => void
@@ -260,6 +298,11 @@ export interface DesktopViewProps {
   onDesktopState?: (s: DesktopStateMsg | null) => void
   /** Per-card words and action label, merged over the page's copy (the app's wording has no link, page or browser). */
   cards?: Partial<Record<CardKey, CardOverride>>
+  /**
+   * Where Paste to Mac reads the viewer's clipboard. The app passes its Go bridge, which refuses concealed
+   * pasteboard items; without it the page uses navigator.clipboard.
+   */
+  readClipboard?: () => Promise<HomeClipboard>
   /** A card that wins over every client card. */
   hostCard?: HostCard | null
   /** The host stopped the client (a hidden window): shows the Reconnecting chip until the host clears it. */
@@ -276,6 +319,11 @@ export interface DesktopViewProps {
   hideCaptureNotices?: boolean
   /** The release chord the page names in its hint and the Control tooltip; the app's differs from the browser viewer's. */
   releaseChord?: string
+  /**
+   * Phase 22-07: the guest page (the share server's own socket, Admit, grants that change live).
+   * Absent, it follows the path: /desktop/guest/ is guest mode.
+   */
+  guest?: boolean
 }
 
 /**
@@ -299,6 +347,7 @@ export function DesktopView({
   onDesktopState,
   cards,
   hostCard = null,
+  readClipboard,
   paused: hostPaused = false,
   onPicture,
   onCaptureChange,
@@ -306,7 +355,10 @@ export function DesktopView({
   controlRef,
   hideCaptureNotices = false,
   releaseChord = DEFAULT_RELEASE_CHORD,
+  guest: guestProp,
 }: DesktopViewProps = {}): React.ReactElement {
+  const guest = guestProp ?? defaultGuestMode(window.location)
+  const mac = macLabel(window.location.hostname)
   const rootRef = useRef<HTMLDivElement>(null)
   const controlSegRef = useRef<HTMLButtonElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -345,6 +397,12 @@ export function DesktopView({
   const [status, setStatus] = useState<ClientStatus>({ kind: 'connecting' })
   const [desk, setDesk] = useState<DesktopStateMsg | null>(null)
   const [viewers, setViewers] = useState<number | null>(null)
+  // Guest mode: where this connection stands at Admit. Null until the share server says, and again after a drop.
+  const [admission, setAdmission] = useState<'waiting' | 'admitted' | null>(null)
+  // Guest mode: who holds the lease, and whether physical input at the Mac has held it for the 2 s minimum.
+  const [lease, setLease] = useState<DesktopLeaseMsg | null>(null)
+  const [someoneUsing, setSomeoneUsing] = useState(false)
+  const prevClipboard = useRef(false)
   const [hasFrame, setHasFrame] = useState(false)
   const [needsTap, setNeedsTap] = useState(false)
   const [chipPhase, setChipPhase] = useState<'gone' | 'shown' | 'fading'>('gone')
@@ -472,15 +530,54 @@ export function DesktopView({
   }, [])
 
   useEffect(() => {
-    const client = createDesktopClient(optionsRef.current)
+    const client = createDesktopClient(guestProp === undefined ? optionsRef.current : { ...optionsRef.current, guest: guestProp })
     clientRef.current = client
     clientCb.current?.(client)
     const phone = isPhone()
     if (phone) setPhoneClient(client)
     let lastEpoch: number | null = null
+    const dwell: { since: number; timer: ReturnType<typeof setTimeout> | null } = { since: 0, timer: null }
+    const resetLease = () => {
+      if (dwell.timer !== null) clearTimeout(dwell.timer)
+      dwell.timer = null
+      dwell.since = 0
+      setLease(null)
+      setSomeoneUsing(false)
+    }
     const offs = [
+      () => {
+        if (dwell.timer !== null) clearTimeout(dwell.timer)
+      },
       client.on('rights', (r) => {
         if (phone) setPhoneRights({ control: r.control, surface: r.surface })
+        if (guest) {
+          // Grants change live. A guest never picks the display, and the clipboard grant has no chip: a notice says it.
+          setCanSurface(false)
+          setCanClipboard(r.clipboard)
+          if (r.clipboard !== prevClipboard.current) {
+            prevClipboard.current = r.clipboard
+            pushNotice(
+              r.clipboard
+                ? { Icon: ClipboardDocumentCheckIcon, text: copy.GUEST_NOTICE_CLIPBOARD_ON, dwell: 3000 }
+                : { Icon: ClipboardIcon, text: copy.GUEST_NOTICE_CLIPBOARD_OFF, dwell: 3000 },
+            )
+          }
+          if (!r.control) {
+            // Everything held is released, the ring and dot go with the control, and the View only chip says so.
+            inputCtl.current?.setControl(false)
+            setCanControl(false)
+            resetLease()
+          } else if (inputCtl.current) setCanControl(true)
+        }
+        if (!guest && !phone && inputCtl.current) {
+          // A later hello (a reconnect) is the grant as it stands now: drop what it no longer allows.
+          setCanSurface(r.surface)
+          setCanClipboard(r.clipboard)
+          if (!r.control) {
+            inputCtl.current.setControl(false)
+            setCanControl(false)
+          } else setCanControl(true)
+        }
         const stage = stageRef.current
         const input = inputRef.current
         if (!r.control || phone || inputCtl.current || !stage || !input) return
@@ -494,7 +591,7 @@ export function DesktopView({
               const v = videoRef.current
               return v ? videoContentRect(v.clientWidth, v.clientHeight, v.videoWidth, v.videoHeight) : { x: 0, y: 0, width: 0, height: 0 }
             },
-            storage: safeStorage(),
+            storage: embedded ? null : safeStorage(),
           },
           {
             // Straight to the element, on the animation frame of the move: no React render between.
@@ -535,7 +632,7 @@ export function DesktopView({
         ctl.setControl(true)
         inputCtl.current = ctl
         setSwapOn(ctl.swap())
-        setCanSurface(r.surface)
+        setCanSurface(r.surface && !guest)
         setCanClipboard(r.clipboard)
         setCanControl(true)
       }),
@@ -569,6 +666,28 @@ export function DesktopView({
         lastEpoch = sf.e
       }),
       client.on('selectFailed', () => switchFailedRef.current()),
+      client.on('admission', ({ state }) => setAdmission(state)),
+      client.on('lease', (l) => {
+        setLease(l)
+        const physical = l.state === 'physical' || l.state === 'owner'
+        if (dwell.timer !== null) clearTimeout(dwell.timer)
+        dwell.timer = null
+        if (physical) {
+          if (dwell.since === 0) dwell.since = Date.now()
+          setSomeoneUsing(true)
+        } else if (dwell.since !== 0) {
+          // A free lease right after physical input still leaves the chip up for the 2 s minimum.
+          const left = dwell.since + PHYSICAL_MIN_MS - Date.now()
+          const since = dwell.since
+          const done = () => {
+            if (dwell.since === since) dwell.since = 0
+            dwell.timer = null
+            setSomeoneUsing(false)
+          }
+          if (left <= 0) done()
+          else dwell.timer = setTimeout(done, left)
+        }
+      }),
       client.on('track', (stream) => {
         const v = videoRef.current
         if (!v) return
@@ -583,6 +702,11 @@ export function DesktopView({
       client.on('size', updateRect),
       client.on('status', (s) => {
         setStatus(s)
+        // What the share server said about the lost connection is stale; the next connection says it afresh.
+        if (s.kind === 'reconnecting' || s.kind === 'unreachable') {
+          setAdmission(null)
+          resetLease()
+        }
         // A state card describes the connection that is gone; the next state message replaces it.
         if (s.kind !== 'streaming' && s.kind !== 'connecting') {
           setDesk(null)
@@ -601,7 +725,7 @@ export function DesktopView({
       clientCb.current?.(null)
       setPhoneClient(null)
     }
-  }, [startPlay, updateRect, pushNotice, typingStays])
+  }, [startPlay, updateRect, pushNotice, typingStays, guest, guestProp, embedded])
 
   // The count chip: 3 s after the first frame, and again whenever the count changes.
   useEffect(() => {
@@ -731,6 +855,14 @@ export function DesktopView({
     })
   }
 
+  function pickSurface(pick: SurfacePick) {
+    if (switchingRef.current) return
+    const sw = { ...pick, previous: surfRef.current?.name ?? 'the main display' }
+    switchingRef.current = sw
+    setSwitching(sw)
+    clientRef.current?.selectSurface(pick.kind, pick.id)
+  }
+
   function toggleSwap(on: boolean) {
     inputCtl.current?.setSwap(on)
     setSwapOn(on)
@@ -821,6 +953,30 @@ export function DesktopView({
   /** Paste to Mac. The read of the viewer's clipboard starts inside the click; it is sent at once. */
   async function pasteToMac() {
     if (!clientRef.current || clipBusyRef.current) return
+    if (readClipboard) {
+      clipBusyRef.current = true
+      setClipBusy(true)
+      let read: HomeClipboard
+      try {
+        read = await readClipboard()
+      } catch {
+        read = { outcome: 'failed' }
+      }
+      clipBusyRef.current = false
+      setClipBusy(false)
+      switch (read.outcome) {
+        case 'ok':
+          return sendToMac(read.text ?? '')
+        case 'empty':
+          return pushNotice(PASTE_NOTICES.empty!)
+        case 'too_large':
+          return pushNotice(PASTE_NOTICES.too_large!)
+        case 'concealed':
+          return pushNotice(PASTE_CONCEALED)
+        default:
+          return pushNotice(PASTE_FAILED)
+      }
+    }
     const clip = navigator.clipboard
     if (!clip?.readText) {
       // Still inside the menu item's own handler, where the Clipboard menu counts as open until it closes just after.
@@ -846,25 +1002,34 @@ export function DesktopView({
 
   // One card or one chip at a time; the first that applies wins.
   const stateCard = desk ? STATE_CARDS[desk.state] : undefined
-  let cardKey: CardKey | null = null
+  let cardKey: CardKey | GuestCardKey | null = null
   let chip: { Icon?: Icon; text: string; fading?: boolean } | null = null
   // Embedded, the other-account case is the Refused card (the page's Refused screen talks about a link).
   const clientStatus = embedded && status.kind === 'other_account' ? 'token_rejected' : status.kind
   if (hostCard) cardKey = null
   else if (hostPaused) chip = { Icon: ArrowPathIcon, text: 'Reconnecting…' }
+  else if (guest && status.kind === 'guest_final') cardKey = GUEST_FINAL_CARDS[status.reason]
+  else if (guest && clientStatus === 'unreachable') cardKey = 'guest_unreachable'
   else if (clientStatus === 'token_rejected' || clientStatus === 'desktop_off' || clientStatus === 'unreachable') cardKey = clientStatus
+  else if (guest && admission === 'waiting') cardKey = 'guest_waiting'
   else if (stateCard) cardKey = stateCard
   else if (needsTap) cardKey = 'tap'
   else if (status.kind === 'reconnecting') chip = { Icon: ArrowPathIcon, text: 'Reconnecting…' }
-  else if (!hasFrame) cardKey = 'connecting'
+  else if (!hasFrame) cardKey = guest ? 'guest_connecting' : 'connecting'
   else if (locked) chip = { Icon: LockClosedIcon, text: 'Locked' }
   else if (canControl && ctlState.window !== '') chip = WINDOW_CHIPS[ctlState.window]
   else if (canControl && accessNeeded) chip = ACCESSIBILITY_CHIP
+  else if (guest && canControl && someoneUsing) chip = { Icon: HandRaisedIcon, text: copy.GUEST_CHIP_SOMEONE }
+  else if (guest && canControl && lease?.state === 'other') chip = { Icon: UserIcon, text: copy.controllingChip(lease.name || 'Someone') }
+  else if (guest && canControl) chip = { Icon: CursorArrowRaysIcon, text: copy.GUEST_CHIP_CONTROL }
+  else if (guest) chip = { Icon: EyeIcon, text: copy.GUEST_CHIP_VIEW_ONLY }
   else if (chipPhase !== 'gone' && viewers !== null && viewers >= 1) {
     chip = { text: `Streaming to ${viewers} ${viewers === 1 ? 'viewer' : 'viewers'}`, fading: chipPhase === 'fading' }
   }
   // The bar is for a viewer that may control the Mac, while a picture is up and no card covers it.
-  const showBar = canControl && cardKey === null && !hostCard && !hostPaused && (status.kind === 'streaming' || status.kind === 'reconnecting')
+  // A guest granted only the clipboard still has a bar, holding the Clipboard menu alone.
+  const barAllowed = canControl || canClipboard
+  const showBar = barAllowed && cardKey === null && !hostCard && !hostPaused && (status.kind === 'streaming' || status.kind === 'reconnecting')
   showBarRef.current = showBar
   const picture = hasFrame && cardKey === null && !hostCard && !hostPaused
   useEffect(() => {
@@ -893,25 +1058,29 @@ export function DesktopView({
   }, [measureChip])
 
   if (status.kind === 'other_account' && !embedded) return <UserRefused />
-  const scrim = hostCard !== null || (cardKey !== null && cardKey !== 'connecting') || chip?.Icon === ArrowPathIcon
+  const scrim = hostCard !== null || (cardKey !== null && cardKey !== 'connecting' && cardKey !== 'guest_connecting') || chip?.Icon === ArrowPathIcon
   const card = hostCard
     ? { Icon: ExclamationTriangleIcon, heading: hostCard.heading, body: hostCard.body }
-    : cardKey
-      ? { ...CARDS[cardKey], ...cards?.[cardKey] }
-      : null
-  const cardAction = cardKey ? (cards?.[cardKey]?.action ?? DEFAULT_ACTIONS[cardKey]) : undefined
+    : cardKey && isGuestCard(cardKey)
+      ? guestCards(mac)[cardKey]
+      : cardKey
+        ? { ...CARDS[cardKey], ...cards?.[cardKey] }
+        : null
+  const cardAction = cardKey && !isGuestCard(cardKey) ? (cards?.[cardKey]?.action ?? DEFAULT_ACTIONS[cardKey]) : undefined
 
   return (
     <div
       ref={rootRef}
-      className={`desktop-view${canControl ? ' desktop-view--bar' : ''}${embedded ? ' desktop-view--embedded' : ''}${phoneMode ? ' desktop-view--phone' : ''}`}
+      className={`desktop-view${barAllowed ? ' desktop-view--bar' : ''}${embedded ? ' desktop-view--embedded' : ''}${phoneMode ? ' desktop-view--phone' : ''}`}
     >
       <div
         className={active && !inputPaused ? 'desktop-stage desktop-stage--live' : 'desktop-stage'}
         ref={stageRef}
         {...(canControl
           ? { role: 'application', 'aria-label': 'Mac desktop', 'aria-describedby': HINT_ID, tabIndex: active ? 0 : -1 }
-          : {})}
+          : guest
+            ? { tabIndex: -1 }
+            : {})}
       >
         {video}
         {canControl && captured && <div className="desktop-ring" aria-hidden="true" />}
@@ -924,6 +1093,7 @@ export function DesktopView({
             rights={phoneRights}
             locked={locked}
             reconnecting={hostPaused || status.kind === 'reconnecting' || status.kind === 'unreachable'}
+            onSelectSurface={pickSurface}
           />
         )}
         <span id={HINT_ID} className="visually-hidden">
@@ -969,6 +1139,11 @@ export function DesktopView({
           {cardKey === 'tap' && (
             <button type="button" className="button button--primary desktop-card__action" autoFocus onClick={startPlay}>
               {cards?.tap?.action ?? 'Tap to Start'}
+            </button>
+          )}
+          {cardKey && isGuestCard(cardKey) && GUEST_RELOAD.has(cardKey) && (
+            <button type="button" className="button button--secondary desktop-card__action" onClick={onReload ?? (() => window.location.reload())}>
+              {copy.RELOAD_PAGE}
             </button>
           )}
           {(cardKey === 'unreachable' || cardKey === 'token_rejected') && cardAction && (
@@ -1019,16 +1194,12 @@ export function DesktopView({
               canSurface,
               fullscreenAvailable: !embedded && document.fullscreenEnabled === true,
               canClipboard,
+              canControl,
+              embedded,
             }}
             surface={surf ? { kind: surf.kind, id: surf.id, name: surf.name } : null}
             requestSurfaces={() => clientRef.current?.requestSurfaces() ?? Promise.reject(new Error('not connected'))}
-            onSelectSurface={(pick) => {
-              if (switchingRef.current) return
-              const sw = { ...pick, previous: surfRef.current?.name ?? 'the main display' }
-              switchingRef.current = sw
-              setSwitching(sw)
-              clientRef.current?.selectSurface(pick.kind, pick.id)
-            }}
+            onSelectSurface={pickSurface}
             sendChord={(codes) => inputCtl.current?.sendChord(codes)}
             onMenuOpenChange={(open) => {
                 barMenuOpenRef.current = open // eagerly, for a popover that opens before the next render
@@ -1047,6 +1218,7 @@ export function DesktopView({
             clipboardRef={clipboardBtnRef}
             popoverOpen={popover !== null}
             releaseChord={releaseChord}
+            guest={guest}
           />
         </div>
       )}

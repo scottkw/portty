@@ -1,0 +1,28 @@
+== before close: {"alwaysAvailable":true,"state":"streaming","viewers":1,"locked":false} displaysleep_viewer=1
+562 563318 STATS status=streaming state=streaming viewers=1 fd=4383 fw=2560 fh=1440 bytes=29433450 csp=0
+570 570407 STATS status=streaming state=streaming viewers=1 fd=4444 fw=2560 fh=1440 bytes=29884277 csp=0
+571 572409 STATS status=streaming state=streaming viewers=1 fd=4460 fw=2560 fh=1440 bytes=30076014 csp=0
+572 574406 STATS status=streaming state=streaming viewers=1 fd=4476 fw=2560 fh=1440 bytes=30111863 csp=0
+t+24s host-clock; {"alwaysAvailable":true,"state":"streaming","viewers":1,"locked":false} displaysleep_viewer_assertions=1
+t+42s host-clock; {"alwaysAvailable":true,"state":"streaming","viewers":1,"locked":false} displaysleep_viewer_assertions=1
+t+60s host-clock; {"alwaysAvailable":true,"state":"streaming","viewers":1,"locked":false} displaysleep_viewer_assertions=1
+t+77s host-clock; {"alwaysAvailable":true,"state":"streaming","viewers":1,"locked":false} displaysleep_viewer_assertions=1
+t+95s host-clock; {"alwaysAvailable":true,"state":"streaming","viewers":1,"locked":false} displaysleep_viewer_assertions=1
+t+113s host-clock; {"alwaysAvailable":true,"state":"streaming","viewers":1,"locked":false} displaysleep_viewer_assertions=1
+t+131s host-clock; {"alwaysAvailable":true,"state":"idle","viewers":0,"locked":false} displaysleep_viewer_assertions=0
+t+148s host-clock; {"alwaysAvailable":true,"state":"idle","viewers":0,"locked":false} displaysleep_viewer_assertions=0
+t+166s host-clock; {"alwaysAvailable":true,"state":"idle","viewers":0,"locked":false} displaysleep_viewer_assertions=0
+t+184s host-clock; {"alwaysAvailable":true,"state":"idle","viewers":0,"locked":false} displaysleep_viewer_assertions=0
+t+201s host-clock; {"alwaysAvailable":true,"state":"idle","viewers":0,"locked":false} displaysleep_viewer_assertions=0
+t+219s host-clock; {"alwaysAvailable":true,"state":"idle","viewers":0,"locked":false} displaysleep_viewer_assertions=0
+t+237s host-clock; {"alwaysAvailable":true,"state":"idle","viewers":0,"locked":false} displaysleep_viewer_assertions=0
+t+255s host-clock; {"alwaysAvailable":true,"state":"idle","viewers":0,"locked":false} displaysleep_viewer_assertions=0
+623 676407 STATS status=streaming state=streaming viewers=1 fd=5350 fw=2560 fh=1440 bytes=36104778 csp=0
+624 678406 STATS status=streaming state=streaming viewers=1 fd=5366 fw=2560 fh=1440 bytes=36150581 csp=0
+625 680406 STATS status=streaming state=streaming viewers=1 fd=5381 fw=2560 fh=1440 bytes=36331915 csp=0
+626 682406 STATS status=streaming state=streaming viewers=1 fd=5398 fw=2560 fh=1440 bytes=36377718 csp=0
+627 684407 STATS status=streaming state=streaming viewers=1 fd=5415 fw=2560 fh=1440 bytes=36567691 csp=0
+628 686407 STATS status=streaming state=streaming viewers=1 fd=5433 fw=2560 fh=1440 bytes=36609535 csp=0
+629 688407 STATS status=streaming state=streaming viewers=1 fd=5451 fw=2560 fh=1440 bytes=36803931 csp=0
+630 690407 STATS status=streaming state=streaming viewers=1 fd=5460 fw=2560 fh=1440 bytes=36825505 csp=0
+{"alwaysAvailable":true,"state":"streaming","viewers":1,"locked":false}

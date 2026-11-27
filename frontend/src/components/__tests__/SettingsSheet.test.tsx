@@ -328,7 +328,7 @@ describe('Security pane', () => {
     await renderSheet()
     const security = panel('security')
     // 19-13: Regenerate also stops the saved desktop links, so both strings say so (changed on purpose).
-    expect(security.textContent).toContain('Regenerating signs out every browser and Mac attached to your sessions, and stops every saved desktop link.')
+    expect(security.textContent).toContain('Regenerating signs out every browser and Mac attached to your sessions, stops every saved desktop link, and ends any desktop sharing.')
     const regen = Array.from(security.querySelectorAll('button')).find((b) => b.textContent === 'Regenerate…')!
     await act(async () => regen.click())
     const confirm = container.querySelector('[aria-labelledby="regen-key-title"]')!

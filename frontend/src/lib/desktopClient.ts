@@ -34,6 +34,11 @@ export type ClientStatus =
   | { kind: 'token_rejected' }
   | { kind: 'desktop_off' }
   | { kind: 'other_account' }
+  /** Guest mode only (22-07): the connection ended on a fixed reason and is never retried. */
+  | { kind: 'guest_final'; reason: GuestCloseReason }
+
+/** Why a guest connection ended for good (22-UI-SPEC Surface 6 close reasons). */
+export type GuestCloseReason = 'denied' | 'admit_timeout' | 'revoked' | 'share_ended' | 'token_invalid'
 
 export interface SignalTransport {
   send(msg: object): void
@@ -61,6 +66,8 @@ export interface DesktopClientOptions {
   clock?: DesktopClock
   doc?: Document
   win?: Window
+  /** Guest mode (22-07): the share's own socket and check, an offer only after admission. Defaults to defaultGuestMode(location). */
+  guest?: boolean
 }
 
 export interface DesktopStateMsg {
@@ -131,6 +138,18 @@ export interface DesktopCursorMsg {
   e: number
 }
 
+/** Admission as the share server reports it to a guest: waiting at Admit, then admitted. */
+export interface DesktopAdmissionMsg {
+  state: 'waiting' | 'admitted'
+}
+
+/** Who holds the 2 s input lease, from this guest's side. `name` is set only for `other`, and is the holder's sanitized display name. */
+export type LeaseState = 'you' | 'other' | 'owner' | 'physical' | 'free'
+export interface DesktopLeaseMsg {
+  state: LeaseState
+  name: string
+}
+
 export interface DesktopEvents {
   track: MediaStream
   state: DesktopStateMsg
@@ -147,6 +166,10 @@ export interface DesktopEvents {
   selectFailed: { code: string }
   control: DesktopControlMsg
   cursor: DesktopCursorMsg
+  /** Guest mode: the admission state of this connection. */
+  admission: DesktopAdmissionMsg
+  /** Guest mode: the input lease. */
+  lease: DesktopLeaseMsg
 }
 
 /** What the daemon answered for a clipboard transfer (20-01 clip_result outcomes). */
@@ -256,6 +279,18 @@ export function defaultDesktopWsUrl(loc: Location = window.location): string {
   return `wss://${loc.host}/desktop/ws?cap=${encodeURIComponent(capToken ?? '')}`
 }
 
+/** True on the guest page: the path starts with /desktop/guest/ (the share server's route, 22-01). */
+export function defaultGuestMode(loc: Location = window.location): boolean {
+  // typeof: an injected window in a test may carry no pathname.
+  return typeof loc.pathname === 'string' && loc.pathname.startsWith('/desktop/guest/')
+}
+
+/** wss://<same host>/desktop/guest/ws?cap=<token from the page URL>. */
+export function defaultGuestWsUrl(loc: Location = window.location): string {
+  const { capToken } = readWebModeParams(loc)
+  return `wss://${loc.host}/desktop/guest/ws?cap=${encodeURIComponent(capToken ?? '')}`
+}
+
 export function webSocketTransport(url: string): SignalTransport {
   const ws = new WebSocket(url)
   return {
@@ -275,6 +310,29 @@ export function webSocketTransport(url: string): SignalTransport {
   }
 }
 
+// Fixed close codes of the share server (22-04); the page tells the states apart by code, never by text.
+const GUEST_CLOSE: Readonly<Record<number, GuestCloseReason>> = {
+  4401: 'token_invalid',
+  4410: 'share_ended',
+  4430: 'denied',
+  4431: 'admit_timeout',
+  4432: 'revoked',
+  4433: 'share_ended',
+}
+
+const LEASE_STATES: ReadonlySet<string> = new Set<LeaseState>(['you', 'other', 'owner', 'physical', 'free'])
+
+/** Belt and braces on a name from the wire: no control or format characters, one space between words, at most 128 characters. */
+function cleanName(v: unknown): string {
+  if (typeof v !== 'string') return ''
+  return [...v.replace(/[\p{Cc}\p{Cf}]/gu, ' ').replace(/\s+/g, ' ').trim()].slice(0, 128).join('')
+}
+
+function parseRights(v: unknown): DesktopRights {
+  const r = (isObj(v) ? v : {}) as Record<string, unknown>
+  return { control: r.control === true, clipboard: r.clipboard === true, surface: r.surface === true }
+}
+
 const STATES: ReadonlySet<string> = new Set<DesktopState>([
   'off', 'needs_permission', 'awaiting_approval', 'display_asleep', 'locked', 'idle', 'streaming', 'capture_paused',
 ])
@@ -289,14 +347,16 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
   const win = opts.win ?? window
   const doc = opts.doc ?? document
   const clock = opts.clock ?? realClock
-  const makeTransport = opts.transport ?? (() => webSocketTransport(defaultDesktopWsUrl(win.location)))
+  const guest = opts.guest ?? defaultGuestMode(win.location)
+  const makeTransport =
+    opts.transport ?? (() => webSocketTransport(guest ? defaultGuestWsUrl(win.location) : defaultDesktopWsUrl(win.location)))
   const makePC = opts.createPeerConnection ?? (() => new RTCPeerConnection({ iceServers: [] }))
-  const check = opts.check ?? (() => fetchCheck(win.location))
+  const check = opts.check ?? (() => (guest ? fetchGuestCheck(win.location) : fetchCheck(win.location)))
 
   const listeners: { [K in keyof DesktopEvents]: Set<(v: DesktopEvents[K]) => void> } = {
     track: new Set(), state: new Set(), size: new Set(), status: new Set(), wake: new Set(),
     rights: new Set(), input: new Set(), surface: new Set(), surfaces: new Set(), selectFailed: new Set(),
-    control: new Set(), cursor: new Set(),
+    control: new Set(), cursor: new Set(), admission: new Set(), lease: new Set(),
   }
   function emit<K extends keyof DesktopEvents>(event: K, v: DesktopEvents[K]) {
     for (const cb of [...listeners[event]]) cb(v)
@@ -317,6 +377,9 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
   let transport: SignalTransport | null = null
   let pc: RTCPeerConnection | null = null
   let hadHello = false
+  // Guest mode: what the hello offered, kept until admission lets the offer start (once per connection).
+  let helloInput = false
+  let offered = false
   let hasPicture = false
   // Per peer connection: a picture needs both the track and ICE connected. ontrack fires
   // on setRemoteDescription, long before (or without) any media path.
@@ -494,10 +557,17 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
     setStatus({ kind })
   }
 
+  function guestFinal(reason: GuestCloseReason) {
+    shutdown()
+    setStatus({ kind: 'guest_final', reason })
+  }
+
   function connect() {
     teardown()
     const g = ++gen
     hadHello = false
+    helloInput = false
+    offered = false
     let t: SignalTransport
     try {
       t = makeTransport()
@@ -524,6 +594,7 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
   function onClose(code: number) {
     const hello = hadHello
     teardown()
+    if (guest && GUEST_CLOSE[code]) return guestFinal(GUEST_CLOSE[code])
     if (code === 4401) return final('token_rejected')
     if (code === 4410) return final('desktop_off')
     if (code === 1012) {
@@ -547,6 +618,8 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
       verdict = 'retry'
     }
     if (g !== gen || !running) return
+    // A guest's check answers 401, 410 or 403 for a link that is gone: one card for all of them.
+    if (guest && (verdict === 'token' || verdict === 'off' || verdict === 'other_account')) return guestFinal('token_invalid')
     if (verdict === 'token') return final('token_rejected')
     if (verdict === 'off') return final('desktop_off')
     if (verdict === 'other_account') return final('other_account')
@@ -633,6 +706,24 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
     }
   }
 
+  /** The peer connection and the offer: from the hello, or, for a guest, from admission. */
+  async function beginOffer(g: number) {
+    offered = true
+    const conn = makePC()
+    pc = conn
+    conn.ontrack = (e) => {
+      if (g === gen) onTrack(e)
+    }
+    conn.onconnectionstatechange = () => onIceState(g, conn.connectionState)
+    // Before addTransceiver and createOffer, so the offer carries an application m-line.
+    if (helloInput) openInputChannel(g, conn)
+    conn.addTransceiver('video', { direction: 'recvonly' })
+    await conn.setLocalDescription(await conn.createOffer())
+    await gathered(conn)
+    if (g !== gen) return
+    transport?.send({ type: 'offer', sdp: conn.localDescription?.sdp ?? '' })
+  }
+
   async function handle(g: number, raw: unknown) {
     if (typeof raw !== 'object' || raw === null) return
     const m = raw as Record<string, unknown>
@@ -642,23 +733,34 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
           if (hadHello) return
           hadHello = true
           helloTimer = cancel(helloTimer)
-          const conn = makePC()
-          pc = conn
-          conn.ontrack = (e) => {
-            if (g === gen) onTrack(e)
-          }
-          conn.onconnectionstatechange = () => onIceState(g, conn.connectionState)
-          const rights = (m.rights ?? {}) as Record<string, unknown>
-          emit('rights', { control: rights.control === true, clipboard: rights.clipboard === true, surface: rights.surface === true })
-          // Before addTransceiver and createOffer, so the offer carries an application m-line.
-          if ((m.caps as Record<string, unknown> | undefined)?.input === 1) openInputChannel(g, conn)
-          conn.addTransceiver('video', { direction: 'recvonly' })
-          await conn.setLocalDescription(await conn.createOffer())
-          await gathered(conn)
-          if (g !== gen) return
-          transport?.send({ type: 'offer', sdp: conn.localDescription?.sdp ?? '' })
+          emit('rights', parseRights(m.rights))
+          helloInput = (m.caps as Record<string, unknown> | undefined)?.input === 1
+          // A guest sends no offer until the share server says admitted.
+          if (!guest) await beginOffer(g)
           break
         }
+        case 'admission': {
+          if (!guest) break
+          if (m.state === 'waiting') {
+            // Waiting at Admit with the socket up is not an unreachable Mac, and not a lost picture.
+            unreachableTimer = cancel(unreachableTimer)
+            if (status.kind === 'reconnecting' || status.kind === 'unreachable') setStatus({ kind: 'connecting' })
+            emit('admission', { state: 'waiting' })
+          } else if (m.state === 'admitted' && !offered) {
+            emit('admission', { state: 'admitted' })
+            armUnreachable()
+            await beginOffer(g)
+          }
+          break
+        }
+        case 'rights':
+          if (guest) emit('rights', parseRights(m.rights))
+          break
+        case 'lease':
+          if (guest && typeof m.state === 'string' && LEASE_STATES.has(m.state)) {
+            emit('lease', { state: m.state as LeaseState, name: m.state === 'other' ? cleanName(m.name) : '' })
+          }
+          break
         case 'answer':
           if (typeof m.sdp === 'string' && pc) await pc.setRemoteDescription({ type: 'answer', sdp: m.sdp })
           break
@@ -925,6 +1027,27 @@ function parseSurfaces(m: Record<string, unknown>): DesktopSurfacesMsg | null {
     })
   }
   return { displays, windows }
+}
+
+/** The guest page's check: 401 (bad token), 410 (share ended) and 403 (refused) all mean the link is gone. */
+export async function fetchGuestCheck(loc: Location = window.location): Promise<CheckVerdict> {
+  const { capToken } = readWebModeParams(loc)
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 5000)
+  try {
+    const res = await fetch(`/desktop/guest/check?cap=${encodeURIComponent(capToken ?? '')}`, {
+      cache: 'no-store',
+      credentials: 'same-origin',
+      signal: ctrl.signal,
+    })
+    if (res.status === 204) return 'ok'
+    if (res.status === 401 || res.status === 410 || res.status === 403) return 'token'
+    return 'retry'
+  } catch {
+    return 'retry'
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export async function fetchCheck(loc: Location = window.location): Promise<CheckVerdict> {

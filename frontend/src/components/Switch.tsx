@@ -13,13 +13,15 @@ interface SwitchProps {
   /** id of the visible text that explains the switch (rendered as aria-describedby). */
   describedBy?: string
   'aria-label'?: string
+  /** ids of the visible text that names the switch, when a plain label is not enough (a row naming a person). */
+  'aria-labelledby'?: string
 }
 
 /**
  * The one toggle control (UI-SPEC "Switch"): a native-metric NSSwitch look,
  * 38×22px with an 18px knob, on = --color-selection-fill.
  */
-export function Switch({ id, checked, onChange, disabled, saving, blocked, describedBy, 'aria-label': ariaLabel }: SwitchProps): React.ReactElement {
+export function Switch({ id, checked, onChange, disabled, saving, blocked, describedBy, 'aria-label': ariaLabel, 'aria-labelledby': labelledBy }: SwitchProps): React.ReactElement {
   const inert = saving || blocked
   return (
     <button
@@ -28,6 +30,7 @@ export function Switch({ id, checked, onChange, disabled, saving, blocked, descr
       id={id}
       aria-checked={checked}
       aria-label={ariaLabel}
+      aria-labelledby={labelledBy}
       aria-disabled={inert ? 'true' : undefined}
       aria-describedby={describedBy}
       disabled={disabled}

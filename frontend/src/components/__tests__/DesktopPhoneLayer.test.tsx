@@ -13,6 +13,8 @@ type Listener = (v: never) => void
 interface MockClient {
   sendInput: ReturnType<typeof vi.fn>
   currentEpoch: ReturnType<typeof vi.fn>
+  requestSurfaces: ReturnType<typeof vi.fn>
+  selectSurface: ReturnType<typeof vi.fn>
   emit: <K extends keyof DesktopEvents>(ev: K, v: DesktopEvents[K]) => void
 }
 
@@ -606,6 +608,23 @@ describe('the soft keyboard and the bars', () => {
     expect(toolbar()?.getAttribute('aria-label')).toBe('Desktop controls')
     expect(request).not.toHaveBeenCalled()
     Reflect.deleteProperty(navigator, 'wakeLock')
+  })
+
+  it('a phone surface pick the Mac refuses says so and names the surface still showing', async () => {
+    client().requestSurfaces.mockResolvedValue({
+      displays: [
+        { id: 1, name: 'Main Display', w: 1470, h: 956, main: true },
+        { id: 2, name: 'Display 2', w: 1920, h: 1080, main: false },
+      ],
+      windows: [],
+    })
+    act(() => client().emit('surface', { e: 1, kind: 'display', id: 1, name: 'Main Display', w: 1470, h: 956, reason: '' }))
+    await act(async () => { press(key('Main Display')) })
+    const item = Array.from(document.querySelectorAll<HTMLElement>('[role^="menuitem"]')).find((i) => i.textContent?.startsWith('Display 2'))!
+    act(() => item.click())
+    expect(client().selectSurface).toHaveBeenCalledWith('display', 2)
+    act(() => client().emit('selectFailed', { code: 'switch_failed' }))
+    expect(container.querySelector('.desktop-chip--notice')?.textContent).toBe("Couldn't switch to Display 2. Still showing Main Display.")
   })
 
   it('the one video element survives a reconnect', () => {

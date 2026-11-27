@@ -1,16 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useDialogFocus } from '../lib/useDialogFocus'
+import { QUIT_WARNING } from '../lib/shareDesktopCopy'
 
 interface QuitConfirmModalProps {
   isOpen: boolean
   // null: the daemon did not answer in time, so the count is unknown (V-05b).
   sessions: Array<{ id: string; name: string }> | null
+  // A click-to-share is active: every quit choice ends it (22-09), so the modal says so.
+  sharing?: boolean
   onQuitGUI: () => void
   onQuitAll: () => void
   onCancel: () => void
 }
 
-function QuitConfirmModal({ isOpen, sessions, onQuitGUI, onQuitAll, onCancel }: QuitConfirmModalProps): React.ReactElement | null {
+function QuitConfirmModal({ isOpen, sessions, sharing = false, onQuitGUI, onQuitAll, onCancel }: QuitConfirmModalProps): React.ReactElement | null {
   const [acting, setActing] = useState(false)
   const dialogRef = useRef<HTMLDivElement>(null)
   // "Keep Running" first: both other choices end the GUI.
@@ -47,6 +50,7 @@ function QuitConfirmModal({ isOpen, sessions, onQuitGUI, onQuitAll, onCancel }: 
         <h2 className="dialog__title" id="quit-modal-title">Quit Portty?</h2>
         <div className="dialog__body">
           <p>{subtitleText}</p>
+          {sharing && <p className="dialog__secondary">{QUIT_WARNING}</p>}
           {visible.length > 0 && (
             <div className="quit-modal__session-list">
               {visible.map((s) => (

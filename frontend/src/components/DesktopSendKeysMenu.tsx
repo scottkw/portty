@@ -24,6 +24,8 @@ export interface DesktopSendKeysMenuProps {
   disabledReason?: string
   /** Phase 21-10: open upward from the anchor (the iPhone bars sit at the bottom of the screen). */
   above?: boolean
+  /** A guest page (22-07): Lock Screen… is not offered, only Cmd+Tab and Cmd+Space. */
+  guest?: boolean
 }
 
 /**
@@ -32,7 +34,7 @@ export interface DesktopSendKeysMenuProps {
  * sends Ctrl+Cmd+Q. Mounted while open; it calls onClose once everything it opened is gone.
  */
 export function DesktopSendKeysMenu({
-  anchor, invoker, onClose, sendChord, windowShare, disabledReason, above,
+  anchor, invoker, onClose, sendChord, windowShare, disabledReason, above, guest = false,
 }: DesktopSendKeysMenuProps): React.ReactElement {
   const [menuOpen, setMenuOpen] = useState(true)
   const [confirm, setConfirm] = useState(false)
@@ -49,7 +51,9 @@ export function DesktopSendKeysMenu({
   const items: ContextMenuEntry[] = [
     { label: 'Cmd+Tab', onSelect: () => sendChord(CMD_TAB), disabled: inert, describedBy, title },
     { label: 'Cmd+Space', onSelect: () => sendChord(CMD_SPACE), disabled: inert, describedBy, title },
-    {
+  ]
+  if (!guest) {
+    items.push({
       label: 'Lock Screen…',
       hint: 'Ctrl+Cmd+Q',
       separatorBefore: true,
@@ -60,8 +64,8 @@ export function DesktopSendKeysMenu({
         confirming.current = true
         setConfirm(true)
       },
-    },
-  ]
+    })
+  }
   if (windowShare) items.push({ kind: 'caption', text: WINDOW_SHARE_CAPTION, id: CAPTION_ID })
 
   return (

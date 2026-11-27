@@ -1,0 +1,17 @@
+{"name":"hello-guest","dir":"server","valid":true,"wire":{"type":"hello","v":1,"viewer":"0123456789abcdef","caps":{"input":1,"video":1},"rights":{"clipboard":false,"control":false,"surface":false}}}
+{"name":"admission-waiting","dir":"server","valid":true,"wire":{"type":"admission","state":"waiting"}}
+{"name":"admission-admitted","dir":"server","valid":true,"wire":{"type":"admission","state":"admitted"}}
+{"name":"rights-view-only","dir":"server","valid":true,"wire":{"type":"rights","rights":{"clipboard":false,"control":false,"surface":false}}}
+{"name":"rights-control-and-clipboard","dir":"server","valid":true,"wire":{"type":"rights","rights":{"clipboard":true,"control":true,"surface":false}}}
+{"name":"close-denied","dir":"server","valid":true,"wire":{"close":4430,"reason":"denied"}}
+{"name":"close-admit-timeout","dir":"server","valid":true,"wire":{"close":4431,"reason":"admit_timeout"}}
+{"name":"close-revoked","dir":"server","valid":true,"wire":{"close":4432,"reason":"revoked"}}
+{"name":"close-share-ended","dir":"server","valid":true,"wire":{"close":4433,"reason":"share_ended"}}
+{"name":"close-token-invalid","dir":"server","valid":true,"wire":{"close":4401,"reason":"token_invalid"}}
+{"name":"close-replaced","dir":"server","valid":true,"wire":{"close":1000,"reason":"replaced"}}
+{"name":"close-full","dir":"server","valid":true,"wire":{"close":4429,"reason":"full"}}
+{"name":"lease-you","dir":"server","valid":true,"wire":{"type":"lease","state":"you"}}
+{"name":"lease-other","dir":"server","valid":true,"wire":{"type":"lease","state":"other","name":"Ada"}}
+{"name":"lease-owner","dir":"server","valid":true,"wire":{"type":"lease","state":"owner"}}
+{"name":"lease-physical","dir":"server","valid":true,"wire":{"type":"lease","state":"physical"}}
+{"name":"lease-free","dir":"server","valid":true,"wire":{"type":"lease","state":"free"}}

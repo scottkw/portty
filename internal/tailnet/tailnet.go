@@ -55,15 +55,22 @@ type probeFunc func(ctx context.Context, peer Peer) bool
 
 // discoverPeers is the internal testable discovery function.
 // It accepts an injected statusFn so tests can pass a fake without a live daemon.
-// It returns only online peers. The returned slice is never nil (may be empty).
+// It returns only online peers owned by this node's own Tailscale account
+// (AR-21-01): a node shared in from another account must never be offered as a
+// terminal peer or Desktop row, because connecting sends it keys and clipboard
+// text. Without a known own account (nil Self or zero UserID) it fails closed
+// and returns no peers. The returned slice is never nil (may be empty).
 func discoverPeers(ctx context.Context, fn statusFunc) ([]Peer, error) {
 	status, err := fn(ctx)
 	if err != nil {
 		return nil, err
 	}
 	peers := make([]Peer, 0, len(status.Peer))
+	if status.Self == nil || status.Self.UserID == 0 {
+		return peers, nil
+	}
 	for _, p := range status.Peer {
-		if !p.Online {
+		if !p.Online || p.UserID != status.Self.UserID {
 			continue
 		}
 		pr := Peer{
@@ -80,8 +87,8 @@ func discoverPeers(ctx context.Context, fn statusFunc) ([]Peer, error) {
 	return peers, nil
 }
 
-// DiscoverPeers queries the local tailscaled daemon for online peers.
-// It returns only online peers. ctx should carry a short timeout.
+// DiscoverPeers queries the local tailscaled daemon for online peers owned by
+// the user's own Tailscale account. ctx should carry a short timeout.
 func DiscoverPeers(ctx context.Context) ([]Peer, error) {
 	if !LiveAllowed() {
 		return nil, ErrLiveTailnetInTest

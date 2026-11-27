@@ -14,5 +14,6 @@ func (m *Manager) SetViewerRightsForTest(id ViewerID, r Rights) {
 	defer m.vmu.Unlock()
 	if v := m.viewers[id]; v != nil {
 		v.Rights = r
+		v.setRightsBits(r)
 	}
 }

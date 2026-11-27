@@ -21,9 +21,13 @@ Portty is a macOS terminal with remote access over Tailscale.
 
 Any device signed in to your Tailscale account can also open the session's link in a browser, with full control. A device on a different Tailscale account gets a refusal page, even with the link. Treat the link like a password. Turning Share off disconnects everyone.
 
+**Desktop (other Mac).** If another Mac has Always-available desktop turned on in Settings, its **Desktop** row appears first in its group in the sidebar. Click it to open that Mac's screen in a tab. Click the picture to control it: the label at the top right then reads *Controlling*, and every key goes to that Mac, including Cmd+Q, Cmd+W and Cmd+C. Press Ctrl+Option+Cmd+Shift+Return, click outside the picture or switch tabs to get Portty's shortcuts back. In control mode, Cmd+V pastes the text on your own clipboard into the other Mac, and Cmd+C copies on the other Mac only. Your Mac keeps its system shortcuts, such as Cmd+Tab and Cmd+Space; use Send Keys for those. A Desktop tab disconnects about 2 minutes after Portty's window is hidden, so the other Mac's display can sleep, and it reconnects when you show the window. The first time, macOS asks whether Portty may find devices on local networks. Choose Allow.
+
 ## Use It From Your iPhone
 
 Open a shared session's link in Safari on an iPhone signed in to the same Tailscale account. The view fits the phone, adds a key bar (Esc, Tab, Ctrl, arrows, `|`), and pinch changes the font size. Add it to the Home Screen to open the session full screen. It picks up again after the phone sleeps or changes network. Step-by-step: [docs/launcher-app.md](docs/launcher-app.md).
+
+**Desktop (iPhone).** Open the always-available desktop link in Safari on an iPhone signed in to the same Tailscale account, or from its Home Screen icon. Tap **Tap to Start** once to begin the picture. One finger moves the pointer like a trackpad, a tap clicks, a double-tap double-clicks, press and hold right-clicks, tap then drag drags, and two fingers scroll. Pinch zooms up to 5x and a two-finger double-tap fits the screen again. **Show Keyboard** opens the iPhone keyboard with a row of Esc, Tab, Ctrl, Opt, Cmd and arrow keys. Start drags away from the screen edge, because iOS uses an edge swipe to go back. It picks up again after the phone sleeps.
 
 ## Preview Files
 

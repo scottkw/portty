@@ -35,7 +35,17 @@ type Viewer struct {
 	ID       ViewerID
 	Rights   Rights
 	JoinedAt time.Time
+	// Mode is how the viewer arrived; Identity is who tailscaled says it is (the
+	// zero value for an own-account viewer whose route did not look it up).
+	Mode     string
+	Identity Identity
 }
+
+// Viewer modes.
+const (
+	ModeOwn   = "own"   // the sharer's own account, through /desktop/
+	ModeGuest = "guest" // a tailnet guest admitted by the sharer
+)
 
 // DataChannelHook receives a data channel the viewer created before its
 // offer. Contract: never block inside OnMessage. pion calls it inline on the

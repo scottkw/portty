@@ -48,10 +48,10 @@
 
 ### Viewers (DVWR)
 
-- [ ] **DVWR-01**: Portty app on another Mac opens a peer's desktop in a Desktop tab from the sidebar
+- [x] **DVWR-01**: Portty app on another Mac opens a peer's desktop in a Desktop tab from the sidebar
 - [x] **DVWR-02**: Desktop Chrome and Safari open a desktop from a link
-- [ ] **DVWR-03**: iPhone (Safari or Home Screen) viewer has trackpad mode, pinch-zoom, long-press right-click, two-finger scroll and soft keyboard; video starts from a tap (iOS will not autoplay it)
-- [ ] **DVWR-04**: In control mode in the Portty app, Cmd+W, Cmd+Q and Cmd+C go to the remote Mac instead of Portty
+- [x] **DVWR-03**: iPhone (Safari or Home Screen) viewer has trackpad mode, pinch-zoom, long-press right-click, two-finger scroll and soft keyboard; video starts from a tap (iOS will not autoplay it)
+- [x] **DVWR-04**: In control mode in the Portty app, Cmd+W, Cmd+Q and Cmd+C go to the remote Mac instead of Portty
 
 ### Share modes & trust (DSHR)
 
@@ -124,10 +124,10 @@
 | DCTL-05 | Phase 20 | Complete (real-Mac checks deferred, see 20-UAT.md; key-gate limit M-05 accepted for Phase 20) |
 | DCTL-06 | Phase 20 | Complete (real-Mac checks deferred, see 20-UAT.md) |
 | DCTL-07 | Phase 23 | Pending |
-| DVWR-01 | Phase 21 | Pending |
+| DVWR-01 | Phase 21 | Complete (real-Mac checks M-201, M-204, M-205 deferred, see 21-UAT.md) |
 | DVWR-02 | Phase 19 | Complete (real-Mac checks deferred, see 19-UAT.md) |
-| DVWR-03 | Phase 21 | Pending |
-| DVWR-04 | Phase 21 | Pending |
+| DVWR-03 | Phase 21 | Complete in code (behavior unverified on a real iPhone; M-194..M-200 deferred, see 21-UAT.md) |
+| DVWR-04 | Phase 21 | Complete (real-Mac checks M-202, M-203, M-205 deferred, see 21-UAT.md) |
 | DSHR-01 | Phase 19 | Complete (real-Mac checks deferred, see 19-UAT.md) |
 | DSHR-02 | Phase 19 | Complete (real-Mac checks deferred, see 19-UAT.md) |
 | DSHR-03 | Phase 22 | Pending |

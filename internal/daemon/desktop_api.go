@@ -127,7 +127,7 @@ type DesktopResponse struct {
 // any terminal share or the always-available desktop needs it. Every place that
 // stops the server for lack of use asks this. Caller holds a.mu.
 func (a *API) serverNeededLocked() bool {
-	return len(a.shares) > 0 || a.desktopCfg.AlwaysAvailable
+	return len(a.shares) > 0 || a.desktopCfg.AlwaysAvailable || a.guestShare != nil
 }
 
 // extraDesktopRoutes lets a build-tagged file add routes without touching the
@@ -141,6 +141,7 @@ func (a *API) registerDesktopRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /desktop/permissions", a.handleDesktopPermissions)
 	mux.HandleFunc("POST /desktop/test-capture", a.handleDesktopTestCapture)
 	mux.HandleFunc("POST /desktop/lapse-claim", a.handleDesktopLapseClaim)
+	a.registerDesktopShareRoutes(mux)
 	for _, add := range extraDesktopRoutes {
 		add(a, mux)
 	}
@@ -514,6 +515,7 @@ func (a *API) startDesktopManager(h webserver.TailscaleHealth) *ShareError {
 		Bind: addr, MediaPort: port, NewSource: newSource, SourceConfig: screencap.DefaultConfig(),
 		ConfigDir: a.engine.configDir, Notify: notifyDesktop,
 	}
+	a.wireGuestDeps(&deps)
 	if desktopTestDeps != nil {
 		desktopTestDeps(&deps)
 	}
@@ -544,7 +546,7 @@ func (a *API) desktopOff() *ShareError {
 	a.startMu.Lock()
 	defer a.startMu.Unlock()
 	a.mu.RLock()
-	idle := !a.desktopCfg.AlwaysAvailable && a.desktopMgr == nil
+	idle := !a.desktopCfg.AlwaysAvailable && (a.desktopMgr == nil || a.guestShare != nil)
 	a.mu.RUnlock()
 	if idle { // already off (or a file the user must look at): nothing to clear
 		return nil
@@ -564,10 +566,18 @@ func (a *API) disableDesktop() error {
 	err := desktop.SaveConfig(a.engine.configDir, desktop.Config{})
 	a.desktopCfg = desktop.Config{}
 	mgr := a.desktopMgr
-	a.desktopMgr, a.desktopBuiltIP, a.desktopBuiltDomain = nil, "", ""
+	guest := a.guestShare != nil
+	if !guest { // a running guest share keeps the Manager (and, by serverNeededLocked, the server)
+		a.desktopMgr, a.desktopBuiltIP, a.desktopBuiltDomain = nil, "", ""
+	}
 	a.stopServerIfIdleLocked()
 	a.mu.Unlock()
-	if mgr != nil {
+	switch {
+	case mgr == nil:
+	case guest:
+		a.closeOwnViewers(mgr, desktop.CloseDesktopOff, "desktop off", desktop.ReasonShareStopped)
+	default:
+		a.markLeaves(mgr, desktop.ReasonShareStopped)
 		mgr.CloseAll(desktop.CloseDesktopOff, "desktop off")
 		_ = mgr.Close()
 	}
@@ -577,14 +587,17 @@ func (a *API) disableDesktop() error {
 // stopDesktop ends the poller and the Manager at daemon shutdown. The setting
 // stays as it is on disk.
 func (a *API) stopDesktop() {
+	a.endGuestShare(desktop.ReasonDaemonExit)
 	a.desktopCancel()
 	a.mu.Lock()
 	mgr := a.desktopMgr
 	a.desktopMgr = nil
 	a.mu.Unlock()
 	if mgr != nil {
+		a.markLeaves(mgr, desktop.ReasonDaemonExit)
 		_ = mgr.Close()
 	}
+	a.flushLeaves(desktop.ReasonDaemonExit)
 }
 
 // startDesktopPoller starts runDesktopPoller once, from Start and from the
@@ -622,7 +635,7 @@ func (a *API) desktopTick(ctx context.Context) {
 		return
 	}
 	a.mu.RLock()
-	on, running := a.desktopCfg.AlwaysAvailable, a.webServer != nil
+	on, running := a.desktopCfg.AlwaysAvailable || a.guestShare != nil, a.webServer != nil
 	health, newServer, warmCert, ifaceAddrs := a.shareHealth, a.newShareServer, a.warmCert, a.interfaceAddrs
 	a.mu.RUnlock()
 	if !on {
@@ -665,7 +678,7 @@ func (a *API) desktopTick(ctx context.Context) {
 func (a *API) desktopWanted() bool {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	return a.desktopCfg.AlwaysAvailable
+	return a.desktopCfg.AlwaysAvailable || a.guestShare != nil
 }
 
 // desktopUpToDate: the server and the Manager run and match h.

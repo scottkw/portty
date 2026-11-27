@@ -1,0 +1,4 @@
+after Cmd+A, Cmd+C in control mode:
+portty twelve line
+pbpaste bytes=18 sha1=7afd085e4502
+pbpaste bytes=13 sha1=149ebe8b1c90

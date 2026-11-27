@@ -305,7 +305,7 @@ func TestObjC_EntryPointsDrainAutoreleasePool(t *testing.T) {
 	entries := map[string][]string{
 		"input_darwin.m":      {"pc_input_mouse", "pc_input_key", "pc_input_text", "pc_input_scroll", "pc_input_cursor", "pc_point_on_display", "pc_display_bounds"},
 		"pasteboard_darwin.m": {"pc_pb_behavior", "pc_pb_read", "pc_pb_write"},
-		"window_darwin.m":     {"pc_ax_focus", "pc_window_info", "pc_window_minimized", "pc_window_raise", "pc_window_topmost"},
+		"window_darwin.m":     {"pc_ax_focus", "pc_ax_key_focus", "pc_window_info", "pc_window_minimized", "pc_window_raise", "pc_window_topmost"},
 		"media_darwin.m":      {"pc_stream_start", "pc_stream_stop", "pc_stream_select", "pc_list_surfaces", "pc_still_capture", "pc_main_display_id"},
 		"sys_darwin.m":        {"pc_pointer_nudge"},
 	}
