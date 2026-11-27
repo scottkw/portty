@@ -978,7 +978,9 @@ export function DesktopView({
     chip = { text: `Streaming to ${viewers} ${viewers === 1 ? 'viewer' : 'viewers'}`, fading: chipPhase === 'fading' }
   }
   // The bar is for a viewer that may control the Mac, while a picture is up and no card covers it.
-  const showBar = canControl && cardKey === null && !hostCard && !hostPaused && (status.kind === 'streaming' || status.kind === 'reconnecting')
+  // A guest granted only the clipboard still has a bar, holding the Clipboard menu alone.
+  const barAllowed = canControl || canClipboard
+  const showBar = barAllowed && cardKey === null && !hostCard && !hostPaused && (status.kind === 'streaming' || status.kind === 'reconnecting')
   showBarRef.current = showBar
   const picture = hasFrame && cardKey === null && !hostCard && !hostPaused
   useEffect(() => {
@@ -1020,7 +1022,7 @@ export function DesktopView({
   return (
     <div
       ref={rootRef}
-      className={`desktop-view${canControl ? ' desktop-view--bar' : ''}${embedded ? ' desktop-view--embedded' : ''}${phoneMode ? ' desktop-view--phone' : ''}`}
+      className={`desktop-view${barAllowed ? ' desktop-view--bar' : ''}${embedded ? ' desktop-view--embedded' : ''}${phoneMode ? ' desktop-view--phone' : ''}`}
     >
       <div
         className={active && !inputPaused ? 'desktop-stage desktop-stage--live' : 'desktop-stage'}
@@ -1142,6 +1144,7 @@ export function DesktopView({
               canSurface,
               fullscreenAvailable: !embedded && document.fullscreenEnabled === true,
               canClipboard,
+              canControl,
             }}
             surface={surf ? { kind: surf.kind, id: surf.id, name: surf.name } : null}
             requestSurfaces={() => clientRef.current?.requestSurfaces() ?? Promise.reject(new Error('not connected'))}
@@ -1170,6 +1173,7 @@ export function DesktopView({
             clipboardRef={clipboardBtnRef}
             popoverOpen={popover !== null}
             releaseChord={releaseChord}
+            guest={guest}
           />
         </div>
       )}

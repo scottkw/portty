@@ -341,3 +341,38 @@ describe('guest chips, grants and the lease', () => {
     expect(text.replace('Ada is controlling', '')).not.toMatch(/Ada|@|login/i)
   })
 })
+
+describe('guest bar inside the page', () => {
+  const rights = (r: Partial<DesktopEvents['rights']>) =>
+    act(() => client().emit('rights', { control: false, clipboard: false, surface: false, ...r }))
+  const bar = () => Array.from(container.querySelectorAll('.desktop-bar button')).map((b) => b.getAttribute('aria-label'))
+
+  async function admitted() {
+    render()
+    admission('admitted')
+    await firstFrame()
+  }
+
+  it('clipboard only: the bar holds the Clipboard menu alone and the chip still says View only', async () => {
+    await admitted()
+    expect(container.querySelector('.desktop-bar')).toBeNull()
+    rights({ clipboard: true })
+    expect(bar()).toEqual(['Clipboard'])
+    expect(chips()).toEqual([copy.GUEST_CHIP_VIEW_ONLY])
+    rights({ clipboard: false })
+    expect(container.querySelector('.desktop-bar')).toBeNull()
+  })
+
+  it('control and clipboard: no picker even when the wire says surface, and no Lock Screen… in Send Keys', async () => {
+    await admitted()
+    rights({ control: true, clipboard: true, surface: true })
+    expect(bar()).toEqual(expect.arrayContaining(['Send Keys', 'Clipboard', 'Swap Ctrl and Cmd']))
+    expect(container.querySelector('.desktop-bar__picker')).toBeNull()
+    await act(async () => {
+      ;(container.querySelector('button[aria-label="Send Keys"]') as HTMLButtonElement).click()
+    })
+    const items = Array.from(document.querySelectorAll('[role="menuitem"]')).map((e) => e.textContent)
+    expect(items.join('|')).toContain('Cmd+Tab')
+    expect(items.join('|')).not.toContain('Lock Screen')
+  })
+})
