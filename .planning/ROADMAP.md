@@ -329,7 +329,7 @@ Plans:
   3. The sharer can stop the share or revoke one viewer at any time, which ends that connection at once, and the link stops working when the share ends. The shared Mac shows join and leave notifications and a persistent "shared with N" indicator with one-click stop. (DSHR-05, DSHR-06)
   4. Every join, leave and control grant is written to a local audit log on the shared Mac. (DSHR-07)
   5. With several viewers allowed to control, whoever typed last holds control for about 2 seconds while the others wait. The person physically at the shared Mac always wins over remote input. (DCTL-04)
-**Plans**: 8/13 plans executed
+**Plans**: 9/13 plans executed
 
 Plans:
 **Wave 1**
@@ -351,7 +351,7 @@ Plans:
 - [x] 22-08-PLAN.md — GUI holds the events stream; tray slot (Share Desktop…, Desktop shared with N, Stop Sharing) and sharing icon variant
 
 **Wave 6** *(blocked on Wave 5 completion)*
-- [ ] 22-09-PLAN.md — Wails bindings, Admit brings the window forward, coalesced join/leave notifications, Quit GUI Only ends the share
+- [x] 22-09-PLAN.md — Wails bindings, Admit brings the window forward, coalesced join/leave notifications, Quit GUI Only ends the share
 
 **Wave 7** *(blocked on Wave 6 completion)*
 - [ ] 22-10-PLAN.md — Share Desktop sheet, Watching list with grant switches, Settings row, Security string
@@ -437,5 +437,5 @@ Plans:
 | 19. Unattended Desktop Viewing | v2.0 | 17/17 | Complete    | 2026-11-26 |
 | 20. Remote Control | v2.0 | 11/11 | Complete    | 2026-11-27 |
 | 21. Portty App and iPhone Viewers | v2.0 | 13/13 | Complete    | 2026-11-27 |
-| 22. Click-to-Share for Tailnet People | v2.0 | 8/13 | In Progress | - |
+| 22. Click-to-Share for Tailnet People | v2.0 | 9/13 | In Progress | - |
 | 23. Audio, Adaptive Quality, Unlock and Release | v2.0 | 0/16 | Not started | - |
