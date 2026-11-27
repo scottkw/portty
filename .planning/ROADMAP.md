@@ -61,7 +61,7 @@ Full details: `.planning/milestones/v1.2-ROADMAP.md`. Audit: `.planning/mileston
 - [x] **Phase 19: Unattended Desktop Viewing** - Always-available desktop for your own Macs: guided permissions, live view in Chrome and Safari with nobody at the Mac, visible state, display kept awake, automatic reconnect, media on the tailnet only (completed 2026-11-26; real-Mac verification deferred, see 19-UAT.md)
 - [x] **Phase 20: Remote Control** - Pointer, keyboard, Send-keys menu and explicit clipboard from any viewer; the sharer picks a display or a single window and switches displays mid-session (completed 2026-11-27; real-Mac verification deferred, see 20-UAT.md)
 - [x] **Phase 21: Portty App and iPhone Viewers** - A Desktop tab opened from the sidebar in the Portty app, with Cmd shortcuts forwarded in control mode, and an iPhone viewer with trackpad mode and touch controls (completed 2026-11-27; real-device verification deferred, see 21-UAT.md)
-- [ ] **Phase 22: Click-to-Share for Tailnet People** - A desktop link other tailnet people can open, an Admit prompt by tailnet identity, view-only until granted, instant stop and revoke, a "shared with N" indicator, an audit log, and soft control hand-off
+- [x] **Phase 22: Click-to-Share for Tailnet People** - A desktop link other tailnet people can open, an Admit prompt by tailnet identity, view-only until granted, instant stop and revoke, a "shared with N" indicator, an audit log, and soft control hand-off (completed 2026-11-27; live two-account and real-Mac verification deferred, see 22-UAT.md)
 - [ ] **Phase 23: Audio, Adaptive Quality, Unlock and Release** - System audio (starts muted), sharp-when-still and smooth-when-moving video, remote unlock shipped or cut per the spike, real-Mac hardening, and the v2.0 release (rc.1 dry run, then the real tag) on the Phase 18.1 pipeline
 
 ## Phase Details
@@ -437,5 +437,5 @@ Plans:
 | 19. Unattended Desktop Viewing | v2.0 | 17/17 | Complete    | 2026-11-26 |
 | 20. Remote Control | v2.0 | 11/11 | Complete    | 2026-11-27 |
 | 21. Portty App and iPhone Viewers | v2.0 | 13/13 | Complete    | 2026-11-27 |
-| 22. Click-to-Share for Tailnet People | v2.0 | 13/13 | In Progress | - |
+| 22. Click-to-Share for Tailnet People | v2.0 | 13/13 | Complete    | 2026-11-27 |
 | 23. Audio, Adaptive Quality, Unlock and Release | v2.0 | 8/16 | In Progress | - |

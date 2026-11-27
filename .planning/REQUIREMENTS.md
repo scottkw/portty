@@ -41,7 +41,7 @@
 - [x] **DCTL-01**: Viewer with control can move, click, scroll and drag; the pointer lands at the right spot on Retina displays
 - [x] **DCTL-02**: Viewer can type, including shortcuts and non-ASCII text; no keys stay stuck after blur or disconnect
 - [x] **DCTL-03**: Viewer can send Cmd+Tab, Cmd+Space and Lock Screen from a Send-keys menu; optional Ctrl→Cmd swap for non-Mac viewers
-- [ ] **DCTL-04**: With several controlling viewers, whoever typed last holds control for about 2 s; physical input at the Mac always wins
+- [x] **DCTL-04**: With several controlling viewers, whoever typed last holds control for about 2 s; physical input at the Mac always wins
 - [x] **DCTL-05**: In a window share, the window is raised when controlled and clicks are confined to it
 - [x] **DCTL-06**: Viewer can copy text from and paste text to the shared Mac by explicit action; concealed (password-manager) items never sync
 - [ ] **DCTL-07**: Viewer hears the shared Mac's audio; it starts muted on the viewer with tap to unmute
@@ -57,11 +57,11 @@
 
 - [x] **DSHR-01**: User can turn on always-available desktop; their own devices (same Tailscale account) can open it any time with nobody at the Mac and the GUI closed; the daemon runs under launchd as its primary path (GUI and CLI start it with `launchctl kickstart`). If macOS refuses, disables or can't bootstrap the agent, Portty falls back to a detached daemon start so terminals still work, and the desktop shows needs repair, with the unattended guarantee degraded (amended by user decision 2026-11-25, "Start it anyway")
 - [x] **DSHR-02**: Always-available links, including iPhone Home Screen links, survive daemon restarts and upgrades
-- [ ] **DSHR-03**: Share Desktop creates a link that other tailnet people can open; terminal links stay limited to the host's own account
-- [ ] **DSHR-04**: Each guest waits at an Admit prompt showing their tailnet identity; guests are view-only until the sharer allows control (and clipboard) for that person
-- [ ] **DSHR-05**: Sharer can stop the share or revoke one viewer at any time, ending their connection immediately; links die with the share
-- [ ] **DSHR-06**: The shared Mac shows join/leave notifications and a persistent "shared with N" indicator with one-click stop
-- [ ] **DSHR-07**: Joins, leaves and control grants are written to a local audit log
+- [x] **DSHR-03**: Share Desktop creates a link that other tailnet people can open; terminal links stay limited to the host's own account
+- [x] **DSHR-04**: Each guest waits at an Admit prompt showing their tailnet identity; guests are view-only until the sharer allows control (and clipboard) for that person
+- [x] **DSHR-05**: Sharer can stop the share or revoke one viewer at any time, ending their connection immediately; links die with the share
+- [x] **DSHR-06**: The shared Mac shows join/leave notifications and a persistent "shared with N" indicator with one-click stop
+- [x] **DSHR-07**: Joins, leaves and control grants are written to a local audit log
 - [x] **DSHR-08**: A desktop link never opens a terminal session, and a terminal link never opens the desktop
 
 ### Remote unlock (UNLK — feasible per FEAS-01)
@@ -120,8 +120,8 @@
 | DCTL-01 | Phase 20 | Complete (real-Mac checks deferred, see 20-UAT.md) |
 | DCTL-02 | Phase 20 | Complete (real-Mac checks deferred, see 20-UAT.md) |
 | DCTL-03 | Phase 20 | Complete (real-Mac checks deferred, see 20-UAT.md) |
-| DCTL-04 | Phase 22 | Pending |
-| DCTL-05 | Phase 20 | Complete (real-Mac checks deferred, see 20-UAT.md; key-gate limit M-05 accepted for Phase 20) |
+| DCTL-04 | Phase 22 | Complete (VM G-05, G-06; real hardware input M-212, M-213 deferred, see 22-UAT.md) |
+| DCTL-05 | Phase 20 | Complete (real-Mac checks deferred, see 20-UAT.md; key-gate limit M-05 accepted for Phase 20, now implemented in Phase 22 d18a8e04; G-11 PARTIAL, real panel M-214 deferred) |
 | DCTL-06 | Phase 20 | Complete (real-Mac checks deferred, see 20-UAT.md) |
 | DCTL-07 | Phase 23 | Pending |
 | DVWR-01 | Phase 21 | Complete (real-Mac checks M-201, M-204, M-205 deferred, see 21-UAT.md) |
@@ -130,11 +130,11 @@
 | DVWR-04 | Phase 21 | Complete (real-Mac checks M-202, M-203, M-205 deferred, see 21-UAT.md) |
 | DSHR-01 | Phase 19 | Complete (real-Mac checks deferred, see 19-UAT.md) |
 | DSHR-02 | Phase 19 | Complete (real-Mac checks deferred, see 19-UAT.md) |
-| DSHR-03 | Phase 22 | Pending |
-| DSHR-04 | Phase 22 | Pending |
-| DSHR-05 | Phase 22 | Pending |
-| DSHR-06 | Phase 22 | Pending |
-| DSHR-07 | Phase 22 | Pending |
+| DSHR-03 | Phase 22 | Complete in code (live two-account proof SC1 M-206 UNVERIFIED, see 22-UAT.md) |
+| DSHR-04 | Phase 22 | Complete (VM G-01, G-02; real-Mac checks M-210, M-211, M-216, M-220 deferred, see 22-UAT.md) |
+| DSHR-05 | Phase 22 | Complete (VM G-03, G-04 PARTIAL; M-215 deferred, see 22-UAT.md) |
+| DSHR-06 | Phase 22 | Complete (VM G-07..G-09; real-Mac checks M-209, M-217..M-219 deferred, see 22-UAT.md) |
+| DSHR-07 | Phase 22 | Complete (VM G-10; see 22-UAT.md) |
 | DSHR-08 | Phase 19 | Complete (real-Mac checks deferred, see 19-UAT.md) |
 | UNLK-01 | Phase 23 | Pending (feasible per FEAS-01: ships) |
 | REL-01 | Phase 18.1 | Complete (moved from Phase 23 on 2026-11-25; Phase 23 ships v2.0 on this pipeline; M-172 rc.1 run deferred) |

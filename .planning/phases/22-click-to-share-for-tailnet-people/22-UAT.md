@@ -78,10 +78,14 @@ result: [pending]
 expected: VoiceOver reads the Admit sheet name, login and device, and the Allow control / Allow clipboard switches with their labels
 result: [pending]
 
+### 16. Re-check the code-review fixes WR-01..WR-08 and IN-02 (and the pre-ship ponytail fixes) in the real app
+expected: Two tabs of one device end with "Opened in another tab" and stop flapping (WR-01, VM X-1); a re-knock loop cannot keep the Admit buttons locked (WR-02); Disconnect or Deny cuts every device of the person (WR-03); a media mismatch cuts at once (WR-04); a reconnect is not held about 5 s (WR-05); focus returns to the dialog for the next person (WR-06); an own-account controller sees "Someone is using this Mac" and "Control paused. Portty can't tell if someone is at the Mac." (WR-07); the share sheet shows the Status row with always-available off (WR-08). All landed after the VM build dfa1a208 and are marked "requires human verification" in 22-REVIEW-FIX.md
+result: [pending]
+
 ## Summary
 
-total: 15
+total: 16
 passed: 0
 issues: 0
-pending: 15
+pending: 16
 skipped: 0

@@ -2,17 +2,17 @@
 gsd_state_version: "1.0"
 milestone: v2.0
 milestone_name: Desktop Sharing
-current_phase: 22
-current_phase_name: Click-to-Share for Tailnet People
+current_phase: 23
+current_phase_name: Audio, Adaptive Quality, Unlock and Release
 status: executing
-stopped_at: Phase 21 complete (real-device verification deferred, see 21-UAT.md), Phase 22 executing
+stopped_at: Phase 22 complete (live two-account and real-Mac verification deferred, see 22-UAT.md), Phase 23 executing
 last_updated: "2026-11-27T17:17:54.217Z"
 last_activity: 2026-11-27
-last_activity_desc: "Phase 21 shipped as PR #14"
+last_activity_desc: "Phase 22 closed (human_needed 5/7, M-206..M-220 tracked in 22-UAT.md); Phase 23 executing"
 state_head: 38dd7bf3944475b1decef22fa6afe4e4015eacee
 progress:
   total_phases: 8
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 96
   completed_plans: 62
   percent: 63
@@ -25,13 +25,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-24)
 
 **Core value:** A terminal session started on one Mac can be attached to from another Mac (or a browser) over the tailnet, and it survives any idle gap, from minutes to overnight, with history intact.
-**Current focus:** Phase 22 — Click-to-Share for Tailnet People
+**Current focus:** Phase 23 — Audio, Adaptive Quality, Unlock and Release
 
 ## Current Position
 
-Phase: 22 (Click-to-Share for Tailnet People) — EXECUTING
-Status: Phase 21 complete 2026-11-27 (verification human_needed 4/5, real-device items deferred; see Deferred Verification); Phase 22 executing
-Last activity: 2026-11-27 -- Phase 21 shipped as PR #14
+Phase: 23 (Audio, Adaptive Quality, Unlock and Release) — EXECUTING
+Status: Phase 22 complete 2026-11-27 (verification human_needed 5/7, live two-account and real-Mac items deferred; see Deferred Verification); Phase 23 executing
+Last activity: 2026-11-27 -- Phase 22 closed with M-206..M-220 tracked in 22-UAT.md; Phase 23 executing
 
 ## Performance Metrics
 
@@ -411,7 +411,7 @@ Recent decisions affecting current work:
 
 ### Blockers/Concerns
 
-- [v2.0 Phase 20 M-05, 2026-11-27]: user accepted the window-share key gate limit (non-activating launcher panels can receive keys) for Phase 20 only; Phase 22 must fix or re-accept it before guests control a window share (recorded in 22-CONTEXT.md)
+- [v2.0 Phase 20 M-05, RESOLVED 2026-11-27]: the window-share key gate limit (non-activating launcher panels can receive keys), accepted for Phase 20 only, is implemented in Phase 22 (d18a8e04: window-share keys also require the shared window to hold keyboard focus); VM G-11 PARTIAL (keys dropped by the raising check first), real-panel check M-214 deferred
 - [v2.0 Phase 18, RESOLVED 2026-11-26]: RC-WR04-stall was not a session stall: the portty-test guest clock was stepped forward 17 min by NTP (timed) mid-row, so wall-clock deltas showed a fake gap; ticks ran steadily (0.985/s) and nothing was held. Evidence: phases/18-self-installing-updates/evidence/RC-WR04-clockstep.log, debug/resolved/rc-wr04-stall.md (c06f8b65). Rig lesson: check the timed log or use monotonic/tick counts before calling a VM time gap a hang.
 - [v2.0]: Apple's persistent-content-capture entitlement request: filed, awaiting Apple (filed 2026-11-25, Request ID T558S9Q5B3, App ID app.portty.Portty; reported waits weeks to 2+ months); until it is granted, someone at the office Mac approves Screen Recording about monthly (DPRM-03 surfaces it)
 - [v2.0]: Tart VMs have no hardware encoder or TCC automation; capture, encode, TCC, lock-screen, display and iPhone checks need real-Mac M-NN rows on the user's Macs
@@ -530,6 +530,7 @@ Items acknowledged and deferred at milestone close, most recent first:
 | 19 | verification_deferred_human | /gsd-verify-work 19 |
 | 20 | verification_deferred_human | /gsd-verify-work 20 |
 | 21 | verification_deferred_human | /gsd-verify-work 21 |
+| 22 | verification_deferred_human | /gsd-verify-work 22 |
 
 Phase 2 UAT items 2-5 (peer attach, Share/Tailscale live state, web page appearance, VoiceOver) need both Macs. The user deferred them on 2026-11-16 ("push that UAT until later and move on"). Item 1 passed.
 
@@ -546,6 +547,8 @@ Phase 19: verification human_needed (5/5 must-haves, no blocking gaps); closed 2
 Phase 20: verification human_needed (4/4 must-haves, no blocking gaps); closed 2026-11-27 by user decision (per-phase close and merge for v2.0). Tracked in 20-UAT.md (9 items) and TESTING.md M-180..M-193: pointer accuracy on Retina and external displays (M-180), input methods and dead keys (M-181), held keys and Send Keys with the Ctrl/Cmd swap after H-02 (M-182, M-183), window share on the office Mac with sheets, panels and pop-up menus after e9dfa052 (M-184..M-187), display switching after M-01, M-03 and M-04 (M-188), clipboard in Chrome and Safari and Paste from Other Apps (M-189, M-190), Keyboard Lock, light and dark, password field and Caps Lock, hidden control bar after UI-1 (M-191, M-192), no Streaming before the first frame (M-193). Review finding M-05 (window-share key gate versus non-activating launcher panels) accepted by the user for Phase 20 only; Phase 22 must fix or re-accept it before guests. Security 20-SECURITY.md threats_open 0; UI review 18/24.
 
 Phase 21: verification human_needed (4/5 must-haves; DVWR-03 present and wired, behavior unverified on a real iPhone; no blocking gaps); closed 2026-11-27 by user decision (per-phase close and merge for v2.0). DVWR-01 and DVWR-04 proved in the Tart VMs (21-VM-CHECKS.md). Tracked in 21-UAT.md (13 items) and TESTING.md M-194..M-205: iPhone trackpad, tap, long-press right click, drag and two-finger scroll (M-194, M-195), pinch to 5x and no Safari tab overview (M-196), soft keyboard and armed modifiers (M-197), Send Keys and surface picker (M-198), sleep and resume (M-199), Home Screen relaunch and CSP (M-200), two real Macs with the Local Network prompt, sharpness and direct path (M-201), control mode chords and the release chord Ctrl+Option+Cmd+Shift+Return with the unreproduced K6 held-Control observation (M-202), Cmd+V with a password-manager item (M-203), hidden-window display sleep (M-204), Light and Dark legibility (M-205), plus a real-app re-check of review fixes WR-01..WR-05. Accepted risk AR-21-01 (viewer does not filter Desktop rows by Tailscale account) resolved by making the own-account filter a required Phase 22 item (f4c2f8e1). Security 21-SECURITY.md 48/48 closed, threats_open 0; UI review 18/24.
+
+Phase 22: verification human_needed (5/7 must-haves; SC1/DSHR-03 and the M-05 window key-focus gate present and wired, behavior unverified live; no blocking gaps); closed 2026-11-27 by user decision (per-phase close and merge for v2.0). Proved in the Tart VMs (22-VM-CHECKS.md): G-01..G-11 with nine PASS, G-04 (Stop with two guests, one 6.9 s straggler under host load) and G-11 (M-05 key gate reached via the raising check, not window_key_focus) PARTIAL, SC1 (live two-account guest flow) and AR-21-01 (own-account peer filter on a real tailnet) UNVERIFIED because the test tailnet has no second Tailscale account. M-05 and AR-21-01 are now implemented (d18a8e04, 130f64ea). Tracked in 22-UAT.md (16 items) and TESTING.md M-206..M-220: SC1 live two-account guest flow (M-206), AR-21-01 filter on a real tailnet (M-207), restrictive ACL (M-208), tray sharing icon in light and dark (M-209), Admit sheet while typing (M-210), right-to-left or look-alike names (M-211), "Someone is using this Mac" with real hardware input (M-212), warp check and Secure Keyboard Entry (M-213), M-05 with a real non-activating panel (M-214), Stop with two real guests on a quiet machine (M-215), Admit stacking and window forward (M-216), banners while the display is captured (M-217), Share stopped banner and upgrade handoff (M-218), Quit GUI Only and GUI crash (M-219), VoiceOver (M-220), plus a real-app re-check of review fixes WR-01..WR-08 and IN-02. Code review 0 critical, 8 warnings, all fixed (22-REVIEW-FIX.md). Security 22-SECURITY.md re-audited: 37 closed, T-22-02, T-22-13 and T-22-16 accepted-pending-real-check (fake WhoIs only, tied to M-206/M-207, AR-22-09), T-22-19 open below high, threats_open 0. UI review 18/24.
 
 Phase 6: U-01..U-06 passed in the Tart VMs against a fake GitHub feed; verification 7/7, human_needed. Real-release items (M-93: first v* tag CI run with DMG identifier signing, notarize and staple; notarized DMG verify and reveal; delivered notification) need a public repo and release secrets, so they wait for the first real release. U-06 noasset re-run after WR-04 is still to do in the VM.
 
