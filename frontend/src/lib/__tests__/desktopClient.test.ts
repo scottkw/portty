@@ -1074,6 +1074,20 @@ describe('audio (Phase 23-06)', () => {
     expect((lastT(e).sent[1] as { sdp: string }).sdp).toContain('stereo=1')
   })
 
+  // Phase 23-08: the daemon's quality message (golden lines from internal/desktop/testdata/signal-v1.jsonl).
+  it('turns the golden quality lines into quality events and takes only a true slow as slow', async () => {
+    const e = setup()
+    const got: { slow: boolean }[] = []
+    e.client.on('quality', (q) => got.push(q))
+    e.client.start()
+    await handshakeWithInput(e)
+    const lines = readFileSync(resolve(__dirname, '../../../../internal/desktop/testdata/signal-v1.jsonl'), 'utf8')
+      .trim().split('\n').map((l) => JSON.parse(l) as { name: string; wire: object })
+    for (const n of ['quality-slow-true', 'quality-slow-false']) lastT(e).recv(lines.find((l) => l.name === n)!.wire)
+    lastT(e).recv({ type: 'quality', slow: 'yes' })
+    expect(got).toEqual([{ slow: true }, { slow: false }, { slow: false }])
+  })
+
   // Phase 23-07: the unlock panel's wire (golden lines from internal/desktop/testdata/signal-v1.jsonl).
   describe('unlock', () => {
     const goldenLines = () =>

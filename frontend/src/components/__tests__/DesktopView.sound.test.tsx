@@ -292,12 +292,13 @@ describe('who gets the item', () => {
     expect(soundBtn()?.getAttribute('aria-disabled')).toBeNull()
   })
 
-  it('a phone keeps its own bottom bar for Sound (23-08): no bar item here', async () => {
+  it('a phone has no Sound item in the page bar; its Sound item is in the phone bottom bar (23-08)', async () => {
     phoneQuery()
     render()
     withAudio()
     await firstFrame()
-    expect(soundBtn()).toBeNull()
+    expect(container.querySelector('.desktop-overlay .desktop-sound')).toBeNull()
+    expect(container.querySelector('.desktop-phone__slot .desktop-sound')).not.toBeNull()
   })
 })
 
@@ -360,5 +361,60 @@ describe('not remembered, and said aloud', () => {
     expect(announced()).toBe('Sound on')
     await click(soundBtn()!)
     expect(announced()).toBe('Sound off')
+  })
+})
+
+// Phase 23-08: the optional onSound prop feeds the app tab's playing indicator.
+describe('onSound (the app tab indicator)', () => {
+  it('is true once Unmute plays, false on Mute', async () => {
+    const onSound = vi.fn()
+    render({ onSound })
+    withAudio()
+    await firstFrame()
+    expect(onSound).toHaveBeenLastCalledWith(false)
+    await click(soundBtn()!)
+    expect(onSound).toHaveBeenLastCalledWith(true)
+    await click(soundBtn()!)
+    expect(onSound).toHaveBeenLastCalledWith(false)
+  })
+
+  it('is false on disconnect and true again when the picture returns with sound still on', async () => {
+    const onSound = vi.fn()
+    render({ onSound })
+    withAudio()
+    await firstFrame()
+    await click(soundBtn()!)
+    status({ kind: 'reconnecting' } as ClientStatus)
+    expect(onSound).toHaveBeenLastCalledWith(false)
+    status({ kind: 'streaming' })
+    expect(onSound).toHaveBeenLastCalledWith(true)
+  })
+
+  it('is false while the host has the client paused (a hidden window)', async () => {
+    const onSound = vi.fn()
+    render({ onSound })
+    withAudio()
+    await firstFrame()
+    await click(soundBtn()!)
+    render({ onSound, paused: true })
+    expect(onSound).toHaveBeenLastCalledWith(false)
+  })
+
+  it('is false on unmount', async () => {
+    const onSound = vi.fn()
+    render({ onSound })
+    withAudio()
+    await firstFrame()
+    await click(soundBtn()!)
+    act(() => root.render(<div />))
+    expect(onSound).toHaveBeenLastCalledWith(false)
+  })
+
+  it('is optional: no prop, no error', async () => {
+    render()
+    withAudio()
+    await firstFrame()
+    await click(soundBtn()!)
+    expect(soundBtn()?.getAttribute('aria-label')).toBe('Mute')
   })
 })

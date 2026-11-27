@@ -11,6 +11,7 @@ import type { DesktopClient, DesktopSurfacesMsg, SurfaceKind } from '../lib/desk
 import { ContextMenu, type ContextMenuEntry } from './ContextMenu'
 import { WINDOWS_CAPTION, type SurfacePick } from './DesktopControlBar'
 import { DesktopSendKeysMenu } from './DesktopSendKeysMenu'
+import { DesktopSoundButton, type DesktopSoundButtonProps } from './DesktopSoundButton'
 
 export type PhoneModifier = 'Control' | 'Alt' | 'Meta'
 
@@ -37,6 +38,10 @@ export interface DesktopPhoneBarsProps {
   onSelectSurface(pick: SurfacePick): void
   /** A guest page (22-07): Send Keys offers no Lock Screen…. */
   guest?: boolean
+  /** The Sound item (23-08): the bottom bar's last, fixed 44 px icon-only item. Absent when the hello offered no audio. */
+  sound?: Pick<DesktopSoundButtonProps, 'video' | 'failed' | 'onNotice' | 'onChange'>
+  /** The Unlock field has focus: the 44 px slot is empty, neither bar, so the panel is the only thing above the keyboard. */
+  hidden?: boolean
 }
 
 const CAPTION_ID = 'desktop-phone-picker-caption'
@@ -52,7 +57,7 @@ const noop = () => {}
  */
 export function DesktopPhoneBars({
   keyboardUp, zoom, onFit, onShowKeyboard, onKey, armed, onToggleArm, sendChord,
-  surfaceName, surface, canControl, canPickSurface, disabledReason, client, onSelectSurface, guest = false,
+  surfaceName, surface, canControl, canPickSurface, disabledReason, client, onSelectSurface, guest = false, sound, hidden = false,
 }: DesktopPhoneBarsProps): React.ReactElement {
   const [down, setDown] = useState<string | null>(null)
   const [sendKeys, setSendKeys] = useState<{ x: number; y: number } | null>(null)
@@ -174,14 +179,17 @@ export function DesktopPhoneBars({
         <button
           type="button"
           className="keybar__key desktop-phone__key"
+          // Greyed while Locked only: typing is paused then, and the Unlock field has its own keyboard. Reconnecting stays live.
+          aria-disabled={disabledReason === 'Locked' ? true : undefined}
           onPointerDown={(e) => e.preventDefault()}
-          onClick={onShowKeyboard}
+          onClick={() => { if (disabledReason !== 'Locked') onShowKeyboard() }}
         >
           Show Keyboard
         </button>
       )}
       {zoom > 1 &&
         key(`Fit to screen, zoom ${zoomText}`, 'Fit to Screen', onFit, { disabled: false })}
+      {sound && <DesktopSoundButton {...sound} phone compact />}
     </div>
   )
 
@@ -202,7 +210,7 @@ export function DesktopPhoneBars({
 
   return (
     <div className={`keybar desktop-phone__slot${keyboardUp ? ' keybar--kb-up' : ''}`}>
-      {keyboardUp ? keyBar : bottomBar}
+      {hidden ? null : keyboardUp ? keyBar : bottomBar}
       {sendKeys && (
         <DesktopSendKeysMenu
           anchor={sendKeys}

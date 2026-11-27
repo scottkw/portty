@@ -102,7 +102,7 @@ describe('bottom bar (keyboard down)', () => {
     expect(labels()).toEqual(['Fit to screen, zoom 2x'])
   })
 
-  it.each(['Locked', 'Reconnecting'] as const)('%s: the sending items are aria-disabled and do nothing; Show Keyboard and Fit stay live', (reason) => {
+  it.each(['Locked', 'Reconnecting'] as const)('%s: the sending items are aria-disabled and do nothing; Fit stays live; Show Keyboard is greyed only while Locked', (reason) => {
     const p = props({ disabledReason: reason, zoom: 2 })
     render(p)
     for (const name of ['Main Display', 'Send Keys']) {
@@ -110,9 +110,10 @@ describe('bottom bar (keyboard down)', () => {
       press(btn(name))
     }
     expect(document.querySelector('[role="menu"]')).toBeNull()
-    expect(btn('Show Keyboard').hasAttribute('aria-disabled')).toBe(false)
+    // 23-08: Show Keyboard is greyed while Locked (the Unlock field has its own keyboard) and stays live while Reconnecting.
+    expect(btn('Show Keyboard').hasAttribute('aria-disabled')).toBe(reason === 'Locked')
     click(btn('Show Keyboard'), 1)
-    expect(p.onShowKeyboard).toHaveBeenCalledTimes(1)
+    expect(p.onShowKeyboard).toHaveBeenCalledTimes(reason === 'Locked' ? 0 : 1)
     press(btn('Fit to screen, zoom 2x'))
     expect(p.onFit).toHaveBeenCalledTimes(1)
   })

@@ -185,6 +185,8 @@ export interface DesktopEvents {
   input: { open: boolean }
   /** Own-account viewers only: the daemon's unlock progress (23-04). */
   unlock: DesktopUnlockMsg
+  /** The daemon put this viewer below its quality floor (slow) or took it off again; sent to this viewer only (23-02). */
+  quality: { slow: boolean }
   surface: DesktopSurfaceMsg
   /** A good reply to a surfaces request. */
   surfaces: DesktopSurfacesMsg
@@ -410,7 +412,7 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
 
   const listeners: { [K in keyof DesktopEvents]: Set<(v: DesktopEvents[K]) => void> } = {
     track: new Set(), state: new Set(), size: new Set(), status: new Set(), wake: new Set(),
-    rights: new Set(), caps: new Set(), input: new Set(), unlock: new Set(), surface: new Set(), surfaces: new Set(), selectFailed: new Set(),
+    rights: new Set(), caps: new Set(), input: new Set(), unlock: new Set(), quality: new Set(), surface: new Set(), surfaces: new Set(), selectFailed: new Set(),
     control: new Set(), cursor: new Set(), admission: new Set(), lease: new Set(),
   }
   function emit<K extends keyof DesktopEvents>(event: K, v: DesktopEvents[K]) {
@@ -859,6 +861,9 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
               byPortty: m.by_portty === true,
             })
           }
+          break
+        case 'quality':
+          emit('quality', { slow: m.slow === true })
           break
         case 'surface': {
           const kind = m.kind

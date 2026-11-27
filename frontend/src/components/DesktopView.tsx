@@ -18,6 +18,7 @@ import {
   MoonIcon,
   NoSymbolIcon,
   PlayIcon,
+  SignalIcon,
   SignalSlashIcon,
   SpeakerXMarkIcon,
   StopIcon,
@@ -228,6 +229,8 @@ const WINDOW_CHIPS = {
   raise_failed: { Icon: ExclamationTriangleIcon, text: "Couldn't bring the window to the front. Click the picture to try again." },
   minimized: { Icon: WindowIcon, text: 'The shared window is minimized. Click the picture to bring it back.' },
 } as const
+/** The daemon put this viewer below its quality floor (23-UI-SPEC Surface 4). No setting, no sharpening indicator. */
+const SLOW_CHIP = { Icon: SignalIcon, text: 'Slow connection. The picture may freeze.' }
 const ACCESSIBILITY_CHIP = {
   Icon: ExclamationTriangleIcon,
   text: 'Control needs Accessibility. On the Mac, allow Portty in Privacy & Security.',
@@ -335,6 +338,11 @@ export interface DesktopViewProps {
   hostCard?: HostCard | null
   /** The host stopped the client (a hidden window): shows the Reconnecting chip until the host clears it. */
   paused?: boolean
+  /**
+   * The app tab's playing indicator (23-08): true while this viewer's sound is on and connected; false on mute,
+   * on disconnect (a hidden-window pause included) and on unmount.
+   */
+  onSound?: (on: boolean) => void
   /** True while a picture shows and no card covers it. */
   onPicture?: (has: boolean) => void
   /** True when the stage has the keyboard (the user clicked or tabbed onto it), false when it goes. */
@@ -377,6 +385,7 @@ export function DesktopView({
   hostCard = null,
   readClipboard,
   paused: hostPaused = false,
+  onSound,
   onPicture,
   onCaptureChange,
   onModeChange,
@@ -450,10 +459,14 @@ export function DesktopView({
   const blockedShown = useRef({ episode: 0, at: 0 })
   // Sound is on for this viewer. Not remembered: every page load starts muted.
   const [soundOn, setSoundOn] = useState(false)
+  // The phone's Unlock field has focus: the bar slot is empty so the panel is the only thing above the keyboard.
+  const [unlockFocused, setUnlockFocused] = useState(false)
   // The one-time Sound hint has been shown (or its moment passed) in this page load.
   const hintDone = useRef(false)
   const hintId = useRef(0)
   const wasFailed = useRef(false)
+  // The daemon says this viewer is below its quality floor. It belongs to one connection, so a lost connection clears it.
+  const [slow, setSlow] = useState(false)
   const [needsTap, setNeedsTap] = useState(false)
   const [chipPhase, setChipPhase] = useState<'gone' | 'shown' | 'fading'>('gone')
   // The viewer may control the Mac (the hello grants it and this is not a phone). The keyboard is not
@@ -707,6 +720,7 @@ export function DesktopView({
         setHasAudio(audio)
         setHasUnlock(unlock && !guest)
       }),
+      client.on('quality', ({ slow: s }) => setSlow(s)),
       client.on('unlock', (m) => {
         if (m.state === 'unlocked') {
           // Success is shown when the state flips to unlocked; this only says who typed it. Never stored: a stale
@@ -792,6 +806,7 @@ export function DesktopView({
           setAdmission(null)
           resetLease()
           setUnlockMsg(null)
+          setSlow(false)
         }
         // A state card describes the connection that is gone; the next state message replaces it.
         if (s.kind !== 'streaming' && s.kind !== 'connecting') {
@@ -1152,6 +1167,7 @@ export function DesktopView({
   else if (canControl && ctlState.window !== '') chip = WINDOW_CHIPS[ctlState.window]
   else if (canControl && accessNeeded) chip = ACCESSIBILITY_CHIP
   else if (guest && canControl && someoneUsing) chip = { Icon: HandRaisedIcon, text: copy.GUEST_CHIP_SOMEONE }
+  else if (slow) chip = SLOW_CHIP
   else if (guest && canControl && lease?.state === 'other') chip = { Icon: UserIcon, text: copy.controllingChip(lease.name || 'Someone') }
   else if (guest && canControl) chip = { Icon: CursorArrowRaysIcon, text: copy.GUEST_CHIP_CONTROL }
   else if (guest) chip = { Icon: EyeIcon, text: copy.GUEST_CHIP_VIEW_ONLY }
@@ -1176,6 +1192,34 @@ export function DesktopView({
   // Sound (23-06). Audio failing is the daemon's state; the picture is never touched by it.
   const audioFailed = desk?.audio === 'failed'
   const soundNotice = useCallback((kind: SoundNotice) => pushNotice(soundNoticeSpec(kind, phoneMode)), [pushNotice, phoneMode])
+  const phoneSound = hasAudio && phoneMode ? { video: videoRef.current, failed: audioFailed, onNotice: soundNotice, onChange: setSoundOn } : undefined
+  // The app tab's playing indicator: sound on and a live connection. Mute, a lost connection (the hidden-window pause too) and unmount clear it.
+  const playing = soundOn && status.kind === 'streaming' && !hostPaused
+  const onSoundRef = useRef(onSound)
+  onSoundRef.current = onSound
+  useEffect(() => {
+    onSoundRef.current?.(playing)
+  }, [playing])
+  useEffect(() => () => onSoundRef.current?.(false), [])
+  // A field removed while focused fires no focusout everywhere (the Mac unlocked under it): the slot comes back with the panel's end.
+  useEffect(() => {
+    if (!showUnlock) setUnlockFocused(false)
+  }, [showUnlock])
+  // Focus in the Unlock password field empties the phone's bar slot. Document-level focus events are the only way to see it:
+  // the panel is a sibling of the stage, and the field is uncontrolled.
+  useEffect(() => {
+    if (!phoneMode) return
+    const field = (e: Event) => (e.target as Element | null)?.matches?.('.desktop-unlock__input') === true
+    const on = (e: FocusEvent) => { if (field(e)) setUnlockFocused(true) }
+    const off = (e: FocusEvent) => { if (field(e)) setUnlockFocused(false) }
+    document.addEventListener('focusin', on)
+    document.addEventListener('focusout', off)
+    return () => {
+      document.removeEventListener('focusin', on)
+      document.removeEventListener('focusout', off)
+      setUnlockFocused(false)
+    }
+  }, [phoneMode])
   // The one-time hint: the first time the picture is up with sound negotiated and off, never under a card.
   // It is not repeated after a reconnect, and unmuting takes it away.
   useEffect(() => {
@@ -1257,6 +1301,8 @@ export function DesktopView({
             reconnecting={hostPaused || status.kind === 'reconnecting' || status.kind === 'unreachable'}
             onSelectSurface={pickSurface}
             guest={guest}
+            sound={phoneSound}
+            slotHidden={unlockFocused}
           />
         )}
         <span id={HINT_ID} className="visually-hidden">
