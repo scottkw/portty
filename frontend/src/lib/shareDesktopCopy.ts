@@ -123,7 +123,8 @@ export const GUEST_CHIP_CONTROL = 'You have control'
 /** `name` is the lease holder's sanitized display name, the only name a guest page renders. */
 export const controllingChip = (name: string): string => `${name} is controlling`
 export const GUEST_CHIP_SOMEONE = 'Someone is using this Mac'
-export const GUEST_CHIP_LOCKED = 'Locked'
+// 23-UI-SPEC Surface 3: a guest cannot unlock, so the chip names who can. DesktopView renders the same words.
+export const GUEST_CHIP_LOCKED = 'Locked. Ask the person at the Mac to unlock it.'
 export const GUEST_CHIP_RECONNECTING = 'Reconnecting…'
 
 export const GUEST_NOTICE_CLIPBOARD_ON = 'You can now copy text to and from this Mac'

@@ -89,7 +89,7 @@ export function DesktopSendKeysMenu({
           <RegenerateKeyModal
             isOpen
             title="Lock This Mac"
-            body="The Mac will lock and stay locked until someone unlocks it at the Mac. Remote unlock isn't available yet."
+            body="The Mac will lock. To unlock it from here you will need the Mac's password."
             confirmLabel="Lock Screen"
             actingLabel="Lock Screen"
             cancelLabel="Don't Lock"

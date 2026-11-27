@@ -1074,6 +1074,68 @@ describe('audio (Phase 23-06)', () => {
     expect((lastT(e).sent[1] as { sdp: string }).sdp).toContain('stereo=1')
   })
 
+  // Phase 23-07: the unlock panel's wire (golden lines from internal/desktop/testdata/signal-v1.jsonl).
+  describe('unlock', () => {
+    const goldenLines = () =>
+      readFileSync(resolve(__dirname, '../../../../internal/desktop/testdata/signal-v1.jsonl'), 'utf8')
+        .trim().split('\n').map((l) => JSON.parse(l) as { name: string; dir: string; wire: object })
+
+    it('turns every golden unlock line into a typed event', async () => {
+      const e = setup()
+      const got: unknown[] = []
+      e.client.on('unlock', (u) => got.push(u))
+      e.client.start()
+      await handshakeWithInput(e)
+      const lines = goldenLines().filter((l) => l.name.startsWith('unlock-'))
+      expect(lines).toHaveLength(11)
+      for (const l of lines) lastT(e).recv(l.wire)
+      const b = { failures: 0, waitMs: 0, reason: '', byPortty: false }
+      expect(got).toEqual([
+        { ...b, state: 'unlocking' },
+        { ...b, state: 'unlocked', byPortty: true },
+        { ...b, state: 'idle' },
+        { ...b, state: 'retrying' },
+        { ...b, state: 'failed', failures: 1 },
+        { ...b, state: 'rate_limited', failures: 1, waitMs: 3000 },
+        { ...b, state: 'paused', failures: 3, waitMs: 900000 },
+        { ...b, state: 'refused', reason: 'caps_lock' },
+        { ...b, state: 'refused', reason: 'unmappable' },
+        { ...b, state: 'unavailable', reason: 'accessibility' },
+        { ...b, state: 'error' },
+      ])
+    })
+
+    it('takes only enum values and bounded numbers from an unlock message', async () => {
+      const e = setup()
+      const got: { state: string; failures: number; waitMs: number; reason: string }[] = []
+      e.client.on('unlock', (u) => got.push(u))
+      e.client.start()
+      await handshakeWithInput(e)
+      lastT(e).recv({ type: 'unlock', state: 'open-sesame', failures: 0 })
+      lastT(e).recv({ type: 'unlock', state: 7 })
+      lastT(e).recv({ type: 'unlock', state: 'failed', failures: -4, wait_ms: 'x', reason: '<b>' })
+      lastT(e).recv({ type: 'unlock', state: 'paused', failures: 3, wait_ms: 9e15 })
+      expect(got).toHaveLength(2)
+      expect(got[0]).toMatchObject({ state: 'failed', failures: 0, waitMs: 0, reason: '' })
+      expect(got[1].waitMs).toBe(3600000)
+    })
+
+    it('sendUnlock is false until the input channel opens, then puts the bytes on it as one message and sends nothing on the socket', async () => {
+      const e = setup()
+      e.client.start()
+      await handshakeWithInput(e)
+      const ch = (lastPC(e) as unknown as FakePC).channels[0]
+      const bytes = Uint8Array.from([1, 0x61, 0x62])
+      expect(e.client.sendUnlock(bytes)).toBe(false)
+      ch.open()
+      const before = lastT(e).sent.length
+      expect(e.client.sendUnlock(bytes)).toBe(true)
+      expect(ch.sent).toHaveLength(1)
+      expect(ch.sent[0]).toBe(bytes)
+      expect(lastT(e).sent).toHaveLength(before)
+    })
+  })
+
   it('emits caps from the server hello: audio and unlock are booleans, missing is false', async () => {
     const e = setup()
     const seen: unknown[] = []

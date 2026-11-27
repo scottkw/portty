@@ -14,6 +14,7 @@ import {
   HandRaisedIcon,
   InformationCircleIcon,
   LockClosedIcon,
+  LockOpenIcon,
   MoonIcon,
   NoSymbolIcon,
   PlayIcon,
@@ -36,6 +37,7 @@ import {
   type DesktopLeaseMsg,
   type DesktopStateMsg,
   type DesktopSurfaceMsg,
+  type DesktopUnlockMsg,
 } from '../lib/desktopClient'
 import { HINT_KEY, createDesktopInput, type DesktopInput, type ReleaseReason } from '../lib/desktopInput'
 import { isPhone, usePhone } from '../lib/phoneQuery'
@@ -44,6 +46,7 @@ import { UserRefused } from './UserRefused'
 import { DesktopCopyPopover, DesktopPastePopover } from './DesktopClipboardPopover'
 import { DEFAULT_RELEASE_CHORD, DesktopControlBar, SWITCH_TIMEOUT_MS, type ControlMode, type SurfacePick } from './DesktopControlBar'
 import { DesktopPhoneLayer } from './DesktopPhoneLayer'
+import { DesktopUnlockPanel } from './DesktopUnlockPanel'
 import {
   SOUND_HINT,
   SOUND_HINT_MS,
@@ -194,6 +197,15 @@ const STATE_CARDS: Partial<Record<DesktopStateMsg['state'], CardKey>> = {
 }
 
 const HINT_ID = 'desktop-stage-hint'
+/** After a Portty unlock the daemon's by_portty message is expected this soon after the state flips; later, the Mac was unlocked at its keyboard. */
+const UNLOCK_WAIT_MS = 1500
+const UNLOCKED_BY_PORTTY = 'Mac unlocked. It will lock again after you disconnect.'
+// Surface 3: every viewer's clicks and keys are dropped while the Mac is locked; the viewer says so instead of letting typing do nothing.
+const LOCKED_GUEST = 'Locked. Ask the person at the Mac to unlock it.'
+const BLOCKED_GUEST = 'Clicks and typing are off while this Mac is locked.'
+const BLOCKED_OWN = `${BLOCKED_GUEST} Use Unlock This Mac to enter the password.`
+/** After the first notice of a lock episode, no more often than this while the user keeps typing. */
+const BLOCKED_REPEAT_MS = 10000
 const SURFACE_FALLBACKS: Record<string, string | undefined> = {
   window_closed: 'The shared window closed; showing the main display',
   display_gone: 'The shared display disconnected; showing the main display',
@@ -422,6 +434,20 @@ export function DesktopView({
   const [hasFrame, setHasFrame] = useState(false)
   // The server hello offered sound (23-06). Without it no Sound item is shown at all.
   const [hasAudio, setHasAudio] = useState(false)
+  // The server hello carried caps unlock 1 (own-account viewers only; 23-04). Without it the Unlock panel is not in the DOM.
+  const [hasUnlock, setHasUnlock] = useState(false)
+  // The daemon's last unlock message for this lock episode. The viewer keeps no counters of its own.
+  const [unlockMsg, setUnlockMsg] = useState<DesktopUnlockMsg | null>(null)
+  const wasLocked = useRef(false)
+  const lockedSeen = useRef(false)
+  // When a by_portty unlock message arrived before the state flip, and the timer that waits for one after it.
+  const byPorttyAt = useRef(0)
+  const flipTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // The Phase 20 capture notice is suppressed once, so Mac unlocked stays readable.
+  const suppressCapture = useRef(false)
+  // The lock episode counts up each time the Mac locks; the blocked-input notice shows once per episode, then at most every 10 s.
+  const lockEpisode = useRef(0)
+  const blockedShown = useRef({ episode: 0, at: 0 })
   // Sound is on for this viewer. Not remembered: every page load starts muted.
   const [soundOn, setSoundOn] = useState(false)
   // The one-time Sound hint has been shown (or its moment passed) in this page load.
@@ -470,6 +496,12 @@ export function DesktopView({
     setNoticeFading(false)
     setNotice({ ...n, id: noticeSeq.current })
   }, [])
+  const unlockedNotice = useCallback(
+    (byPortty: boolean) => {
+      pushNotice({ Icon: LockOpenIcon, text: byPortty ? UNLOCKED_BY_PORTTY : 'Mac unlocked', dwell: byPortty ? 5000 : 3000 })
+    },
+    [pushNotice],
+  )
   const typingStays = useCallback(() => {
     if (hideCaptureRef.current) return
     pushNotice({ Icon: CursorArrowRaysIcon, text: 'Typing stays on this device', dwell: 3000 })
@@ -639,7 +671,7 @@ export function DesktopView({
             onCapture: (c) => {
               capturedRef.current = c
               setCaptured(c)
-              if (!c || hideCaptureRef.current) return
+              if (!c || hideCaptureRef.current || suppressCapture.current) return
               let seen = false
               try {
                 seen = window.localStorage.getItem(HINT_KEY) === '1'
@@ -671,7 +703,24 @@ export function DesktopView({
         setCanClipboard(r.clipboard)
         setCanControl(true)
       }),
-      client.on('caps', ({ audio }) => setHasAudio(audio)),
+      client.on('caps', ({ audio, unlock }) => {
+        setHasAudio(audio)
+        setHasUnlock(unlock && !guest)
+      }),
+      client.on('unlock', (m) => {
+        if (m.state === 'unlocked') {
+          // Success is shown when the state flips to unlocked; this only says who typed it. Never stored: a stale
+          // 'unlocked' would greet the next lock episode.
+          if (!m.byPortty || guest) return
+          if (flipTimer.current !== null) {
+            clearTimeout(flipTimer.current)
+            flipTimer.current = null
+            unlockedNotice(true)
+          } else byPorttyAt.current = Date.now()
+          return
+        }
+        setUnlockMsg(m)
+      }),
       client.on('input', ({ open }) => {
         if (open) return
         inputCtl.current?.releaseAll('channel')
@@ -742,6 +791,7 @@ export function DesktopView({
         if (s.kind === 'reconnecting' || s.kind === 'unreachable') {
           setAdmission(null)
           resetLease()
+          setUnlockMsg(null)
         }
         // A state card describes the connection that is gone; the next state message replaces it.
         if (s.kind !== 'streaming' && s.kind !== 'connecting') {
@@ -754,6 +804,8 @@ export function DesktopView({
     client.start()
     return () => {
       for (const off of offs) off()
+      if (flipTimer.current !== null) clearTimeout(flipTimer.current)
+      flipTimer.current = null
       inputCtl.current?.destroy()
       inputCtl.current = null
       client.stop()
@@ -761,7 +813,7 @@ export function DesktopView({
       clientCb.current?.(null)
       setPhoneClient(null)
     }
-  }, [startPlay, updateRect, pushNotice, typingStays, guest, guestProp, embedded])
+  }, [startPlay, updateRect, pushNotice, typingStays, unlockedNotice, guest, guestProp, embedded])
 
   // The count chip: 3 s after the first frame, and again whenever the count changes.
   useEffect(() => {
@@ -804,6 +856,50 @@ export function DesktopView({
   useEffect(() => {
     inputCtl.current?.setPaused(inputPaused)
   }, [inputPaused, canControl])
+
+  useEffect(() => {
+    if (locked) lockEpisode.current++
+  }, [locked])
+  // A viewer with Control on pressed a printable key or the picture while Locked: nothing is sent (the Phase 20 pause).
+  const blockedInput = useCallback(() => {
+    if (!locked || !active) return
+    const seen = blockedShown.current
+    const now = Date.now()
+    if (seen.episode === lockEpisode.current && now - seen.at < BLOCKED_REPEAT_MS) return
+    blockedShown.current = { episode: lockEpisode.current, at: now }
+    pushNotice({ Icon: LockClosedIcon, text: guest ? BLOCKED_GUEST : BLOCKED_OWN, dwell: 5000 })
+  }, [locked, active, guest, pushNotice])
+
+  // The Mac leaving Locked (23-UI-SPEC Surface 2): the panel is already gone with the lock. After a Portty unlock the
+  // stage takes focus (capture notice suppressed once) and the notice says it will lock again; if no by_portty message
+  // comes within 1.5 s the Mac was unlocked at its own keyboard. A dropped connection is not a flip.
+  useEffect(() => {
+    if (!desk) return
+    const nowLocked = desk.locked || desk.state === 'locked'
+    if (nowLocked) {
+      if (flipTimer.current !== null) clearTimeout(flipTimer.current)
+      flipTimer.current = null
+      byPorttyAt.current = 0
+    } else if (wasLocked.current && (desk.state === 'streaming' || desk.state === 'idle')) {
+      setUnlockMsg(null)
+      if (!phoneMode && active && document.activeElement === document.body) {
+        suppressCapture.current = true
+        stageRef.current?.focus({ preventScroll: true })
+        suppressCapture.current = false
+      }
+      if (!guest) {
+        if (byPorttyAt.current !== 0 && Date.now() - byPorttyAt.current < 10000) unlockedNotice(true)
+        else {
+          flipTimer.current = setTimeout(() => {
+            flipTimer.current = null
+            unlockedNotice(false)
+          }, UNLOCK_WAIT_MS)
+        }
+        byPorttyAt.current = 0
+      }
+    }
+    wasLocked.current = nowLocked
+  }, [desk, guest, active, phoneMode, unlockedNotice])
 
   // Held input is let go of when the Mac locks or the picture is lost; the user keeps the keyboard.
   useEffect(() => {
@@ -1052,7 +1148,7 @@ export function DesktopView({
   else if (needsTap) cardKey = 'tap'
   else if (status.kind === 'reconnecting') chip = { Icon: ArrowPathIcon, text: 'Reconnecting…' }
   else if (!hasFrame) cardKey = guest ? 'guest_connecting' : 'connecting'
-  else if (locked) chip = { Icon: LockClosedIcon, text: 'Locked' }
+  else if (locked) chip = { Icon: LockClosedIcon, text: guest ? LOCKED_GUEST : 'Locked' }
   else if (canControl && ctlState.window !== '') chip = WINDOW_CHIPS[ctlState.window]
   else if (canControl && accessNeeded) chip = ACCESSIBILITY_CHIP
   else if (guest && canControl && someoneUsing) chip = { Icon: HandRaisedIcon, text: copy.GUEST_CHIP_SOMEONE }
@@ -1070,6 +1166,10 @@ export function DesktopView({
   const showBar = barAllowed && cardKey === null && !hostCard && !hostPaused && (status.kind === 'streaming' || status.kind === 'reconnecting')
   showBarRef.current = showBar
   const picture = hasFrame && cardKey === null && !hostCard && !hostPaused
+  // The Unlock panel: Locked (kept through a reconnect, when the state card is gone) and the hello's unlock capability, under no card.
+  if (desk) lockedSeen.current = locked
+  const unlockReconnecting = hostPaused || status.kind === 'reconnecting'
+  const showUnlock = hasUnlock && !guest && cardKey === null && !hostCard && (locked || (desk === null && unlockReconnecting && lockedSeen.current))
   useEffect(() => {
     pictureCb.current?.(picture)
   }, [picture])
@@ -1134,6 +1234,10 @@ export function DesktopView({
       <div
         className={active && !inputPaused ? 'desktop-stage desktop-stage--live' : 'desktop-stage'}
         ref={stageRef}
+        onKeyDown={(e) => {
+          if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) blockedInput()
+        }}
+        onPointerDown={blockedInput}
         {...(canControl
           ? { role: 'application', 'aria-label': 'Mac desktop', 'aria-describedby': HINT_ID, tabIndex: active ? 0 : -1 }
           : guest
@@ -1234,6 +1338,15 @@ export function DesktopView({
           )}
         </div>
       </div>
+      {showUnlock && clientRef.current && (
+        <DesktopUnlockPanel
+          client={clientRef.current}
+          unlock={unlockMsg}
+          reconnecting={unlockReconnecting}
+          needsAccessibility={accessNeeded}
+          phone={phoneMode}
+        />
+      )}
       {showBar && (
         <div
           className="desktop-overlay"

@@ -84,6 +84,20 @@ export interface DesktopCaps {
   unlock: boolean
 }
 
+/** The daemon's unlock states (23-04 wire contract). The viewer holds no counters: failures, waits and the pause are the daemon's. */
+export type UnlockStateName =
+  | 'idle' | 'unlocking' | 'retrying' | 'unlocked' | 'failed' | 'rate_limited' | 'paused' | 'refused' | 'unavailable' | 'error'
+export type UnlockReason = '' | 'caps_lock' | 'unmappable' | 'accessibility'
+export interface DesktopUnlockMsg {
+  state: UnlockStateName
+  failures: number
+  /** Rate limit or pause: how long until the daemon accepts another try, in ms. 0 when absent. */
+  waitMs: number
+  reason: UnlockReason
+  /** Unlocked state only: Portty typed the password (false would be the Mac unlocked at its own keyboard). */
+  byPortty: boolean
+}
+
 export interface DesktopSizeMsg {
   w: number
   h: number
@@ -169,6 +183,8 @@ export interface DesktopEvents {
   caps: DesktopCaps
   /** The input data channel opened or closed. */
   input: { open: boolean }
+  /** Own-account viewers only: the daemon's unlock progress (23-04). */
+  unlock: DesktopUnlockMsg
   surface: DesktopSurfaceMsg
   /** A good reply to a surfaces request. */
   surfaces: DesktopSurfacesMsg
@@ -256,6 +272,11 @@ export interface DesktopClient {
    * releases and wheel are never droppable.
    */
   sendInput(msg: object, droppable?: boolean): boolean
+  /**
+   * The unlock request: `bytes` (type byte 0x01, then UTF-8) as one binary message on the input channel,
+   * never the signalling socket. False when the channel is not open. The caller zeroes `bytes` afterwards.
+   */
+  sendUnlock(bytes: Uint8Array): boolean
   /** The surface epoch last announced by the server, or null until the first surface message. */
   currentEpoch(): number | null
   /** Asks for the displays and windows. Resolves on the next reply; rejects on an error reply, a dropped connection or after 5 s. */
@@ -361,6 +382,12 @@ function parseRights(v: unknown): DesktopRights {
   return { control: r.control === true, clipboard: r.clipboard === true, surface: r.surface === true }
 }
 
+const UNLOCK_STATES: ReadonlySet<string> = new Set<UnlockStateName>([
+  'idle', 'unlocking', 'retrying', 'unlocked', 'failed', 'rate_limited', 'paused', 'refused', 'unavailable', 'error',
+])
+const UNLOCK_REASONS: ReadonlySet<string> = new Set(['caps_lock', 'unmappable', 'accessibility'])
+const UNLOCK_MAX_WAIT_MS = 3600000
+
 const STATES: ReadonlySet<string> = new Set<DesktopState>([
   'off', 'needs_permission', 'awaiting_approval', 'display_asleep', 'locked', 'idle', 'streaming', 'capture_paused',
 ])
@@ -383,7 +410,7 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
 
   const listeners: { [K in keyof DesktopEvents]: Set<(v: DesktopEvents[K]) => void> } = {
     track: new Set(), state: new Set(), size: new Set(), status: new Set(), wake: new Set(),
-    rights: new Set(), caps: new Set(), input: new Set(), surface: new Set(), surfaces: new Set(), selectFailed: new Set(),
+    rights: new Set(), caps: new Set(), input: new Set(), unlock: new Set(), surface: new Set(), surfaces: new Set(), selectFailed: new Set(),
     control: new Set(), cursor: new Set(), admission: new Set(), lease: new Set(),
   }
   function emit<K extends keyof DesktopEvents>(event: K, v: DesktopEvents[K]) {
@@ -820,6 +847,19 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
             })
           }
           break
+        case 'unlock':
+          // Only an enum value and bounded integers are taken from the wire.
+          if (typeof m.state === 'string' && UNLOCK_STATES.has(m.state)) {
+            const wait = m.wait_ms
+            emit('unlock', {
+              state: m.state as UnlockStateName,
+              failures: Number.isInteger(m.failures) && (m.failures as number) >= 0 ? (m.failures as number) : 0,
+              waitMs: Number.isFinite(wait) && (wait as number) > 0 ? Math.min(wait as number, UNLOCK_MAX_WAIT_MS) : 0,
+              reason: typeof m.reason === 'string' && UNLOCK_REASONS.has(m.reason) ? (m.reason as UnlockReason) : '',
+              byPortty: m.by_portty === true,
+            })
+          }
+          break
         case 'surface': {
           const kind = m.kind
           if (!Number.isInteger(m.e) || (m.e as number) < 1 || (kind !== 'display' && kind !== 'window')) break
@@ -1009,6 +1049,12 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
       if (!ch || ch.readyState !== 'open') return false
       if (droppable && ch.bufferedAmount > MOVE_BUFFER_LIMIT) return false
       ch.send(JSON.stringify(msg))
+      return true
+    },
+    sendUnlock(bytes) {
+      const ch = inputChannel
+      if (!ch || ch.readyState !== 'open') return false
+      ch.send(bytes as Uint8Array<ArrayBuffer>)
       return true
     },
     currentEpoch: () => epoch,
