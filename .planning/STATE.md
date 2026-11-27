@@ -8,7 +8,7 @@ status: executing
 stopped_at: Phase 20 complete (real-Mac verification deferred, see 20-UAT.md), Phase 21 executing
 last_updated: "2026-11-27T14:21:02.810Z"
 last_activity: 2026-11-27
-last_activity_desc: "Quick 261127-bb7 (Phase 20 ponytail-review fixes); Phase 21 executing"
+last_activity_desc: "Phase 20 shipped as PR #13"
 state_head: 951908f487e7202c67a9819e930e7cb2e83c70a2
 progress:
   total_phases: 8
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-24)
 
 Phase: 21 (Portty App and iPhone Viewers) — EXECUTING
 Status: Phase 20 complete 2026-11-27 (verification human_needed 4/4, real-Mac items deferred; see Deferred Verification); Phase 21 executing
-Last activity: 2026-11-27 - Completed quick task 261127-bb7: Phase 20 ponytail-review fixes
+Last activity: 2026-11-27 -- Phase 20 shipped as PR #13
 
 ## Performance Metrics
 
