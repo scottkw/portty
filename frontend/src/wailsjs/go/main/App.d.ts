@@ -244,6 +244,11 @@ export interface DesktopStatusResult {
   tailscale: string
   launchd: boolean
   reason: string
+  // surfaceKind is display or window, control is ok or needs_accessibility;
+  // all three are '' unless viewers are connected.
+  surfaceKind: string
+  surfaceName: string
+  control: string
   errorCode: string
 }
 export function GetDesktopStatus(): Promise<DesktopStatusResult>

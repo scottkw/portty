@@ -90,7 +90,7 @@ export const COPIED_MS = 2000
 const USERSPACE_SENTENCE =
   "Tailscale is running in userspace-networking mode, so Portty can't open a desktop connection. Switch Tailscale to its standard mode, then try again."
 const DESKTOP_OFF_DESCRIPTION =
-  "Open this Mac's screen from your other devices any time, even when Portty is quit. Only devices signed in to your Tailscale account can open it."
+  "View and control this Mac's screen from your other devices any time, even when Portty is quit. Only devices signed in to your Tailscale account can open it."
 const DESKTOP_FOOTNOTE =
   'While it is plugged in, Portty keeps this Mac from sleeping on its own, though the display may still sleep. Closing the lid or choosing Sleep still puts it to sleep. On battery, including a low battery, it sleeps as usual. Nothing can wake it from here. macOS asks you to approve Screen Recording again about once a month, at the Mac. The first time Chrome opens the link, it may ask to find devices nearby. Choose Allow.'
 const COPY_FAILED = "Couldn't copy the link. Try again."
@@ -160,7 +160,7 @@ function desktopStatusNote(s: DesktopStatusResult, waiting: boolean): string | u
 // whose status read failed): off, or on with a state nobody knows yet.
 const NO_STATUS: DesktopStatusResult = {
   alwaysAvailable: false, state: '', viewers: 0, locked: false, approachingLapse: false,
-  tailscale: '', launchd: false, reason: '', errorCode: '',
+  tailscale: '', launchd: false, reason: '', surfaceKind: '', surfaceName: '', control: '', errorCode: '',
 }
 
 /** The 8px dot; no dot at all while the answer is unknown (the words carry the state). */
@@ -324,7 +324,13 @@ function DesktopGroup({ active, tailscaleHealth, ctDisclosed, ctLoaded, onTurned
         </>
       ))
 
-  const permState = perms === null ? null : perms.sr && perms.ax
+  // The permission preflights are cached per process, so the daemon's measured
+  // "control needs Accessibility" overrides a Granted read (20-UI-SPEC Surface E).
+  const controlNeedsAx = !!status && !status.errorCode && status.control === 'needs_accessibility'
+  const permState = controlNeedsAx ? false : perms === null ? null : perms.sr && perms.ax
+  const showing = on && busy !== 'starting' && !!status && !status.errorCode && !waiting && status.viewers > 0 && !!status.surfaceName
+    ? (status.surfaceKind === 'window' ? `Window: ${status.surfaceName}` : status.surfaceName)
+    : null
   const showRepair = reallyOn && !!status && !status.launchd
 
   return (
@@ -354,8 +360,13 @@ function DesktopGroup({ active, tailscaleHealth, ctDisclosed, ctLoaded, onTurned
             </span>
           </Row>
         )}
+        {showing && (
+          <Row label="Showing">
+            <span className="settings-row__description" aria-live="polite">{showing}</span>
+          </Row>
+        )}
         {on && (
-          <Row label="Link" description="Open it in Chrome or Safari on a device signed in to your Tailscale account. Treat it like a password.">
+          <Row label="Link" description="Open it in Chrome or Safari on a device signed in to your Tailscale account. It can control this Mac, so treat it like a password.">
             <button
               type="button"
               className="button button--secondary button--copy"
@@ -366,7 +377,7 @@ function DesktopGroup({ active, tailscaleHealth, ctDisclosed, ctLoaded, onTurned
             </button>
           </Row>
         )}
-        <Row label="Permissions" description="Screen Recording and Accessibility.">
+        <Row label="Permissions" description={controlNeedsAx ? 'Control needs Accessibility. Choose Set Up Permissions…' : 'Screen Recording and Accessibility.'}>
           <span className="ts-status">
             <StatusDot kind={permState === null ? null : permState ? 'on' : 'warn'} />
             <span className={`ts-status__text${permState ? ' ts-status__text--granted' : ''}`} aria-live="polite">

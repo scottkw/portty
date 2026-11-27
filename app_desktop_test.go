@@ -104,7 +104,8 @@ func TestOpenDesktopPermissionPane(t *testing.T) {
 			t.Errorf("OpenDesktopPermissionPane(%q) = %v, opened %v; want %q", kind, err, opened, want)
 		}
 	}
-	for _, kind := range []string{"files", "full_disk", "", "Screen", "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles", "https://example.com"} {
+	// "paste" is refused too: 20-VM-CHECKS PASTE_ROW is none, so that pane never ships.
+	for _, kind := range []string{"paste", "files", "full_disk", "", "Screen", "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles", "https://example.com"} {
 		opened = nil
 		if err := a.OpenDesktopPermissionPane(kind); err == nil || len(opened) != 0 {
 			t.Errorf("OpenDesktopPermissionPane(%q) = %v, opened %v; want an error and nothing opened", kind, err, opened)
@@ -129,7 +130,7 @@ func fakeDesktopDaemon(t *testing.T, putStatus int, putBody string) *App {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /desktop", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"alwaysAvailable":true,"state":"streaming","viewers":2,"locked":true,"approachingLapse":true,"lapseSeq":3,"tailscale":"ok","launchd":true,"reason":"r"}`))
+		_, _ = w.Write([]byte(`{"alwaysAvailable":true,"state":"streaming","viewers":2,"locked":true,"approachingLapse":true,"lapseSeq":3,"tailscale":"ok","launchd":true,"reason":"r","surface":{"kind":"window","name":"Terminal — zsh"},"control":"needs_accessibility"}`))
 	})
 	mux.HandleFunc("PUT /desktop", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(putStatus)
@@ -144,12 +145,24 @@ func fakeDesktopDaemon(t *testing.T, putStatus int, putBody string) *App {
 	return &App{client: daemon.NewDaemonClient(sock)}
 }
 
+// 20-10: the binding maps the daemon's additive surface and control fields.
+func TestApp_GetDesktopStatusSurfaceAndControl(t *testing.T) {
+	a := fakeDesktopDaemon(t, 200, `{}`)
+	got := a.GetDesktopStatus()
+	if got.SurfaceKind != "window" || got.SurfaceName != "Terminal — zsh" || got.Control != "needs_accessibility" {
+		t.Errorf("GetDesktopStatus surface %q %q control %q; want window, Terminal — zsh, needs_accessibility", got.SurfaceKind, got.SurfaceName, got.Control)
+	}
+}
+
 // DSHR-01 / DPRM-02: the Desktop group's three bindings carry the daemon's
 // answer, keep a refusal's code and detail, and never throw.
 func TestDesktopSettingsBindings(t *testing.T) {
 	t.Run("status, on and link", func(t *testing.T) {
 		a := fakeDesktopDaemon(t, 200, `{"alwaysAvailable":true,"firstShare":true}`)
-		want := DesktopStatusResult{AlwaysAvailable: true, State: "streaming", Viewers: 2, Locked: true, ApproachingLapse: true, Tailscale: "ok", Launchd: true, Reason: "r"}
+		want := DesktopStatusResult{
+			AlwaysAvailable: true, State: "streaming", Viewers: 2, Locked: true, ApproachingLapse: true, Tailscale: "ok", Launchd: true, Reason: "r",
+			SurfaceKind: "window", SurfaceName: "Terminal — zsh", Control: "needs_accessibility",
+		}
 		if got := a.GetDesktopStatus(); got != want {
 			t.Errorf("GetDesktopStatus = %+v, want %+v", got, want)
 		}
