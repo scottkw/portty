@@ -266,11 +266,20 @@ static OSStatus pcSet(VTCompressionSessionRef s, CFStringRef key, CFTypeRef valu
 	[_lock lock];
 	@try {
 		if (_session == NULL) return kVTInvalidSessionErr;
+		int oldW = _w, oldH = _h;
 		[self teardownLocked]; // flushes the old size's units before the new session starts
 		_w = w;
 		_h = h;
 		_forceNext = YES;
-		return [self createSessionLocked];
+		OSStatus st = [self createSessionLocked];
+		if (st != noErr) {
+			// A failed rebuild keeps a working encoder at the old size instead of a
+			// NULL session that every later rebuild refuses.
+			_w = oldW;
+			_h = oldH;
+			(void)[self createSessionLocked];
+		}
+		return st;
 	} @catch (NSException *e) {
 		return kPCExceptionErr;
 	} @finally {

@@ -48,7 +48,7 @@ type InputBridge struct{}
 // NewInputBridge returns the bridge to the real event system.
 func NewInputBridge() *InputBridge { return &InputBridge{} }
 
-func inputErr(what string, rc C.int) error {
+func bridgeErr(what string, rc C.int) error {
 	return fmt.Errorf("screencap: %s failed (code %d)", what, int32(rc))
 }
 
@@ -65,7 +65,7 @@ func (*InputBridge) PostMouse(kind MouseKind, x, y float64, button, clickState, 
 		return ErrRefusedInTest
 	}
 	if rc := C.pc_input_mouse(C.int(kind), C.double(x), C.double(y), C.int(button), C.int(clickState), C.int(dx), C.int(dy), C.uint64_t(flags)); rc != 0 {
-		return inputErr("posting a pointer event", rc)
+		return bridgeErr("posting a pointer event", rc)
 	}
 	return nil
 }
@@ -77,7 +77,7 @@ func (*InputBridge) PostKey(vk uint16, down bool, flags uint64, autorepeat bool)
 		return ErrRefusedInTest
 	}
 	if rc := C.pc_input_key(C.uint16_t(vk), b2i(down), C.uint64_t(flags), b2i(autorepeat)); rc != 0 {
-		return inputErr("posting a key event", rc)
+		return bridgeErr("posting a key event", rc)
 	}
 	return nil
 }
@@ -92,7 +92,7 @@ func (*InputBridge) PostText(units []uint16) error {
 		return ErrRefusedInTest
 	}
 	if rc := C.pc_input_text((*C.uint16_t)(&units[0]), C.int(len(units))); rc != 0 {
-		return inputErr("posting text", rc)
+		return bridgeErr("posting text", rc)
 	}
 	return nil
 }
@@ -104,7 +104,7 @@ func (*InputBridge) PostScroll(dx, dy int, flags uint64) error {
 		return ErrRefusedInTest
 	}
 	if rc := C.pc_input_scroll(C.int(dx), C.int(dy), C.uint64_t(flags)); rc != 0 {
-		return inputErr("posting a scroll", rc)
+		return bridgeErr("posting a scroll", rc)
 	}
 	return nil
 }
@@ -120,7 +120,7 @@ func b2i(b bool) C.int {
 func (*InputBridge) CursorLocation() (x, y float64, err error) {
 	var cx, cy C.double
 	if rc := C.pc_input_cursor(&cx, &cy); rc != 0 {
-		return 0, 0, inputErr("reading the pointer position", rc)
+		return 0, 0, bridgeErr("reading the pointer position", rc)
 	}
 	return float64(cx), float64(cy), nil
 }
@@ -130,7 +130,7 @@ func (*InputBridge) CursorLocation() (x, y float64, err error) {
 func DisplayBounds(id uint32) (x, y, w, h float64, err error) {
 	var cx, cy, cw, ch C.double
 	if rc := C.pc_display_bounds(C.uint32_t(id), &cx, &cy, &cw, &ch); rc != 0 {
-		return 0, 0, 0, 0, inputErr("reading the display bounds", rc)
+		return 0, 0, 0, 0, bridgeErr("reading the display bounds", rc)
 	}
 	return float64(cx), float64(cy), float64(cw), float64(ch), nil
 }
@@ -144,7 +144,7 @@ func PointOnDisplay(x, y float64) (bool, error) {
 	}
 	rc := C.pc_point_on_display(C.double(x), C.double(y))
 	if rc < 0 {
-		return false, inputErr("finding the display under a point", rc)
+		return false, bridgeErr("finding the display under a point", rc)
 	}
 	return rc == 1, nil
 }

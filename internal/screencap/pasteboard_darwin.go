@@ -16,7 +16,6 @@ int pc_pb_behavior(void);
 import "C"
 
 import (
-	"fmt"
 	"testing"
 	"unsafe"
 )
@@ -39,10 +38,6 @@ type Pasteboard struct{}
 // NewPasteboard returns the bridge to the real pasteboard.
 func NewPasteboard() *Pasteboard { return &Pasteboard{} }
 
-func pasteboardErr(what string, rc C.int) error {
-	return fmt.Errorf("screencap: %s failed (code %d)", what, int32(rc))
-}
-
 // ReadText reads the pasteboard's plain text, at most maxBytes of UTF-8. Item
 // types are checked first: a concealed or transient item answers ReadConcealed
 // with no content read. It may wait on a macOS privacy prompt, so a caller
@@ -54,7 +49,7 @@ func (*Pasteboard) ReadText(maxBytes int) (text string, outcome ReadOutcome, err
 	var out, n C.int
 	var buf *C.char
 	if rc := C.pc_pb_read(C.int(maxBytes), &out, &buf, &n); rc != 0 {
-		return "", ReadEmpty, pasteboardErr("reading the pasteboard", rc)
+		return "", ReadEmpty, bridgeErr("reading the pasteboard", rc)
 	}
 	if buf != nil {
 		defer C.free(unsafe.Pointer(buf))
@@ -74,7 +69,7 @@ func (*Pasteboard) WriteText(s string) error {
 		p = (*C.char)(unsafe.Pointer(&b[0]))
 	}
 	if rc := C.pc_pb_write(p, C.int(len(b))); rc != 0 {
-		return pasteboardErr("writing the pasteboard", rc)
+		return bridgeErr("writing the pasteboard", rc)
 	}
 	return nil
 }

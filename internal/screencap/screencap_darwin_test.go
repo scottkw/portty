@@ -320,3 +320,32 @@ func TestObjC_EntryPointsDrainAutoreleasePool(t *testing.T) {
 		}
 	}
 }
+
+// TestEncoder_RebuildFailureRestoresOldSize: a failed rebuild must bring the
+// encoder back at the old size, or _session stays NULL and every later rebuild
+// returns kVTInvalidSessionErr. Source check only: no test can make VideoToolbox
+// fail.
+func TestEncoder_RebuildFailureRestoresOldSize(t *testing.T) {
+	b, err := os.ReadFile("media_darwin.m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(b)
+	start := strings.Index(src, "- (OSStatus)rebuildWidth:(int)w height:(int)h {") // the definition, not the @interface line
+	if start < 0 {
+		t.Fatal("rebuildWidth:height: not found in media_darwin.m")
+	}
+	end := strings.Index(src[start:], "\n}\n")
+	if end < 0 {
+		t.Fatal("end of rebuildWidth:height: not found in media_darwin.m")
+	}
+	body := src[start : start+end]
+	if n := strings.Count(body, "createSessionLocked"); n != 2 {
+		t.Fatalf("rebuildWidth:height: calls createSessionLocked %d times, want 2 (rebuild, then restore)", n)
+	}
+	first := strings.Index(body, "createSessionLocked")
+	last := strings.LastIndex(body, "createSessionLocked")
+	if restore := strings.Index(body, "_w = oldW"); restore < first || restore > last {
+		t.Errorf("_w = oldW must sit between the two createSessionLocked calls (at %d, calls at %d and %d)", restore, first, last)
+	}
+}

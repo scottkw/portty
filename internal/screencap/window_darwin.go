@@ -21,7 +21,6 @@ int pc_window_topmost(double x, double y, uint32_t *id, int *pid, int *layer, do
 import "C"
 
 import (
-	"fmt"
 	"testing"
 	"unsafe"
 )
@@ -31,10 +30,6 @@ type WindowBridge struct{}
 
 // NewWindowBridge returns the bridge to the real window system.
 func NewWindowBridge() *WindowBridge { return &WindowBridge{} }
-
-func windowErr(what string, rc C.int) error {
-	return fmt.Errorf("screencap: %s failed (code %d)", what, int32(rc))
-}
 
 // RungName names a raise rung for the log: 1 Accessibility, 2 NSWorkspace, 3 activate.
 func RungName(rung int) string {
@@ -59,7 +54,7 @@ func (*WindowBridge) Focus() (pid int32, x, y, w, h float64, ok bool, err error)
 	var cp, cok C.int
 	var cx, cy, cw, ch C.double
 	if rc := C.pc_ax_focus(&cp, &cx, &cy, &cw, &ch, &cok); rc != 0 {
-		return 0, 0, 0, 0, 0, false, windowErr("reading the focused window", rc)
+		return 0, 0, 0, 0, 0, false, bridgeErr("reading the focused window", rc)
 	}
 	return int32(cp), float64(cx), float64(cy), float64(cw), float64(ch), cok != 0, nil
 }
@@ -73,7 +68,7 @@ func (*WindowBridge) WindowInfo(id uint32) (pid int32, x, y, w, h float64, onScr
 	var cp, on C.int
 	var cx, cy, cw, ch C.double
 	if rc := C.pc_window_info(C.uint32_t(id), &cp, &cx, &cy, &cw, &ch, &on); rc != 0 {
-		return 0, 0, 0, 0, 0, false, windowErr("reading a window", rc)
+		return 0, 0, 0, 0, 0, false, bridgeErr("reading a window", rc)
 	}
 	return int32(cp), float64(cx), float64(cy), float64(cw), float64(ch), on != 0, nil
 }
@@ -88,7 +83,7 @@ func (*WindowBridge) Minimized(pid int32, x, y, w, h float64, title string) (boo
 	defer C.free(unsafe.Pointer(ct))
 	var min C.int
 	if rc := C.pc_window_minimized(C.int(pid), C.double(x), C.double(y), C.double(w), C.double(h), ct, &min); rc != 0 {
-		return false, windowErr("reading the minimized state", rc)
+		return false, bridgeErr("reading the minimized state", rc)
 	}
 	return min != 0, nil
 }
@@ -105,7 +100,7 @@ func (*WindowBridge) Raise(pid int32, x, y, w, h float64, title string) (rung in
 	defer C.free(unsafe.Pointer(ct))
 	rc := C.pc_window_raise(C.int(pid), C.double(x), C.double(y), C.double(w), C.double(h), ct)
 	if rc <= 0 {
-		return 0, windowErr("raising a window", rc)
+		return 0, bridgeErr("raising a window", rc)
 	}
 	return int(rc), nil
 }
@@ -128,7 +123,7 @@ func (*WindowBridge) TopmostAt(x, y float64) (TopWindow, error) {
 	var pid, layer C.int
 	var fx, fy, fw, fh C.double
 	if rc := C.pc_window_topmost(C.double(x), C.double(y), &id, &pid, &layer, &fx, &fy, &fw, &fh); rc != 0 {
-		return TopWindow{}, windowErr("finding the topmost window", rc)
+		return TopWindow{}, bridgeErr("finding the topmost window", rc)
 	}
 	return TopWindow{uint32(id), int32(pid), int32(layer), float64(fx), float64(fy), float64(fw), float64(fh)}, nil
 }
