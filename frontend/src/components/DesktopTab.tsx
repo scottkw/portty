@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ConnectPeerDesktop, OpenLocalNetworkSettings, OpenPeerDesktopInBrowser } from '../wailsjs/go/main/App'
 import * as pd from '../lib/peerDesktop'
+import { controlReducer, type ControlEvent } from '../lib/controlMode'
 import type { ClientStatus, DesktopClient, DesktopStateMsg } from '../lib/desktopClient'
 import type { DesktopRowState } from '../lib/sidebarPeers'
 import { DesktopView, type DesktopControlHandle } from './DesktopView'
@@ -11,6 +12,8 @@ const WINDOW_HIDDEN_EVENT = 'portty:window-hidden'
 /** After one of these the client has ended its own loop, so Reconnect starts it again instead of waking it. */
 const FINAL_STATUS: ReadonlySet<ClientStatus['kind']> = new Set(['token_rejected', 'desktop_off', 'other_account'])
 const MUTED_STATES: ReadonlySet<string> = new Set(['needs_permission', 'awaiting_approval', 'display_asleep', 'capture_paused'])
+/** 21-02's KEYROUTE verdict is page: the stage's preventDefault keeps every chord off Portty's menu, so no native menu switch exists. */
+const NATIVE_MENU = false
 
 /** The sidebar's muted line for the Mac's last state; null for ready, streaming and the rest. */
 function rowState(s: DesktopStateMsg | null): DesktopRowState | null {
@@ -63,6 +66,41 @@ export function DesktopTab({ tab, active, onDesktopState, onLabel, controlRef }:
     controlAllowed: false,
   })
   const patch = useCallback((p: Partial<typeof view>) => setView((v) => ({ ...v, ...p })), [])
+
+  // Control mode (21-09) is the viewer's "keyboard captured" state; the reducer says what each event releases.
+  const handleRef = useRef<DesktopControlHandle | null>(null)
+  const setHandle = useCallback((h: DesktopControlHandle | null) => {
+    handleRef.current = h
+    if (typeof controlRef === 'function') controlRef(h)
+    else if (controlRef) (controlRef as React.MutableRefObject<DesktopControlHandle | null>).current = h
+  }, [controlRef])
+  const controlling = useRef(false)
+  const control = useCallback((ev: ControlEvent) => {
+    const next = controlReducer(controlling.current, ev, NATIVE_MENU)
+    controlling.current = next.controlling
+    for (const a of next.actions) {
+      if (a === 'releaseAll') handleRef.current?.releaseAll()
+      else if (a === 'releaseKeyboard') handleRef.current?.releaseKeyboard()
+    }
+  }, [])
+  // Another tab came forward: the keyboard goes back to Portty.
+  useEffect(() => {
+    if (!active) control('tab-inactive')
+  }, [active, control])
+  // Portty stopped being the active app, or the window was hidden. The stage input is blurred, so coming
+  // back does not turn control mode on again; one click does.
+  useEffect(() => {
+    const away = () => control('window-blur')
+    const hidden = () => { if (document.visibilityState === 'hidden') away() }
+    window.addEventListener('blur', away)
+    document.addEventListener('visibilitychange', hidden)
+    return () => {
+      window.removeEventListener('blur', away)
+      document.removeEventListener('visibilitychange', hidden)
+    }
+  }, [control])
+  // A layout cleanup, so the viewer's handle still exists to send the release before the client is torn down.
+  useLayoutEffect(() => () => control('tab-close'), [control])
   const labelCb = useRef(onLabel)
   labelCb.current = onLabel
   const label = pd.desktopTabLabel({ host: connectHost, ...view })
@@ -137,6 +175,7 @@ export function DesktopTab({ tab, active, onDesktopState, onLabel, controlRef }:
       doc,
       clock: pd.realClock,
       onPause: () => {
+        control('not-connected')
         clientRef.current?.stop()
         setPaused(true)
       },
@@ -148,7 +187,7 @@ export function DesktopTab({ tab, active, onDesktopState, onLabel, controlRef }:
       off()
       window.removeEventListener(WINDOW_HIDDEN_EVENT, track)
     }
-  }, [refreshUrl])
+  }, [refreshUrl, control])
 
   const onClient = useCallback((c: DesktopClient | null) => {
     clientRef.current = c
@@ -176,16 +215,21 @@ export function DesktopTab({ tab, active, onDesktopState, onLabel, controlRef }:
         statusRef.current = s.kind
         setPaused(false)
         patch({ status: s.kind })
+        // Not connected: Portty's shortcuts return at once, so Cmd+W closes a dead tab.
+        if (s.kind !== 'streaming') control('not-connected')
       }}
       onDesktopState={(s) => {
         stateCb.current(connectHost, rowState(s))
         patch({ locked: s?.locked === true || s?.state === 'locked' })
       }}
       onPicture={(hasPicture) => patch({ hasPicture })}
-      onCaptureChange={(captured) => patch({ captured })}
+      onCaptureChange={(captured) => {
+        control(captured ? 'capture-on' : 'capture-off')
+        patch({ captured })
+      }}
       onModeChange={(mode) => patch({ mode })}
       onControlChange={({ available }) => patch({ controlAllowed: available })}
-      controlRef={controlRef}
+      controlRef={setHandle}
       hideCaptureNotices
     />
   )

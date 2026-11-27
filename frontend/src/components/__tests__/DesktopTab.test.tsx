@@ -15,6 +15,7 @@ interface MockClient {
   start: ReturnType<typeof vi.fn>
   stop: ReturnType<typeof vi.fn>
   wake: ReturnType<typeof vi.fn>
+  sendInput: ReturnType<typeof vi.fn>
   emit: <K extends keyof DesktopEvents>(ev: K, v: DesktopEvents[K]) => void
 }
 
@@ -106,6 +107,23 @@ const setVisibility = (v: DocumentVisibilityState) => {
 }
 const advance = async (ms: number) => { await act(async () => { await vi.advanceTimersByTimeAsync(ms) }) }
 const press = async (b: HTMLButtonElement) => { await act(async () => { b.click() }) }
+
+const last = () => onLabel.mock.calls[onLabel.mock.calls.length - 1][0] as
+  | { line1: string; line2: string; controlling: boolean; tooltip: string }
+  | null
+/** Control is allowed: the viewer owns the desktop, rights arrive, and the picture is sized so a click lands on it. */
+const ownAccount = () => {
+  const video = container.querySelector('video')!
+  for (const [a, b] of [['clientWidth', 1000], ['clientHeight', 500], ['videoWidth', 1600], ['videoHeight', 1000]] as const) {
+    Object.defineProperty(video, a, { configurable: true, value: b })
+  }
+  emit('rights', { control: true, clipboard: true, surface: true })
+}
+async function picture() {
+  emit('status', { kind: 'streaming' })
+  emit('track', {} as MediaStream)
+  await act(async () => { container.querySelector('video')!.dispatchEvent(new Event('playing')) })
+}
 
 beforeEach(() => {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -291,22 +309,6 @@ describe('closing the tab', () => {
 })
 
 describe('the toolbar label feed (Task 3)', () => {
-  const last = () => onLabel.mock.calls[onLabel.mock.calls.length - 1][0] as
-    | { line1: string; line2: string; controlling: boolean; tooltip: string }
-    | null
-  const ownAccount = () => {
-    const video = container.querySelector('video')!
-    for (const [a, b] of [['clientWidth', 1000], ['clientHeight', 500], ['videoWidth', 1600], ['videoHeight', 1000]] as const) {
-      Object.defineProperty(video, a, { configurable: true, value: b })
-    }
-    emit('rights', { control: true, clipboard: true, surface: true })
-  }
-  async function picture() {
-    emit('status', { kind: 'streaming' })
-    emit('track', {} as MediaStream)
-    await act(async () => { container.querySelector('video')!.dispatchEvent(new Event('playing')) })
-  }
-
   it('says Not connected before a picture, then Click the picture to control once one shows and control is allowed', async () => {
     render()
     expect(last()).toMatchObject({ line1: 'On office-air', line2: 'Not connected', controlling: false })
@@ -334,5 +336,86 @@ describe('the toolbar label feed (Task 3)', () => {
     expect(last()).toMatchObject({ line2: 'View only' })
     render({ active: false })
     expect(last()).toBeNull()
+  })
+})
+
+describe('control mode (21-09): a click captures the keyboard and every way out lets go first', () => {
+  const stage = () => container.querySelector('.desktop-stage') as HTMLElement
+  const input = () => container.querySelector('textarea') as HTMLTextAreaElement
+  const click = () => act(() => stage().dispatchEvent(new PointerEvent('pointerdown', { clientX: 500, clientY: 250, bubbles: true, button: 0, pointerId: 1 })))
+  // The key and release messages the viewer sent, in order (moves, buttons and heartbeats are not under test).
+  const sent = () =>
+    (client().sendInput.mock.calls as [{ t: string; code?: string; d?: boolean }][])
+      .map(([m]) => m)
+      .filter((m) => m.t === 'key' || m.t === 'release')
+      .map((m) => (m.t === 'key' ? `${m.code} ${m.d ? 'down' : 'up'}` : 'release'))
+  const chord = (init: KeyboardEventInit) => {
+    const ev = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init })
+    act(() => { input().dispatchEvent(ev) })
+    return ev
+  }
+  async function controlling() {
+    render()
+    ownAccount()
+    await picture()
+    click()
+    expect(document.activeElement).toBe(input())
+  }
+
+  it('tracer: Cmd+W goes to the Mac as a tap with the local default stopped, and leaving the tab releases everything and gives the keyboard back', async () => {
+    await controlling()
+    const ev = chord({ code: 'KeyW', key: 'w', metaKey: true })
+    expect(ev.defaultPrevented).toBe(true)
+    expect(sent()).toEqual(['KeyW down', 'KeyW up'])
+    render({ active: false })
+    expect(sent()[sent().length - 1]).toBe('release')
+    expect(document.activeElement).not.toBe(input())
+  })
+
+  it('a click outside the picture (the keyboard leaves the stage) sends release', async () => {
+    await controlling()
+    act(() => input().blur())
+    expect(sent()).toContain('release')
+    expect(last()?.controlling).toBe(false)
+  })
+
+  it('Portty losing active-app status sends release and the stage input is blurred, so coming back is not control mode', async () => {
+    await controlling()
+    act(() => { window.dispatchEvent(new Event('blur')) })
+    expect(sent()).toContain('release')
+    expect(document.activeElement).not.toBe(input())
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    expect(last()?.controlling).toBe(false)
+  })
+
+  it('a hidden window releases', async () => {
+    await controlling()
+    setVisibility('hidden')
+    expect(sent()).toContain('release')
+    expect(document.activeElement).not.toBe(input())
+  })
+
+  it('the stream leaving Streaming releases and blurs the stage input', async () => {
+    await controlling()
+    emit('status', { kind: 'reconnecting' })
+    expect(sent()).toContain('release')
+    expect(document.activeElement).not.toBe(input())
+  })
+
+  it('closing the tab sends release before the client is torn down', async () => {
+    await controlling()
+    const c = client()
+    act(() => root.render(<div />))
+    const calls = c.sendInput.mock.calls as [{ t: string }][]
+    const lastRelease = calls.map(([m]) => m.t).lastIndexOf('release')
+    expect(lastRelease).toBeGreaterThanOrEqual(0)
+    expect(c.sendInput.mock.invocationCallOrder[lastRelease]).toBeLessThan(c.stop.mock.invocationCallOrder[0])
+  })
+
+  it('a Mac that locks keeps control mode on', async () => {
+    await controlling()
+    emit('state', { state: 'locked', viewers: 1, locked: true })
+    expect(document.activeElement).toBe(input())
+    expect(last()).toMatchObject({ line1: 'Controlling office-air', controlling: true })
   })
 })
