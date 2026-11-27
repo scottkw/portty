@@ -119,3 +119,15 @@ type Source interface {
 	ForceKeyframe()
 	Rebuild(width, height int) error
 }
+
+// QualitySource is the optional live-quality half of a Source: the adaptive
+// controller (desktop quality.go) changes the running encoder's target bitrate
+// and the capture's frame rate through it, never by starting a new session.
+// A Source that does not implement it is simply never adapted. Both return
+// ErrNotRunning on a stopped source.
+type QualitySource interface {
+	// SetBitrate changes the running encoder's average bitrate in bits per second.
+	SetBitrate(bps int) error
+	// SetFPS changes the running capture's frame rate.
+	SetFPS(fps int) error
+}

@@ -94,3 +94,42 @@ func (a *AudioClock) Packetize(now time.Time) uint32 {
 
 // EnsureOpusStereoForTest is the answer's Opus fmtp completion.
 func EnsureOpusStereoForTest(sdp string) string { return ensureOpusStereo(sdp) }
+
+// SetQualityTickForTest shortens the quality controller's cadence; call before Start.
+func (m *Manager) SetQualityTickForTest(d time.Duration) { m.q.tickEvery = d }
+
+// QualityTickForTest runs one controller pass synchronously.
+func (m *Manager) QualityTickForTest() { m.q.tick() }
+
+// QualityViewersForTest is how many viewers the controller counts.
+func (m *Manager) QualityViewersForTest() int {
+	m.q.mu.Lock()
+	defer m.q.mu.Unlock()
+	return len(m.q.viewers)
+}
+
+// SetEstimateForTest replaces viewer id's bandwidth estimate with f.
+func (m *Manager) SetEstimateForTest(id ViewerID, f func() int) {
+	m.q.mu.Lock()
+	defer m.q.mu.Unlock()
+	if v := m.q.viewers[id]; v != nil {
+		v.stub = f
+	}
+}
+
+// EpochForTest is the input epoch viewers stamp positional input with.
+func (m *Manager) EpochForTest() uint32 { return m.currentEpoch() }
+
+// QualityDistinctEstimatorsForTest is how many different estimator objects the
+// controller's viewers hold (a binding mix-up would make two share one).
+func (m *Manager) QualityDistinctEstimatorsForTest() int {
+	m.q.mu.Lock()
+	defer m.q.mu.Unlock()
+	seen := map[*viewerBWE]bool{}
+	for _, v := range m.q.viewers {
+		if v.bwe != nil {
+			seen[v.bwe] = true
+		}
+	}
+	return len(seen)
+}

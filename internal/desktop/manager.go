@@ -331,6 +331,11 @@ type Manager struct {
 	// audioFail is set while audio capture or encoding has failed (audio.go).
 	audioFail atomic.Bool
 
+	// q is the adaptive quality controller and bwe the slot that hands each new
+	// PeerConnection's estimator to answer (quality.go, peer.go).
+	q   *qualityController
+	bwe bweSlot
+
 	// in is the input path's state (input.go).
 	in inputState
 
@@ -499,6 +504,7 @@ func NewManager(d Deps) (*Manager, error) {
 		d: d, ctx: context.Background(), viewers: make(map[ViewerID]*viewer),
 		reasons: make(map[string]string), kick: make(chan struct{}, 1), tickViewers: stateTickViewers, tickIdle: stateTickIdle,
 	}
+	m.q = newQualityController(m)
 	m.arb = newArbiter(d.Now, d.Physical)
 	m.lease.kick = make(chan struct{}, 1)
 	m.lease.sent = make(map[ViewerID]msgLease)
@@ -532,7 +538,7 @@ func (m *Manager) Start(ctx context.Context) error {
 		pconn = m.wrapConn(conn)
 	}
 	mux := ice.NewUDPMuxDefault(ice.UDPMuxParams{UDPConn: pconn})
-	api, err := newAPI(mux, m.d.Bind)
+	api, err := newAPI(mux, m.d.Bind, m.d.Now, &m.bwe)
 	if err != nil {
 		_ = mux.Close()
 		_ = conn.Close()
@@ -749,6 +755,8 @@ func (m *Manager) serveAdmitted(ctx context.Context, c *websocket.Conn, v *viewe
 	}
 	v.pc = pc
 	defer func() { _ = pc.Close() }()
+	// answer registered the viewer's estimator; whatever way this returns, it goes.
+	defer m.q.unregister(v.ID)
 	pc.OnConnectionStateChange(func(st webrtc.PeerConnectionState) {
 		switch st {
 		case webrtc.PeerConnectionStateConnected:
@@ -969,6 +977,7 @@ func (m *Manager) startSource() error {
 	m.vmu.Unlock()
 	m.noteStartSuccess(src, now)
 	go m.fanOut(src, m.fanDone)
+	m.q.start(sctx, src)
 	if as, ok := src.(screencap.AudioSource); ok {
 		// A new capture run starts with a clean audio state: a failure it has is
 		// still queued on AudioErrors and sets the flag again.
@@ -1026,6 +1035,7 @@ func (m *Manager) stopSourceLocked() {
 		return
 	}
 	m.srcStop()
+	m.q.stop() // before the source stops: it may be inside a setter on it
 	_ = m.src.Stop()
 	<-m.fanDone
 	if m.audioDone != nil {
@@ -1091,7 +1101,11 @@ func (m *Manager) fanOut(src screencap.Source, done chan<- struct{}) {
 			if !ok {
 				return
 			}
-			m.noteFrame()
+			// noteUnit says whether this unit is a captured frame for the stall
+			// watchdog (every unit is, until a refine unit exists).
+			if m.noteUnit(au) {
+				m.noteFrame()
+			}
 			if m.noteSize(au.Width, au.Height) {
 				m.broadcast(context.Background(), msgSize{Type: typeSize, W: au.Width, H: au.Height})
 			}

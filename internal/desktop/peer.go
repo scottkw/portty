@@ -12,6 +12,8 @@ import (
 
 	"github.com/pion/ice/v4"
 	"github.com/pion/interceptor"
+	"github.com/pion/interceptor/pkg/cc"
+	"github.com/pion/interceptor/pkg/gcc"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 )
@@ -74,8 +76,13 @@ func newSettingEngine(mux ice.UDPMux, bind netip.Addr) (webrtc.SettingEngine, en
 }
 
 // newAPI builds the pion API every viewer's PeerConnection shares, with exactly
-// one video codec and one audio codec (Opus, audio.go).
-func newAPI(mux ice.UDPMux, bind netip.Addr) (*webrtc.API, error) {
+// one video codec and one audio codec (Opus, audio.go), and one congestion
+// controller per PeerConnection (quality.go): transport-cc feedback drives a
+// GCC estimate that the Manager reads, with the unbounded default pacer replaced
+// by the no-op one (an encoder rate limit bounds bursts instead, and a viewer
+// behind a dead link then costs nothing but its own packets). Each estimator is
+// offered to slot, which newPCWithBWE reads while the PeerConnection is built.
+func newAPI(mux ice.UDPMux, bind netip.Addr, now func() time.Time, slot *bweSlot) (*webrtc.API, error) {
 	se, _ := newSettingEngine(mux, bind)
 
 	me := &webrtc.MediaEngine{}
@@ -92,6 +99,30 @@ func newAPI(mux ice.UDPMux, bind netip.Addr) (*webrtc.API, error) {
 		return nil, fmt.Errorf("desktop: register opus: %w", err)
 	}
 	ir := &interceptor.Registry{}
+	// Order matters: the congestion controller sits inside the transport-cc
+	// header interceptor (the later one wraps the earlier), so a packet carries
+	// its sequence number before the estimator records it. Both come before the
+	// default interceptors.
+	est, err := cc.NewInterceptor(func() (cc.BandwidthEstimator, error) {
+		bwe, err := gcc.NewSendSideBWE(
+			gcc.SendSideBWEInitialBitrate(ceilingBps),
+			gcc.SendSideBWEMinBitrate(floorBps),
+			gcc.SendSideBWEMaxBitrate(ceilingBps),
+			gcc.SendSideBWEPacer(gcc.NewNoOpPacer()),
+		)
+		if err != nil {
+			return nil, err
+		}
+		return newViewerBWE(bwe, now), nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("desktop: bandwidth estimator: %w", err)
+	}
+	est.OnNewPeerConnection(slot.offer)
+	ir.Add(est)
+	if err := webrtc.ConfigureTWCCHeaderExtensionSender(me, ir); err != nil {
+		return nil, fmt.Errorf("desktop: transport-cc: %w", err)
+	}
 	if err := webrtc.RegisterDefaultInterceptors(me, ir); err != nil {
 		return nil, fmt.Errorf("desktop: interceptors: %w", err)
 	}
@@ -108,7 +139,7 @@ func (m *Manager) answer(ctx context.Context, v *viewer, offerSDP string) (*webr
 	if api == nil {
 		return nil, "", errors.New("desktop: manager not started")
 	}
-	pc, err := api.NewPeerConnection(peerConfig())
+	pc, bwe, err := newPCWithBWE(api, &m.bwe)
 	if err != nil {
 		return nil, "", fmt.Errorf("desktop: new peer connection: %w", err)
 	}
@@ -195,5 +226,28 @@ func (m *Manager) answer(ctx context.Context, v *viewer, offerSDP string) (*webr
 	case <-ctx.Done():
 		return fail(ctx.Err())
 	}
+	// Registered last: a failed answer never leaves an estimator behind.
+	m.q.register(v, bwe)
 	return pc, ensureOpusStereo(pc.LocalDescription().SDP), nil
+}
+
+// newPCWithBWE builds a PeerConnection and returns the estimator pion made for
+// it. pion builds the interceptors synchronously inside NewPeerConnection and
+// offers the estimator to the slot; the slot's mutex makes the pairing exact
+// when viewers are answered concurrently.
+func newPCWithBWE(api *webrtc.API, slot *bweSlot) (*webrtc.PeerConnection, *viewerBWE, error) {
+	slot.mu.Lock()
+	defer slot.mu.Unlock()
+	slot.cur = nil
+	pc, err := api.NewPeerConnection(peerConfig())
+	if err != nil {
+		return nil, nil, err
+	}
+	bwe := slot.cur
+	slot.cur = nil
+	if bwe == nil {
+		_ = pc.Close()
+		return nil, nil, errors.New("no bandwidth estimator was built")
+	}
+	return pc, bwe, nil
 }
