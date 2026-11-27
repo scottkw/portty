@@ -156,6 +156,14 @@ type inbound struct {
 	N    int    `json:"n"`
 	Kind string `json:"kind"` // select: "display" or "window"
 	ID   uint32 `json:"id"`   // select: the display or window ID, 0 is the main display
+	// The clipboard fields: clip_get and clip_put carry the transfer ID; a
+	// clip_put chunk adds its place (Seq of Total), the whole paste's byte
+	// length and its text.
+	Xid   string `json:"xid"`
+	Seq   int    `json:"seq"`
+	Total int    `json:"total"`
+	Len   int    `json:"len"`
+	Text  string `json:"text"`
 	// Caps is the viewer's hello capabilities; only the ones this server has are
 	// ever acted on or echoed.
 	Caps map[string]int `json:"caps"`
@@ -187,6 +195,10 @@ type Deps struct {
 	// Window reads and raises the shared window for the window gate; nil means
 	// screencap.NewWindowBridge, which refuses under tests, so tests inject a fake.
 	Window WindowBridge
+	// Pasteboard reads and writes the Mac's clipboard for a viewer's explicit
+	// Copy and Paste; nil means screencap.NewPasteboard, which refuses under
+	// tests, so tests inject a fake.
+	Pasteboard PasteboardBridge
 	// Notify posts the approval-lapse notification when the daemon is its sender; nil means log-only.
 	Notify func(id, title, body string)
 
@@ -286,6 +298,9 @@ type Manager struct {
 
 	// win is the window gate's state (window.go).
 	win windowState
+
+	// clip is the clipboard's state (clipboard.go).
+	clip clipState
 
 	vmu      sync.Mutex
 	viewers  map[ViewerID]*viewer
@@ -408,6 +423,9 @@ func NewManager(d Deps) (*Manager, error) {
 	}
 	if d.Window == nil {
 		d.Window = screencap.NewWindowBridge()
+	}
+	if d.Pasteboard == nil {
+		d.Pasteboard = screencap.NewPasteboard()
 	}
 	m := &Manager{
 		d: d, ctx: context.Background(), viewers: make(map[ViewerID]*viewer),
@@ -683,6 +701,10 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn, adm
 			m.handleSurfaces(ctx, v)
 		case typeSelect:
 			m.handleSelect(ctx, v, in.Kind, in.ID)
+		case typeClipGet:
+			m.handleClipGet(ctx, v, in.Xid)
+		case typeClipPut:
+			m.handleClipPut(ctx, v, in)
 		}
 	}
 }
@@ -802,6 +824,7 @@ func (m *Manager) restartSource() error {
 // only runs while someone is watching).
 func (m *Manager) leave(v *viewer) {
 	m.ReleaseViewer(v.ID, "left")
+	m.clip.drop(v.ID)
 	m.mu.Lock()
 	m.vmu.Lock()
 	delete(m.viewers, v.ID)
