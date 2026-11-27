@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -128,6 +129,55 @@ func TestQuality_TracerEstimateSetsBitrate(t *testing.T) {
 
 	_ = v.conn.CloseNow()
 	eventually(t, 5*time.Second, "the estimator unregistered", func() bool { return env.mgr.QualityViewersForTest() == 0 })
+}
+
+// TestQuality_StepKeepsInputEpoch: a picture-size step is not a surface switch.
+// The epoch viewers stamp positional input with is the same before and after the
+// ladder rebuilds the encoder at a smaller size, and a move sent with that epoch
+// during the step is posted, not dropped as stale.
+func TestQuality_StepKeepsInputEpoch(t *testing.T) {
+	fb := &fakeInputBridge{}
+	var locked atomic.Bool
+	clk := newFakeClock()
+	rec := &qualityRec{}
+	env := newTracerServer(t, withFakeInput(fb, &locked, clk), withQualitySource(rec), withSource(2560, 1600))
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	v := env.joinInput(ctx, t, env.token(t, "g1"))
+	eventually(t, 5*time.Second, "the 2560x1600 picture", func() bool { w, h := v.size(); return w == 2560 && h == 1600 })
+	id := onlyViewerID(t, env.mgr)
+	env.mgr.SetEstimateForTest(id, func() int { return 1_000_000 })
+
+	epoch := env.mgr.EpochForTest()
+	v.send(t, map[string]any{"t": "move", "x": 0.5, "y": 0.5, "e": epoch})
+	fb.waitFor(t, 1)
+
+	// Poor for long enough to reach the first size step: frame rate at 2 s, size at 12 s.
+	// The clock moves in seconds with a pause for a frame, so the stall watchdog sees life.
+	step := func(d time.Duration) {
+		for e := time.Duration(0); e < d; e += time.Second {
+			clk.Advance(time.Second)
+			time.Sleep(60 * time.Millisecond)
+			env.mgr.QualityTickForTest()
+		}
+	}
+	step(14 * time.Second)
+	eventually(t, 5*time.Second, "the encoder rebuilt at 1920x1200", func() bool {
+		s := rec.last()
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return slices.Contains(s.rebuilds, [2]int{1920, 1200})
+	})
+	eventually(t, 5*time.Second, "viewers told the new size", func() bool { w, h := v.size(); return w == 1920 && h == 1200 })
+
+	if got := env.mgr.EpochForTest(); got != epoch {
+		t.Fatalf("input epoch %d after a size step, want %d: a quality step is not a surface switch", got, epoch)
+	}
+	v.send(t, map[string]any{"t": "move", "x": 0.25, "y": 0.25, "e": epoch})
+	fb.waitFor(t, 2)
+	if n := counter(env, "stale_epoch"); n != 0 {
+		t.Fatalf("%d moves dropped as stale across a size step, want 0", n)
+	}
 }
 
 // TestQuality_EstimatorBinding: viewers answered at the same moment each get

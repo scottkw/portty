@@ -18,3 +18,5 @@
 {"name":"hello-viewer-audio","dir":"viewer","valid":true,"wire":{"type":"hello","v":1,"caps":{"video":1,"input":1,"audio":1}}}
 {"name":"hello-server-audio","dir":"server","valid":true,"wire":{"type":"hello","v":1,"viewer":"0123456789abcdef","caps":{"video":1,"input":1,"audio":1},"rights":{"control":true,"clipboard":true,"surface":true}}}
 {"name":"state-audio-failed","dir":"server","valid":true,"wire":{"type":"state","state":"streaming","viewers":1,"locked":false,"audio":"failed"}}
+{"name":"quality-slow-true","dir":"server","valid":true,"wire":{"type":"quality","slow":true}}
+{"name":"quality-slow-false","dir":"server","valid":true,"wire":{"type":"quality","slow":false}}

@@ -191,8 +191,14 @@ func (m *Manager) answer(ctx context.Context, v *viewer, offerSDP string) (*webr
 		defer recoverLog()
 		hook(v.Viewer, dc)
 	})
-	// PLI and FIR from the viewer ask for a keyframe; the loop also keeps the
-	// interceptors reading. It ends when the sender is closed.
+	// PLI and FIR from the viewer ask for a keyframe (through the quality
+	// controller, which ignores a slow viewer's and coalesces the rest); its
+	// receiver reports tell the controller how much it loses. The loop also keeps
+	// the interceptors reading. It ends when the sender is closed.
+	var videoSSRC uint32
+	if enc := sender.GetParameters().Encodings; len(enc) > 0 {
+		videoSSRC = uint32(enc[0].SSRC)
+	}
 	go func() {
 		defer recoverLog()
 		for {
@@ -201,9 +207,15 @@ func (m *Manager) answer(ctx context.Context, v *viewer, offerSDP string) (*webr
 				return
 			}
 			for _, p := range pkts {
-				switch p.(type) {
+				switch p := p.(type) {
 				case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
-					m.requestKeyframe("pli")
+					m.q.onKeyframeRequest(v.ID)
+				case *rtcp.ReceiverReport:
+					for _, r := range p.Reports {
+						if r.SSRC == videoSSRC {
+							m.q.noteLoss(v.ID, float64(r.FractionLost)/256)
+						}
+					}
 				}
 			}
 		}

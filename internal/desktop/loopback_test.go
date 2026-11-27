@@ -287,8 +287,13 @@ type loopbackClient struct {
 	audio       chan *rtp.Packet
 	videoStream atomic.Value // string
 	audioStream atomic.Value // string
-	// munge, when set, rewrites the offer SDP before it is sent.
-	munge func(string) string
+	// munge, when set, rewrites the offer SDP before it is sent; answerMunge does
+	// the same to the answer before the client accepts it (the shaped-link tests
+	// point the daemon's candidate at their forwarder).
+	munge       func(string) string
+	answerMunge func(string) string
+	// units counts every access unit the video track delivered, drained or not.
+	units atomic.Uint64
 }
 
 func newLoopbackClient(t *testing.T) *loopbackClient {
@@ -343,6 +348,7 @@ func newLoopbackClient(t *testing.T) *loopbackClient {
 			}
 			au = append(au, out...)
 			if pkt.Marker {
+				lc.units.Add(1)
 				select {
 				case lc.aus <- au:
 				default:
@@ -375,6 +381,9 @@ func (lc *loopbackClient) offer(t *testing.T) string {
 
 func (lc *loopbackClient) accept(t *testing.T, sdp string) {
 	t.Helper()
+	if lc.answerMunge != nil {
+		sdp = lc.answerMunge(sdp)
+	}
 	if err := lc.pc.SetRemoteDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: sdp}); err != nil {
 		t.Fatal(err)
 	}

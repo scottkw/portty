@@ -58,6 +58,7 @@ type fanViewer struct {
 	state     string
 	locked    bool
 	audio     string // the state message's audio field, "" when absent
+	quality   []bool // the slow field of every quality message, in order
 	w, h      int
 	sizeCount int
 	closeCode websocket.StatusCode
@@ -118,6 +119,9 @@ func (v *fanViewer) read(ctx context.Context) {
 		case "size":
 			v.w, v.h = int(m["w"].(float64)), int(m["h"].(float64))
 			v.sizeCount++
+		case "quality":
+			slow, _ := m["slow"].(bool)
+			v.quality = append(v.quality, slow)
 		}
 		v.mu.Unlock()
 	}
@@ -128,6 +132,13 @@ func (v *fanViewer) lastState() (state string, viewers int, locked bool) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	return v.state, v.viewers, v.locked
+}
+
+// qualityMsgs returns the slow field of every quality message so far.
+func (v *fanViewer) qualityMsgs() []bool {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return append([]bool(nil), v.quality...)
 }
 
 // lastAudio returns the audio field of the latest state message.

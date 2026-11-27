@@ -2,6 +2,7 @@ package desktop
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/netip"
 	"time"
@@ -115,6 +116,34 @@ func (m *Manager) SetEstimateForTest(id ViewerID, f func() int) {
 	if v := m.q.viewers[id]; v != nil {
 		v.stub = f
 	}
+}
+
+// ViewerEstimateForTest is viewer id's own GCC estimate in bits per second (not
+// the encoder's target); false when the controller does not count the viewer.
+func (m *Manager) ViewerEstimateForTest(id ViewerID) (int, bool) {
+	m.q.mu.Lock()
+	v := m.q.viewers[id]
+	m.q.mu.Unlock()
+	if v == nil || v.bwe == nil {
+		return 0, false
+	}
+	return v.bwe.GetTargetBitrate(), true
+}
+
+// ViewerBWEForTest says what the controller knows of every viewer's estimator: the
+// estimate, whether any transport-cc feedback came back, whether the controller has
+// decided there is none, whether the viewer is slow and its last reported loss.
+func (m *Manager) ViewerBWEForTest() map[ViewerID]string {
+	m.q.mu.Lock()
+	defer m.q.mu.Unlock()
+	out := map[ViewerID]string{}
+	for id, v := range m.q.viewers {
+		if v.bwe == nil {
+			continue
+		}
+		out[id] = fmt.Sprintf("est=%d feedback=%v noFB=%v slow=%v loss=%.2f", v.bwe.GetTargetBitrate(), v.bwe.feedback.Load(), v.noFB, v.slow.Slow, v.loss)
+	}
+	return out
 }
 
 // EpochForTest is the input epoch viewers stamp positional input with.
