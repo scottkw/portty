@@ -7,6 +7,7 @@ import (
 	"errors"
 	"math"
 	"os"
+	"reflect"
 	"slices"
 	"testing"
 )
@@ -155,5 +156,62 @@ func TestProtocolGolden_SignalShapes(t *testing.T) {
 		if !ok {
 			t.Errorf("%s: %s %s lacks the required fields %v", l.Name, l.Dir, typ, signalShapes[i].anyOf)
 		}
+	}
+}
+
+// TestProtocolGolden_SurfaceDecodes: the surfaces, select, surface and
+// select_failed lines of the golden file unmarshal into the Go message types
+// and marshal back to the same JSON, so the frozen wire shape cannot drift from
+// the handlers' types.
+func TestProtocolGolden_SurfaceDecodes(t *testing.T) {
+	semantically := func(b []byte) any {
+		var v any
+		if err := json.Unmarshal(b, &v); err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	seen := map[string]int{}
+	for _, l := range readGolden(t, "testdata/signal-v1.jsonl") {
+		var msg any
+		switch {
+		case l.Dir == "viewer" && (l.Name == "surfaces-request" || l.Name == "select-main" || l.Name == "select-window"):
+			var in inbound
+			if err := json.Unmarshal(l.Wire, &in); err != nil {
+				t.Errorf("%s: %v", l.Name, err)
+			}
+			if l.Name == "select-window" && (in.Type != typeSelect || in.Kind != "window" || in.ID != 4242) {
+				t.Errorf("%s decoded as %+v", l.Name, in)
+			}
+			if l.Name == "select-main" && (in.Type != typeSelect || in.Kind != "display" || in.ID != 0) {
+				t.Errorf("%s decoded as %+v", l.Name, in)
+			}
+			seen["viewer"]++
+			continue
+		case l.Dir == "server" && (l.Name == "surfaces" || l.Name == "surfaces-error"):
+			msg = &msgSurfaces{}
+		case l.Dir == "server" && (l.Name == "surface-window" || l.Name == "surface-fallback"):
+			msg = &msgSurface{}
+		case l.Dir == "server" && l.Name == "select-failed":
+			msg = &msgSelectFailed{}
+		default:
+			continue
+		}
+		if err := json.Unmarshal(l.Wire, msg); err != nil {
+			t.Errorf("%s: %v", l.Name, err)
+			continue
+		}
+		back, err := json.Marshal(msg)
+		if err != nil {
+			t.Errorf("%s: %v", l.Name, err)
+			continue
+		}
+		if !reflect.DeepEqual(semantically(back), semantically(l.Wire)) {
+			t.Errorf("%s: marshals back as %s, want %s", l.Name, back, l.Wire)
+		}
+		seen["server"]++
+	}
+	if seen["viewer"] != 3 || seen["server"] != 5 {
+		t.Errorf("checked %d viewer and %d server lines, want 3 and 5", seen["viewer"], seen["server"])
 	}
 }

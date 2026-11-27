@@ -6,9 +6,11 @@
 // read limit):
 //
 //	viewer to server: hello {v, caps} first, then offer {sdp} (complete,
-//	non-trickle), and ping {n} at any time.
+//	non-trickle), and ping {n}, surfaces and select {kind, id} at any time.
 //	server to viewer: hello {v, viewer, caps, rights}, answer {sdp}, state
-//	{state, viewers, locked}, size {w, h}, pong {n}, error {code}.
+//	{state, viewers, locked}, size {w, h}, surface {e, kind, id, name, w, h,
+//	reason}, surfaces {displays, windows}, select_failed {code}, pong {n},
+//	error {code}.
 //
 // Unknown caps keys and unknown message types after the offer are ignored, so
 // Phase 20 adds an "input" capability (and the rights map) without a version
@@ -145,13 +147,15 @@ type msgError struct {
 	Code string `json:"code"`
 }
 
-// inbound is every viewer-to-server message (hello, offer, ping) decoded
+// inbound is every viewer-to-server message (hello, offer, ping, select) decoded
 // loosely: the type decides which fields matter, and unknown fields are ignored.
 type inbound struct {
 	Type string `json:"type"`
 	V    int    `json:"v"`
 	SDP  string `json:"sdp"`
 	N    int    `json:"n"`
+	Kind string `json:"kind"` // select: "display" or "window"
+	ID   uint32 `json:"id"`   // select: the display or window ID, 0 is the main display
 	// Caps is the viewer's hello capabilities; only the ones this server has are
 	// ever acted on or echoed.
 	Caps map[string]int `json:"caps"`
@@ -174,6 +178,12 @@ type Deps struct {
 	// DisplayBounds reads a display's global bounds in points (id 0 is the main
 	// display); nil means screencap.DisplayBounds.
 	DisplayBounds func(id uint32) (x, y, w, h float64, err error)
+	// MainDisplayID is the main display's real ID, which a surface message
+	// carries so a viewer can match it to the list; nil means screencap.MainDisplayID.
+	MainDisplayID func() uint32
+	// ListSurfaces lists every display and window for the picker; nil means
+	// screencap.ListSurfaces, which refuses under tests, so tests inject a fake.
+	ListSurfaces func(ctx context.Context) ([]screencap.SurfaceInfo, error)
 	// Notify posts the approval-lapse notification when the daemon is its sender; nil means log-only.
 	Notify func(id, title, body string)
 
@@ -267,6 +277,9 @@ type Manager struct {
 
 	// in is the input path's state (input.go).
 	in inputState
+
+	// surf is what the share shows (surface.go).
+	surf surfaceState
 
 	vmu      sync.Mutex
 	viewers  map[ViewerID]*viewer
@@ -381,6 +394,12 @@ func NewManager(d Deps) (*Manager, error) {
 	if d.DisplayBounds == nil {
 		d.DisplayBounds = screencap.DisplayBounds
 	}
+	if d.MainDisplayID == nil {
+		d.MainDisplayID = screencap.MainDisplayID
+	}
+	if d.ListSurfaces == nil {
+		d.ListSurfaces = screencap.ListSurfaces
+	}
 	m := &Manager{
 		d: d, ctx: context.Background(), viewers: make(map[ViewerID]*viewer),
 		reasons: make(map[string]string), kick: make(chan struct{}, 1), tickViewers: stateTickViewers, tickIdle: stateTickIdle,
@@ -393,16 +412,6 @@ func NewManager(d Deps) (*Manager, error) {
 	}
 	m.loadRuntimeState()
 	return m, nil
-}
-
-// target is the surface input maps onto: the main display. An unreadable
-// display leaves the geometry unknown, and presses are dropped.
-func (m *Manager) target() inputTarget {
-	x, y, w, h, err := m.d.DisplayBounds(0)
-	if err != nil || w < 1 || h < 1 {
-		return inputTarget{epoch: m.currentEpoch()}
-	}
-	return inputTarget{epoch: m.currentEpoch(), x: x, y: y, w: w, h: h, ok: true}
 }
 
 // Start binds the media socket (tailnet address only, a busy port retried) and
@@ -441,6 +450,8 @@ func (m *Manager) Start(ctx context.Context) error {
 	}
 	m.refreshAC(m.d.Now().Round(0), true)
 	go m.stateLoop(lctx, wake, m.loopDone)
+	m.surf.done = make(chan struct{})
+	go m.surfaceLoop(lctx, m.surf.done)
 
 	// The input goroutine outlives the state loop's context: Close drains the
 	// queued releases through it before it cancels this one.
@@ -641,6 +652,7 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn, adm
 	if w, h, ok := m.size(); ok {
 		_ = send(ctx, c, msgSize{Type: typeSize, W: w, H: h})
 	}
+	_ = send(ctx, c, m.surfaceMsg(""))
 	slog.Info("desktop: viewer joined", "viewer", id[:8], "viewers", m.Viewers())
 
 	for {
@@ -651,10 +663,15 @@ func (m *Manager) ServeDesktopViewer(ctx context.Context, c *websocket.Conn, adm
 			}
 			return
 		}
-		if in.Type == typePing {
+		switch in.Type {
+		case typePing:
 			if send(ctx, c, msgPong{Type: typePong, N: in.N}) != nil {
 				return
 			}
+		case typeSurfaces:
+			m.handleSurfaces(ctx, v)
+		case typeSelect:
+			m.handleSelect(ctx, v, in.Kind, in.ID)
 		}
 	}
 }
@@ -721,7 +738,9 @@ func (m *Manager) startSource() error {
 	src := m.d.NewSource()
 	sctx, cancel := context.WithCancel(m.ctx)
 	now := m.d.Now().Round(0)
-	err := src.Start(sctx, m.d.SourceConfig)
+	cfg := m.d.SourceConfig
+	cfg.Surface = m.surfaceSel() // a restart keeps the surface; a first start after the last viewer left is the main display
+	err := src.Start(sctx, cfg)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.starting = false
@@ -735,6 +754,12 @@ func (m *Manager) startSource() error {
 		cancel()
 		_ = src.Stop()
 		return nil
+	}
+	// A select that ran while this start was in flight only recorded its choice.
+	if cur := m.surfaceSel(); cur != cfg.Surface {
+		if err := src.SelectSurface(cur); err != nil {
+			slog.Warn("desktop: surface switch after start failed", "err", err)
+		}
 	}
 	m.src, m.srcStop = src, cancel
 	m.fanDone = make(chan struct{})
@@ -773,6 +798,7 @@ func (m *Manager) leave(v *viewer) {
 	m.vmu.Unlock()
 	if n == 0 {
 		m.stopSourceLocked()
+		m.resetSurface() // the surface is per viewing session, never persisted
 		m.noteCaptureStopped()
 		m.releaseViewerHolds()
 	}
@@ -1017,11 +1043,12 @@ func (m *Manager) Close() error {
 		<-idone
 	}
 	m.mu.Lock()
-	cancel, done := m.loopCancel, m.loopDone
+	cancel, done, surfDone := m.loopCancel, m.loopDone, m.surf.done
 	m.mu.Unlock()
 	if cancel != nil {
 		cancel()
 		<-done
+		<-surfDone
 	}
 
 	m.CloseAll(websocket.StatusServiceRestart, "server stopping")
