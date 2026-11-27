@@ -349,6 +349,33 @@ void setTrayShareState(int active, const char *title) {
     }
 }
 
+// appActiveAndVisibleOnMain reports whether Portty is the active app and has a
+// visible, non-minimized key or main window. Main thread only.
+static int appActiveAndVisibleOnMain(void) {
+    if (![NSApp isActive]) {
+        return 0;
+    }
+    for (NSWindow *w in [NSApp windows]) {
+        if ([w isVisible] && ![w isMiniaturized] && ([w isKeyWindow] || [w isMainWindow])) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// isAppActiveAndVisible is callable from any thread; the Go caller is a stream
+// goroutine, so it hops to the main queue to read AppKit state.
+int isAppActiveAndVisible(void) {
+    if ([NSThread isMainThread]) {
+        return appActiveAndVisibleOnMain();
+    }
+    __block int result = 0;
+    dispatch_sync(dispatch_get_main_queue(), ^{
+        result = appActiveAndVisibleOnMain();
+    });
+    return result;
+}
+
 // hasValidBundleIdentifier reports whether the running process has a valid
 // app-bundle identifier. UNUserNotificationCenter requires one; an unbundled
 // process (e.g. `wails dev`, a `go test` binary) has none, and calling into

@@ -140,6 +140,9 @@ type App struct {
 	streamShareFunc  func(ctx context.Context, fn func(daemon.DesktopShareLine)) error
 	stopShareFunc    func() error
 	setTrayShareFunc func(active bool, title string)
+	shareNotes       notifyCoalescer  // join and leave bursts, one banner per kind
+	shareNowFunc     func() time.Time // clock for shareNotes; nil means time.Now
+	appActiveFunc    func() bool      // is Portty the active app with a visible window; nil means the cgo probe
 
 	// startupDone is closed once startup has the daemon up (or failed) and has
 	// applied the stored Appearance. Wails runs OnStartup on a goroutine that
@@ -1002,6 +1005,9 @@ func (a *App) QuitGUIOnly() {
 	if a.ctx == nil {
 		return
 	}
+	// A hidden window must not leave strangers watching: the quit warning says
+	// quitting stops sharing, so end the click-to-share before hiding (22-09).
+	a.stopShareForQuit()
 	a.setDockVisible(false)
 	runtime.WindowHide(a.ctx)
 	// Send macOS notification with session count (D-11)

@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/scottkw/portty/internal/daemon"
+	"github.com/scottkw/portty/internal/desktop"
 )
 
 // app_desktop_share.go: the GUI side of the click-to-share (Phase 22). The GUI
@@ -71,13 +73,10 @@ func (a *App) runDesktopShareEvents(ctx context.Context) {
 	backoff := shareBackoffMin
 	for ctx.Err() == nil {
 		err := a.streamShare(ctx, func(l daemon.DesktopShareLine) {
-			switch l.Type {
-			case "state":
+			if l.Type == "state" {
 				backoff = shareBackoffMin
-				a.applyDesktopShareState(l)
-			case "event":
-				a.emitEvent("desktopshare:event", l)
 			}
+			a.handleShareLine(l)
 		})
 		a.clearDesktopShare()
 		if ctx.Err() != nil {
@@ -91,6 +90,173 @@ func (a *App) runDesktopShareEvents(ctx context.Context) {
 		}
 		backoff = min(backoff*2, shareBackoffMax)
 	}
+}
+
+// handleShareLine routes one line of the events stream. Every event line reaches
+// React unfiltered (own-account joins and leaves included) and then drives the
+// window and the notifications.
+func (a *App) handleShareLine(l daemon.DesktopShareLine) {
+	switch l.Type {
+	case "state":
+		a.applyDesktopShareState(l)
+	case "event":
+		a.emitEvent("desktopshare:event", l)
+		a.announceShareEvent(l)
+	}
+}
+
+// Notification identifiers. A same-kind burst reuses its identifier, so the
+// newer banner replaces the older one.
+const (
+	desktopAdmitNotificationID = "portty.desktop-admit"
+	desktopJoinNotificationID  = "portty.desktop-join"
+	desktopLeaveNotificationID = "portty.desktop-leave"
+)
+
+const (
+	notifyCoalesceWindow = 5 * time.Second
+	notifyNameRunes      = 80
+)
+
+// notifyCoalescer counts same-kind notifications that arrive less than
+// notifyCoalesceWindow after the previous one of that kind.
+type notifyCoalescer struct {
+	mu   sync.Mutex
+	runs map[string]coalesceRun
+}
+
+type coalesceRun struct {
+	last time.Time
+	n    int
+}
+
+// count records one more notification of kind at now and returns how many are in
+// the current burst: 1 for a fresh one, 2 or more when it follows within the window.
+func (c *notifyCoalescer) count(kind string, now time.Time) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.runs == nil {
+		c.runs = map[string]coalesceRun{}
+	}
+	r := c.runs[kind]
+	if r.n == 0 || now.Sub(r.last) >= notifyCoalesceWindow {
+		r.n = 0
+	}
+	r.n++
+	r.last = now
+	c.runs[kind] = r
+	return r.n
+}
+
+// shareViewerName is the name a banner shows: the login name for a guest, the
+// device name for an own-account device (short, unique, hard to imitate). The
+// daemon already sanitized it; this sanitizes again and caps it at 80 characters.
+func shareViewerName(v *daemon.DesktopShareViewer) string {
+	if v == nil {
+		return "Someone"
+	}
+	candidates := []string{v.LoginName, v.DisplayName, v.NodeName}
+	if v.Mode == "own" {
+		candidates = []string{v.NodeName, v.DisplayName, v.LoginName}
+	}
+	for _, c := range candidates {
+		if name := desktop.SanitizeName(c); name != "" {
+			if r := []rune(name); len(r) > notifyNameRunes {
+				return string(r[:notifyNameRunes]) + "…"
+			}
+			return name
+		}
+	}
+	return "Someone"
+}
+
+func (a *App) shareNow() time.Time {
+	if a.shareNowFunc != nil {
+		return a.shareNowFunc()
+	}
+	return time.Now()
+}
+
+func (a *App) appActiveAndVisible() bool {
+	if a.appActiveFunc != nil {
+		return a.appActiveFunc()
+	}
+	return isAppActiveAndVisible()
+}
+
+// announceShareEvent brings the window forward for a knock and sends the secondary
+// notifications. Banners are never the only signal (they may be silenced while the
+// display is captured): the Admit sheet, tray icon and tray line carry the load,
+// and a notification has no buttons, so it can never admit or deny anyone.
+func (a *App) announceShareEvent(l daemon.DesktopShareLine) {
+	switch l.Event {
+	case "admit_request":
+		a.showWindow()
+		if !a.appActiveAndVisible() {
+			a.sendNotificationFunc(desktopAdmitNotificationID, "Portty", shareViewerName(l.Viewer)+" wants to see your desktop.")
+		}
+	case "join":
+		a.notifyViewerChange(desktopJoinNotificationID, l.Viewer, "joined")
+	case "leave":
+		a.notifyViewerChange(desktopLeaveNotificationID, l.Viewer, "left")
+	}
+}
+
+func (a *App) notifyViewerChange(id string, v *daemon.DesktopShareViewer, verb string) {
+	body := shareViewerName(v) + " " + verb + " your desktop."
+	if n := a.shareNotes.count(id, a.shareNow()); n > 1 {
+		body = fmt.Sprintf("%d viewers %s your desktop.", n, verb)
+	}
+	a.sendNotificationFunc(id, "Portty", body)
+}
+
+// shareNotificationClicked runs for a click on any of the three desktop
+// notifications: Portty comes forward and, when a share is active and nobody is
+// waiting (the Admit sheet is already up then), the Share Desktop sheet opens.
+func (a *App) shareNotificationClicked() {
+	a.showWindow()
+	a.shareMu.Lock()
+	v := a.shareView
+	a.shareMu.Unlock()
+	if v.Active && len(v.Pending) == 0 {
+		a.emitEvent("desktopshare:open-sheet", nil)
+	}
+}
+
+// quitShareStopWait bounds how long Quit GUI Only waits for the daemon to end the
+// share: with a silent guest peer a stop can take about 2 s, so a timeout is
+// expected now and then and is fine, because the stop carries on in the daemon.
+var quitShareStopWait = 3 * time.Second
+
+// stopShareForQuit ends an active click-to-share before the window hides.
+func (a *App) stopShareForQuit() {
+	a.shareMu.Lock()
+	active := a.shareView.Active
+	a.shareMu.Unlock()
+	if !active {
+		return
+	}
+	done := make(chan error, 1)
+	go func() { done <- a.stopShare() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			log.Printf("desktop share: stop on quit failed: %v", err)
+		}
+	case <-time.After(quitShareStopWait):
+		log.Printf("desktop share: stop on quit still running after %v; hiding anyway", quitShareStopWait)
+	}
+}
+
+// stopShare asks the daemon to end the guest share.
+func (a *App) stopShare() error {
+	switch {
+	case a.stopShareFunc != nil:
+		return a.stopShareFunc()
+	case a.client != nil:
+		return a.client.StopDesktopShare()
+	}
+	return nil
 }
 
 // applyDesktopShareState stores a state line, updates the tray and forwards it to React.
@@ -268,14 +434,7 @@ func (a *App) DisconnectDesktopViewer(id string) DesktopShareActionResult {
 // stopSharingFromTray ends the guest share at once, with no confirm. A failure
 // is logged: the tray never raises a dialog.
 func (a *App) stopSharingFromTray() {
-	var err error
-	switch {
-	case a.stopShareFunc != nil:
-		err = a.stopShareFunc()
-	case a.client != nil:
-		err = a.client.StopDesktopShare()
-	}
-	if err != nil {
+	if err := a.stopShare(); err != nil {
 		log.Printf("desktop share: stop from tray failed: %v", err)
 	}
 }

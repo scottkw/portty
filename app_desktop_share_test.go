@@ -42,6 +42,9 @@ func newShareHarness(a *App) *shareHarness {
 		h.mu.Unlock()
 	}
 	a.refreshTrayStateFunc = func() { h.refreshed <- struct{}{} }
+	a.sendNotificationFunc = func(string, string, string) {}
+	a.showWindowFunc = func() {}
+	a.appActiveFunc = func() bool { return true }
 	return h
 }
 
@@ -209,11 +212,239 @@ func TestDesktopShareApp_ForwardsEventsAndRedials(t *testing.T) {
 
 func TestDesktopShareApp_TrayShowSheet(t *testing.T) {
 	shown := 0
-	a := &App{showWindowFunc: func() { shown++ }}
+	a := &App{}
 	h := newShareHarness(a)
+	a.showWindowFunc = func() { shown++ }
 	a.shareDesktopFromTray()
 	if shown != 1 || h.count("desktopshare:open-sheet") != 1 {
 		t.Errorf("shown=%d open-sheet=%d, want 1 and 1", shown, h.count("desktopshare:open-sheet"))
+	}
+}
+
+type sentNote struct{ id, title, body string }
+
+// noteHarness records the notifications, window shows and events the share
+// loop causes, with a fake clock and a fake "Portty is frontmost" answer.
+type noteHarness struct {
+	mu     sync.Mutex
+	notes  []sentNote
+	shown  int
+	events []string
+	now    time.Time
+	active bool
+}
+
+func newNoteHarness(a *App) *noteHarness {
+	h := &noteHarness{now: time.Unix(1_000_000, 0)}
+	a.sendNotificationFunc = func(id, title, body string) {
+		h.mu.Lock()
+		h.notes = append(h.notes, sentNote{id, title, body})
+		h.mu.Unlock()
+	}
+	a.showWindowFunc = func() { h.mu.Lock(); h.shown++; h.mu.Unlock() }
+	a.emitEventFunc = func(name string, _ any) { h.mu.Lock(); h.events = append(h.events, name); h.mu.Unlock() }
+	a.shareNowFunc = func() time.Time { h.mu.Lock(); defer h.mu.Unlock(); return h.now }
+	a.appActiveFunc = func() bool { h.mu.Lock(); defer h.mu.Unlock(); return h.active }
+	a.setTrayShareFunc = func(bool, string) {}
+	a.refreshTrayStateFunc = func() {}
+	return h
+}
+
+func (h *noteHarness) advance(d time.Duration) { h.mu.Lock(); h.now = h.now.Add(d); h.mu.Unlock() }
+func (h *noteHarness) setActive(v bool)        { h.mu.Lock(); h.active = v; h.mu.Unlock() }
+
+func (h *noteHarness) last() sentNote {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if len(h.notes) == 0 {
+		return sentNote{body: "<none>"}
+	}
+	return h.notes[len(h.notes)-1]
+}
+
+func (h *noteHarness) noteCount() int { h.mu.Lock(); defer h.mu.Unlock(); return len(h.notes) }
+func (h *noteHarness) shows() int     { h.mu.Lock(); defer h.mu.Unlock(); return h.shown }
+func (h *noteHarness) eventCount(name string) int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	n := 0
+	for _, e := range h.events {
+		if e == name {
+			n++
+		}
+	}
+	return n
+}
+
+func eventLine(event, mode, login, node string) daemon.DesktopShareLine {
+	return daemon.DesktopShareLine{Type: "event", Event: event, Viewer: &daemon.DesktopShareViewer{ID: "v", Mode: mode, LoginName: login, NodeName: node}}
+}
+
+func TestShareNotification_AdmitBringsWindowForwardAndNotifiesOnlyWhenHidden(t *testing.T) {
+	a := &App{}
+	h := newNoteHarness(a)
+
+	h.setActive(false)
+	a.handleShareLine(eventLine("admit_request", "guest", "ann@example.com", ""))
+	if h.shows() != 1 || h.eventCount("desktopshare:event") != 1 {
+		t.Errorf("shows=%d events=%d, want the window shown and the event forwarded", h.shows(), h.eventCount("desktopshare:event"))
+	}
+	if got := h.last(); got != (sentNote{"portty.desktop-admit", "Portty", "ann@example.com wants to see your desktop."}) {
+		t.Errorf("admit notification = %+v", got)
+	}
+
+	h.setActive(true)
+	a.handleShareLine(eventLine("admit_request", "guest", "bob@example.com", ""))
+	if h.shows() != 2 || h.noteCount() != 1 {
+		t.Errorf("shows=%d notes=%d, want the window shown again and no second notification while Portty is frontmost", h.shows(), h.noteCount())
+	}
+}
+
+func TestShareNotification_JoinAndLeaveSentences(t *testing.T) {
+	a := &App{}
+	h := newNoteHarness(a)
+	for _, c := range []struct {
+		line daemon.DesktopShareLine
+		want sentNote
+	}{
+		{eventLine("join", "guest", "ann@example.com", "annmac"), sentNote{"portty.desktop-join", "Portty", "ann@example.com joined your desktop."}},
+		{eventLine("join", "own", "ken@example.com", "ken-iphone"), sentNote{"portty.desktop-join", "Portty", "ken-iphone joined your desktop."}},
+		{eventLine("leave", "guest", "ann@example.com", "annmac"), sentNote{"portty.desktop-leave", "Portty", "ann@example.com left your desktop."}},
+		{eventLine("leave", "own", "ken@example.com", "ken-iphone"), sentNote{"portty.desktop-leave", "Portty", "ken-iphone left your desktop."}},
+	} {
+		h.advance(time.Minute) // apart: never coalesced
+		a.handleShareLine(c.line)
+		if got := h.last(); got != c.want {
+			t.Errorf("%s/%s notification = %+v, want %+v", c.line.Event, c.line.Viewer.Mode, got, c.want)
+		}
+	}
+	if h.shows() != 0 {
+		t.Errorf("join and leave showed the window %d times, want 0", h.shows())
+	}
+	// Every line still reaches React, own-account ones included.
+	if n := h.eventCount("desktopshare:event"); n != 4 {
+		t.Errorf("desktopshare:event = %d, want 4", n)
+	}
+}
+
+func TestShareNotification_CoalescesWithinFiveSeconds(t *testing.T) {
+	a := &App{}
+	h := newNoteHarness(a)
+	a.handleShareLine(eventLine("join", "guest", "a@x", ""))
+	h.advance(2 * time.Second)
+	a.handleShareLine(eventLine("join", "guest", "b@x", ""))
+	h.advance(2 * time.Second)
+	a.handleShareLine(eventLine("join", "guest", "c@x", ""))
+	if got := h.last(); got.id != "portty.desktop-join" || got.body != "3 viewers joined your desktop." {
+		t.Errorf("third join = %+v, want the coalesced sentence under the same identifier", got)
+	}
+	// A leave in the same burst is its own kind.
+	a.handleShareLine(eventLine("leave", "guest", "a@x", ""))
+	if got := h.last(); got.body != "a@x left your desktop." {
+		t.Errorf("leave = %+v, want its own single sentence", got)
+	}
+	// Quiet for more than 5 s: a fresh single sentence.
+	h.advance(6 * time.Second)
+	a.handleShareLine(eventLine("join", "guest", "d@x", ""))
+	if got := h.last(); got.body != "d@x joined your desktop." {
+		t.Errorf("join after a quiet gap = %+v, want a single sentence", got)
+	}
+}
+
+func TestShareNotification_NameIsCappedAtEightyWithEllipsis(t *testing.T) {
+	a := &App{}
+	h := newNoteHarness(a)
+	long := strings.Repeat("a", 200)
+	a.handleShareLine(eventLine("join", "guest", long, ""))
+	want := strings.Repeat("a", 80) + "… joined your desktop."
+	if got := h.last().body; got != want {
+		t.Errorf("long name body = %q, want %q", got, want)
+	}
+	// Format characters in a name never reach a banner (bidi override, zero-width).
+	h.advance(time.Minute)
+	a.handleShareLine(eventLine("join", "guest", "ann\u202e@example.com\u200b", ""))
+	if got := h.last().body; got != "ann@example.com joined your desktop." {
+		t.Errorf("sanitized body = %q", got)
+	}
+}
+
+func TestShareNotification_ClickRouting(t *testing.T) {
+	for _, id := range []string{"portty.desktop-admit", "portty.desktop-join", "portty.desktop-leave"} {
+		a := &App{}
+		h := newNoteHarness(a)
+		a.applyDesktopShareState(daemon.DesktopShareLine{Type: "state", Active: true})
+		a.handleNotificationClick(id)
+		if h.shows() != 1 || h.eventCount("desktopshare:open-sheet") != 1 {
+			t.Errorf("%s with an active share and nothing pending: shows=%d open-sheet=%d, want 1 and 1", id, h.shows(), h.eventCount("desktopshare:open-sheet"))
+		}
+
+		a.applyDesktopShareState(daemon.DesktopShareLine{Type: "state", Active: true, Pending: []daemon.DesktopSharePending{{ID: "r1"}}})
+		a.handleNotificationClick(id)
+		if h.shows() != 2 || h.eventCount("desktopshare:open-sheet") != 1 {
+			t.Errorf("%s with a request pending: shows=%d open-sheet=%d, want 2 and 1 (the Admit sheet is already up)", id, h.shows(), h.eventCount("desktopshare:open-sheet"))
+		}
+
+		a.applyDesktopShareState(daemon.DesktopShareLine{Type: "state", Active: false})
+		a.handleNotificationClick(id)
+		if h.shows() != 3 || h.eventCount("desktopshare:open-sheet") != 1 {
+			t.Errorf("%s with no share: shows=%d open-sheet=%d, want 3 and 1", id, h.shows(), h.eventCount("desktopshare:open-sheet"))
+		}
+	}
+}
+
+func TestShareNotification_NoActionButtonsOrLinkInBody(t *testing.T) {
+	a := &App{}
+	h := newNoteHarness(a)
+	v := eventLine("join", "guest", "ann@example.com", "")
+	a.handleShareLine(v)
+	if got := h.last(); strings.Contains(got.body, "http") || strings.Contains(got.body, "cap=") {
+		t.Errorf("notification body carries a link: %+v", got)
+	}
+}
+
+func TestDesktopShareQuit_StopsAnActiveShareFirst(t *testing.T) {
+	a := &App{}
+	newNoteHarness(a)
+	stops := 0
+	a.stopShareFunc = func() error { stops++; return nil }
+	a.applyDesktopShareState(daemon.DesktopShareLine{Type: "state", Active: true})
+	a.stopShareForQuit()
+	if stops != 1 {
+		t.Errorf("stops = %d, want 1", stops)
+	}
+}
+
+func TestDesktopShareQuit_NoShareNoStop(t *testing.T) {
+	a := &App{}
+	newNoteHarness(a)
+	stops := 0
+	a.stopShareFunc = func() error { stops++; return nil }
+	a.stopShareForQuit()
+	// Own-account viewers alone are not a click-to-share.
+	a.applyDesktopShareState(daemon.DesktopShareLine{Type: "state", Active: false, Viewers: viewers(1)})
+	a.stopShareForQuit()
+	if stops != 0 {
+		t.Errorf("stops = %d, want 0 without an active share", stops)
+	}
+}
+
+func TestDesktopShareQuit_SlowStopDoesNotBlockHiding(t *testing.T) {
+	old := quitShareStopWait
+	quitShareStopWait = 20 * time.Millisecond
+	t.Cleanup(func() { quitShareStopWait = old })
+
+	a := &App{}
+	newNoteHarness(a)
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	a.stopShareFunc = func() error { <-release; return nil }
+	a.applyDesktopShareState(daemon.DesktopShareLine{Type: "state", Active: true})
+	done := make(chan struct{})
+	go func() { a.stopShareForQuit(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("stopShareForQuit did not give up on a slow stop")
 	}
 }
 
