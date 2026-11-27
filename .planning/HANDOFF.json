@@ -1,37 +1,51 @@
 {
   "version": "1.0",
-  "timestamp": "2026-11-15T15:38:21.530Z",
-  "phase": "1",
-  "phase_name": "Plain macOS Terminal",
-  "phase_dir": ".planning/phases/01-plain-macos-terminal",
-  "plan": 12,
+  "timestamp": "2026-11-27T04:27:50.784Z",
+  "phase": "20",
+  "phase_name": "Remote Control",
+  "phase_dir": ".planning/phases/20-remote-control",
+  "plan": null,
   "task": null,
   "total_tasks": null,
   "status": "paused",
+  "reason": "User re-login to Claude Code after upgrading to the Ultra plan. Milestone v2.0 autonomous run (/gsd-autonomous) paused at clean stopping points; no worktree mid-plan.",
   "completed_tasks": [
-    {"id": 1, "name": "Plans 01-01..01-12 executed", "status": "done"},
-    {"id": 2, "name": "Code review + 15 fixes", "status": "done"},
-    {"id": 3, "name": "Verifier (human_needed) + Start Web Server gate", "status": "done", "commit": "452cf7d4"},
-    {"id": 4, "name": "Human UAT 7/7 (01-UAT.md)", "status": "done", "commit": "184f6722"},
-    {"id": 5, "name": "Scope changes recorded: chat removal, system light/dark, one on/off share", "status": "done", "commit": "042d19ad"}
+    {"id": 1, "name": "Phases 17, 18, 18.1, 19 complete and merged to main (PRs #11, #12)", "status": "done", "commit": "36d87ec6"},
+    {"id": 2, "name": "Phase 20 Remote Control: 11/11 plans built, review/security/UI gates run, verifier human_needed 4/4", "status": "done", "commit": "b2def989"},
+    {"id": 3, "name": "Phase 21: plans 21-01..21-08 merged", "status": "done", "commit": "97a9e7a3"},
+    {"id": 4, "name": "Phase 22 planned (13 plans)", "status": "done", "commit": "54ac9633"},
+    {"id": 5, "name": "Phase 23 planned (16 plans)", "status": "done", "commit": "ef41c438"}
   ],
   "remaining_tasks": [
-    {"id": 6, "name": "Re-run verifier (VERIFICATION stale after 452cf7d4), then query phase.complete 1", "status": "not_started"},
-    {"id": 7, "name": "verify:post hooks: gsd-secure-phase 1, gsd-ui-review 1", "status": "not_started"},
-    {"id": 8, "name": "Continue /gsd-autonomous with Phase 2", "status": "not_started"}
+    {"id": 6, "name": "Phase 20: user decision on review finding M-05, then close like Phase 18/19 (verification_deferred_human, 20-UAT.md M-180..M-193), /ponytail-review, /gsd-ship PR to main, merge when green", "status": "not_started"},
+    {"id": 7, "name": "Phase 21: resume /gsd-execute-phase 21 --no-transition at wave 5 (21-09 control mode + release chord, 21-10 iPhone viewer), then 21-11..21-13 and end-of-phase gates; close and merge", "status": "not_started"},
+    {"id": 8, "name": "Phase 22: execute (22-01..03 runnable now; rest guarded on 20/21 SUMMARYs)", "status": "not_started"},
+    {"id": 9, "name": "Phase 23: execute (guarded on 22); user checkpoints for rc tags, real-Mac session, publish v2.0", "status": "not_started"},
+    {"id": 10, "name": "Milestone lifecycle: audit -> complete -> cleanup", "status": "not_started"}
   ],
   "blockers": [],
   "async_jobs": [],
   "human_actions_pending": [
-    {"action": "Decide when to merge gsd/phase-01-plain-macos-terminal into main", "context": "branch-per-phase; user decides", "blocking": false},
-    {"action": "Answer remaining cut candidates during Phase 2 discuss", "context": "plugin toggles, sixel, OSC 9;4 glyphs, key regen + CT notice, extra CLI cmds, launchd install, tray menu, join codes/QR — unanswered", "blocking": false}
+    {"action": "Decide Phase 20 finding M-05: window-share keystrokes are checked only against the focused app; a global hotkey launcher panel (Alfred/Raycast) could receive keys. Recommended (a): accept as a known limit for Phase 20 (own-account viewers only) and re-review before Phase 22 guests. (b): gap-fix now (drop keys when the focused window isn't the shared one).", "context": "20-REVIEW-FIX.md, deferred M-05", "blocking": true},
+    {"action": "Real-Mac checks (non-blocking for building): Phase 18 18-UAT.md (M-169..M-171), 18.1 M-172, Phase 19 19-UAT.md (M-173..M-179), Phase 20 20-UAT.md (M-180..M-193)", "context": "VMs can't cover hardware, real tailnet direct path, battery, real notarized builds", "blocking": false},
+    {"action": "Phase 21 real-iPhone session (DVWR-03) at 21-13; Phase 22 optional second Tailscale user for SC1; Phase 23 rc.1/rc.2 tag pushes, owner real-Mac session, publish decision and v2.0 tag", "context": "planned user checkpoints", "blocking": false}
   ],
   "decisions": [
-    {"decision": "Remove session chat entirely (CHAT-01 -> Phase 2)", "rationale": "user 2026-11-15: not needed", "phase": "2"},
-    {"decision": "Replace 138 themes with macOS light/dark following system, app + terminals + web page (THEM-01 -> Phase 2)", "rationale": "user 2026-11-15", "phase": "2"},
-    {"decision": "Sharing = one on/off state (web + app), always full control, tailnet only; drop Funnel and read-only (SHAR-01/02/05 -> Phase 4)", "rationale": "user 2026-11-15: make Portty MUCH simpler", "phase": "4"}
+    {"decision": "Per-phase merges to main for the rest of v2.0; future milestones use one milestone branch merged at the end", "rationale": "user, 2026-11-26 (memory portty-milestone-feature-branches)", "phase": "v2.0"},
+    {"decision": "Product/preference choices delegated to Claude; only one-way doors asked", "rationale": "user: 'I don't need to answer a bunch of questions'", "phase": "v2.0"},
+    {"decision": "Close phases with human_needed verification as verification_deferred_human with UAT files, then ship", "rationale": "user approved for 18, 18.1, 19", "phase": "v2.0"},
+    {"decision": "Portty-app control-mode release chord is Ctrl+Option+Cmd+Shift+Return", "rationale": "21-02 probe: Ctrl+Option+Cmd+Return taken by the system (a4798f16)", "phase": "21"},
+    {"decision": "Phase 21 TESTING.md M-NN numbering starts after M-193 (Phase 20 took M-180..M-193)", "rationale": "20-11", "phase": "21"}
   ],
-  "uncommitted_files": ["?? .ignore", "?? .planning/state.json"],
-  "next_action": "Run /gsd-autonomous; it resumes Phase 1 at the verifier, completes it, then starts Phase 2",
-  "context_notes": "User wants radical simplicity: propose cuts by default. VERIFICATION.md status was hand-set to passed but GSD digest says stale; verifier must regenerate it."
+  "uncommitted_files": [
+    " M .gitignore",
+    " M .planning/state.json",
+    "?? .ignore",
+    "?? .planning/debug/spike-hostrun-sigtrap.md",
+    "?? .planning/milestones/v1.2-phases/15-v1-2-hardening/.gitkeep",
+    "?? .planning/milestones/v1.2-phases/16-v1-2-cleanup/.gitkeep",
+    "?? agenthub"
+  ],
+  "next_action": "Run /gsd-resume-work, ask the user the M-05 question, then close and ship Phase 20 and resume Phase 21 at wave 5 (can run in parallel); restart the per-plan progress watcher (Monitor on .planning/phases/2[0-3]-*/*-SUMMARY.md) and post a milestone progress update to the user for each completed plan.",
+  "context_notes": "Working branch gsd/phase-17-desktop-feasibility-spike, all pushed (HEAD b2def989 at pause). main is protected (required check: build (portty, darwin/arm64, macos-latest)); e2e playwright also runs. Worktree isolation enabled via .claude/settings.local.json worktree.baseRef=head. Use GOTOOLCHAIN=go1.26.11 for Go. The uncommitted files listed are intentionally never committed (user rule). Constraints: no host Portty/capture/input injection; no host tailscaled/100.x contact; nothing in ~/Downloads or /Applications; VMs portty-test (office) and portty-test-2 (home) never stopped, VM password admin/admin only; check the guest timed log for clock steps before calling a VM time gap a hang; stage by explicit path; brand gate rejects home paths and real tailnet IPs in tracked files; commit trailers name the model that wrote the commit. Phase 20 changed Phase 21's peerDesktop.test.ts fake (10273faf). Known flaky tests: TestFanout_ThreeViewersEachGetKeyframe, TestFanout_ReconnectWhileJoining (noted in TESTING.md). Stray file to delete: /private/tmp/claude-501/-Users-ken/dev/portty-placeholder.txt. Apple entitlement request T558S9Q5B3 still pending."
 }
