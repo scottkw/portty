@@ -2730,3 +2730,170 @@ html:has(.desktop-view) body {
     transition: none;
   }
 }
+
+/* ─── Desktop control bar (Phase 20-07, 20-UI-SPEC Surface B) ─────────
+   A floating top-center toolbar, 36px tall in a reserved 44px row; chips sit below
+   that row on a viewer that may control. Hidden it is transparent and click-through
+   but stays in the tab order, and :focus-within shows it. Tokens only. */
+.desktop-overlay {
+  position: absolute;
+  top: calc(8px + env(safe-area-inset-top));
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.desktop-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  height: 36px;
+  max-width: calc(100% - 48px);
+  padding: 0 4px;
+  border: 1px solid var(--color-control-border);
+  border-radius: 8px;
+  background: var(--color-popover);
+  box-shadow: var(--shadow-popover);
+  color: var(--color-text);
+  pointer-events: auto;
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+.desktop-bar--hidden {
+  opacity: 0;
+  transform: translateY(-8px);
+  pointer-events: none;
+}
+.desktop-bar--hidden:focus-within {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.desktop-bar__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  white-space: nowrap;
+  cursor: default;
+}
+.desktop-bar__item:hover {
+  background: var(--color-control-hover);
+}
+.desktop-bar__item[aria-disabled='true'],
+.desktop-bar .share-seg[aria-disabled='true'] {
+  opacity: var(--opacity-disabled);
+}
+.desktop-bar__item[aria-disabled='true']:hover {
+  background: transparent;
+}
+.desktop-bar__item:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+/* On: the selected fill and the 1px border stay, and a check mark replaces the icon, so it never relies on colour. */
+.desktop-bar__toggle.is-on {
+  background: var(--color-segment-selected);
+  border-color: var(--color-control-border);
+}
+.desktop-bar__icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.desktop-bar__name {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.desktop-bar__divider {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  flex-shrink: 0;
+  background: var(--color-separator);
+}
+/* Below 880px every item except the picker and the Control segments is icon-only; each keeps its aria-label and title. */
+@media (max-width: 879px) {
+  .desktop-bar__item {
+    padding: 0 8px;
+  }
+  .desktop-bar__label {
+    display: none;
+  }
+}
+.desktop-bar__picker {
+  min-width: 0;
+  padding: 0 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .desktop-bar {
+    transition: none;
+  }
+}
+
+/* The bar's menus: the context menu look with a check column, right-aligned hints, group labels and captions. */
+.desktop-menu {
+  min-width: 200px;
+  max-width: 360px;
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
+}
+.desktop-menu .context-menu__item {
+  gap: 8px;
+}
+.desktop-menu__check {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.desktop-menu__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.desktop-menu__hint {
+  flex-shrink: 0;
+  margin-left: 16px;
+  color: var(--color-text-secondary);
+}
+.context-menu__item:focus .desktop-menu__hint {
+  color: inherit;
+}
+.desktop-menu__label {
+  padding: 4px 12px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 14px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+.desktop-menu__caption {
+  padding: 4px 12px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-text-secondary);
+}
+
+/* A viewer that may control has the bar row (44px) at the top: the chips sit below it. */
+.desktop-view--bar .desktop-chip {
+  top: calc(52px + env(safe-area-inset-top));
+}
+.desktop-view--bar .desktop-chip--notice {
+  top: calc(92px + env(safe-area-inset-top));
+}

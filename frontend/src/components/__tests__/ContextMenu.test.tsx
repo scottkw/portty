@@ -150,6 +150,88 @@ describe('ContextMenu disabled items', () => {
   })
 })
 
+// Phase 20-07: the viewer's bar menus extend the menu with checked items, hints, label and caption rows.
+describe('ContextMenu extended entries', () => {
+  function openExtended() {
+    invoker = document.createElement('button')
+    document.body.appendChild(invoker)
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    flushSync(() =>
+      root.render(
+        React.createElement(ContextMenu, {
+          x: 10,
+          y: 20,
+          invoker,
+          onClose: vi.fn(),
+          className: 'desktop-menu',
+          items: [
+            { kind: 'label', text: 'Displays' },
+            { label: 'Main Display', onSelect: vi.fn(), checked: true, hint: '1470 x 956' },
+            { label: 'Display 2', onSelect: vi.fn(), checked: false, hint: '1920 x 1080' },
+            { kind: 'label', text: 'Windows' },
+            { label: 'Terminal — zsh', onSelect: vi.fn(), checked: false },
+            { kind: 'caption', text: 'A caption', id: 'cap-1' },
+          ],
+        }),
+      ),
+    )
+  }
+
+  it('checked items are menuitemradio with aria-checked and every item keeps the check column', () => {
+    openExtended()
+    const radios = Array.from(menu().querySelectorAll<HTMLElement>('[role="menuitemradio"]'))
+    expect(radios.map((r) => r.getAttribute('aria-checked'))).toEqual(['true', 'false', 'false'])
+    expect(menu().querySelectorAll('.desktop-menu__check')).toHaveLength(3)
+    expect(radios[0].querySelector('.desktop-menu__check svg')).not.toBeNull()
+    expect(radios[1].querySelector('.desktop-menu__check svg')).toBeNull()
+    expect(radios[0].querySelector('.desktop-menu__hint')?.textContent).toBe('1470 x 956')
+  })
+
+  it('takes the extra class and links the caption from the menu', () => {
+    openExtended()
+    expect(menu().className).toBe('context-menu desktop-menu')
+    expect(menu().getAttribute('aria-describedby')).toBe('cap-1')
+    expect(document.getElementById('cap-1')?.getAttribute('role')).toBe('presentation')
+  })
+
+  it('label and caption rows are not focusable and the arrow keys skip them', () => {
+    openExtended()
+    expect(document.activeElement?.textContent).toContain('Main Display')
+    key('ArrowDown')
+    expect(document.activeElement?.textContent).toContain('Display 2')
+    key('ArrowDown')
+    expect(document.activeElement?.textContent).toContain('Terminal — zsh')
+    key('ArrowDown')
+    expect(document.activeElement?.textContent).toContain('Main Display')
+    key('End')
+    expect(document.activeElement?.textContent).toContain('Terminal — zsh')
+    key('Home')
+    expect(document.activeElement?.textContent).toContain('Main Display')
+  })
+
+  it('a plain menu keeps role=menuitem and no check column', () => {
+    open()
+    expect(menu().querySelector('[role="menuitemradio"]')).toBeNull()
+    expect(menu().querySelector('.desktop-menu__check')).toBeNull()
+  })
+
+  it('focuses the first enabled item once a list that started empty arrives', () => {
+    invoker = document.createElement('button')
+    document.body.appendChild(invoker)
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    const render = (items: React.ComponentProps<typeof ContextMenu>['items']) =>
+      flushSync(() => root.render(React.createElement(ContextMenu, { x: 0, y: 0, invoker, onClose: vi.fn(), items })))
+    render([{ label: 'Loading…', onSelect: vi.fn(), disabled: true }])
+    expect(menu().contains(document.activeElement)).toBe(false)
+    render([{ label: 'Main Display', onSelect: vi.fn() }])
+    expect(document.activeElement?.textContent).toBe('Main Display')
+  })
+})
+
 describe('isMenuKey', () => {
   it('matches Shift+F10 and the ContextMenu key only', () => {
     const k = (key: string, shiftKey = false) => isMenuKey({ key, shiftKey } as React.KeyboardEvent)

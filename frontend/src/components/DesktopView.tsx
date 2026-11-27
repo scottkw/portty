@@ -2,10 +2,13 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowPathIcon,
   ClockIcon,
+  ArrowsPointingOutIcon,
+  ArrowsRightLeftIcon,
   ComputerDesktopIcon,
   CursorArrowRaysIcon,
   ExclamationTriangleIcon,
   HandRaisedIcon,
+  InformationCircleIcon,
   LockClosedIcon,
   MoonIcon,
   PlayIcon,
@@ -16,11 +19,14 @@ import {
   createDesktopClient,
   type ClientStatus,
   type DesktopControlMsg,
+  type DesktopClient,
   type DesktopStateMsg,
+  type DesktopSurfaceMsg,
 } from '../lib/desktopClient'
 import { HINT_KEY, createDesktopInput, type DesktopInput, type ReleaseReason } from '../lib/desktopInput'
 import { isPhone } from '../lib/phoneQuery'
 import { UserRefused } from './UserRefused'
+import { DesktopControlBar, SWITCH_TIMEOUT_MS, type ControlMode, type SurfacePick } from './DesktopControlBar'
 
 const TITLE = 'Portty Desktop'
 
@@ -110,6 +116,10 @@ const STATE_CARDS: Partial<Record<DesktopStateMsg['state'], CardKey>> = {
 }
 
 const HINT_ID = 'desktop-stage-hint'
+const SURFACE_FALLBACKS: Record<string, string | undefined> = {
+  window_closed: 'The shared window closed; showing the main display',
+  display_gone: 'The shared display disconnected; showing the main display',
+}
 const CHIP_SHOW_MS = 3000
 const CHIP_FADE_MS = 150
 
@@ -134,7 +144,7 @@ interface Notice {
   alert?: boolean
 }
 
-export type ControlMode = 'view' | 'control'
+export type { ControlMode }
 
 /** Safari with storage blocked throws on the property read itself; the setting then reads as off. */
 function safeStorage(): Storage | null {
@@ -143,6 +153,15 @@ function safeStorage(): Storage | null {
   } catch {
     return null
   }
+}
+
+interface KeyboardApi {
+  lock?: (codes?: string[]) => Promise<void>
+  unlock?: () => void
+}
+/** navigator.keyboard (Chrome, Edge); absent in Safari and Firefox. */
+function keyboardApi(): KeyboardApi | undefined {
+  return (navigator as Navigator & { keyboard?: KeyboardApi }).keyboard
 }
 
 export interface DesktopViewProps {
@@ -175,6 +194,8 @@ export function DesktopView({
   onControlChange,
   onReleaseChord,
 }: DesktopViewProps = {}): React.ReactElement {
+  const rootRef = useRef<HTMLDivElement>(null)
+  const controlSegRef = useRef<HTMLButtonElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -202,6 +223,22 @@ export function DesktopView({
   const [ctlState, setCtlState] = useState<DesktopControlMsg>({ input: 'ok', window: '' })
   const [notice, setNotice] = useState<Notice | null>(null)
   const [noticeFading, setNoticeFading] = useState(false)
+  // The shared surface as the daemon last said it, and whether a bar menu or dialog is open.
+  const [surf, setSurf] = useState<DesktopSurfaceMsg | null>(null)
+  // A pick is in flight until its surface message arrives, the daemon refuses, or SWITCH_TIMEOUT_MS passes.
+  const [switching, setSwitching] = useState<(SurfacePick & { previous: string }) | null>(null)
+  const clientRef = useRef<DesktopClient | null>(null)
+  const surfRef = useRef<DesktopSurfaceMsg | null>(null)
+  const switchingRef = useRef<(SurfacePick & { previous: string }) | null>(null)
+  const [barMenuOpen, setBarMenuOpen] = useState(false)
+  // The bar owns View Only or Control; the controlMode prop sets it, and a change of the prop wins.
+  const [mode, setMode] = useState<ControlMode>(controlMode)
+  useEffect(() => setMode(controlMode), [controlMode])
+  const [swapOn, setSwapOn] = useState(false)
+  const [canSurface, setCanSurface] = useState(false)
+  const [fullscreen, setFullscreen] = useState(false)
+  // Whether the stage had the keyboard when the pointer went down on the bar (the press itself blurs it).
+  const stageHadFocus = useRef(false)
 
   const pushNotice = useCallback((n: Omit<Notice, 'id'>) => {
     noticeSeq.current++
@@ -212,6 +249,28 @@ export function DesktopView({
     () => pushNotice({ Icon: CursorArrowRaysIcon, text: 'Typing stays on this device', dwell: 3000 }),
     [pushNotice],
   )
+
+  // The label returns to the previous surface and the user is told, in words, that it did not happen.
+  const switchFailed = useCallback(() => {
+    const sw = switchingRef.current
+    if (!sw) return
+    switchingRef.current = null
+    setSwitching(null)
+    pushNotice({
+      Icon: ExclamationTriangleIcon,
+      text: `Couldn't switch to ${sw.name}. Still showing ${sw.previous}.`,
+      dwell: 5000,
+      alert: true,
+    })
+  }, [pushNotice])
+
+  const switchFailedRef = useRef(switchFailed)
+  switchFailedRef.current = switchFailed
+  useEffect(() => {
+    if (!switching) return
+    const id = setTimeout(switchFailed, SWITCH_TIMEOUT_MS)
+    return () => clearTimeout(id)
+  }, [switching, switchFailed])
 
   // A notice dwells, then fades, then goes; a newer one replaces it and restarts the clock.
   useEffect(() => {
@@ -265,6 +324,7 @@ export function DesktopView({
 
   useEffect(() => {
     const client = createDesktopClient()
+    clientRef.current = client
     const phone = isPhone()
     let lastEpoch: number | null = null
     const offs = [
@@ -312,6 +372,8 @@ export function DesktopView({
             onReleaseChord: () => {
               typingStays()
               chordCb.current?.()
+              // The keyboard is the viewer's own again: the bar shows and focus waits on its Control segment.
+              controlSegRef.current?.focus()
             },
             onReleased: (reason) => {
               if (HELD_NOTICE.has(reason)) pushNotice({ Icon: HandRaisedIcon, text: 'Held keys were released', dwell: 3000 })
@@ -320,6 +382,8 @@ export function DesktopView({
         )
         ctl.setControl(true)
         inputCtl.current = ctl
+        setSwapOn(ctl.swap())
+        setCanSurface(r.surface)
         setCanControl(true)
       }),
       client.on('input', ({ open }) => {
@@ -329,9 +393,29 @@ export function DesktopView({
       }),
       client.on('control', setCtlState),
       client.on('surface', (sf) => {
+        // Every viewer, a phone too, hears what the Mac now shows. The notice goes first so that, when
+        // something was held, "Held keys were released" (sent by the release below) is the one that stays.
+        const prev = surfRef.current
+        surfRef.current = sf
+        setSurf(sf)
+        const sw = switchingRef.current
+        if (sw && (sf.reason !== '' || (sf.kind === sw.kind && sf.id === sw.id))) {
+          switchingRef.current = null
+          setSwitching(null)
+        }
+        const surfaceNotice = SURFACE_FALLBACKS[sf.reason]
+        if (surfaceNotice) pushNotice({ Icon: InformationCircleIcon, text: surfaceNotice, dwell: 5000 })
+        else if (prev && (prev.kind !== sf.kind || prev.id !== sf.id)) {
+          pushNotice({
+            Icon: sf.kind === 'window' ? WindowIcon : ComputerDesktopIcon,
+            text: sf.kind === 'display' && sf.name === 'Main Display' ? 'Showing the main display' : `Showing ${sf.name}`,
+            dwell: 3000,
+          })
+        }
         if (lastEpoch !== null && sf.e !== lastEpoch) inputCtl.current?.releaseAll('surface')
         lastEpoch = sf.e
       }),
+      client.on('selectFailed', () => switchFailedRef.current()),
       client.on('track', (stream) => {
         const v = videoRef.current
         if (!v) return
@@ -355,6 +439,7 @@ export function DesktopView({
       inputCtl.current?.destroy()
       inputCtl.current = null
       client.stop()
+      clientRef.current = null
     }
   }, [startPlay, updateRect, pushNotice, typingStays])
 
@@ -385,7 +470,7 @@ export function DesktopView({
 
   const locked = desk?.locked === true || desk?.state === 'locked'
   const accessNeeded = ctlState.input === 'needs_accessibility'
-  const active = canControl && controlMode === 'control'
+  const active = canControl && mode === 'control'
   const paused = locked || status.kind === 'reconnecting' || status.kind === 'unreachable' || accessNeeded
 
   useEffect(() => {
@@ -409,16 +494,70 @@ export function DesktopView({
   }, [status.kind, canControl])
 
   // Opening a bar menu or dialog is a user action: release, hand the keyboard back, say so.
+  const anyMenuOpen = menuOpen || barMenuOpen
   useEffect(() => {
     const ctl = inputCtl.current
-    if (!menuOpen || !ctl) return
+    if (!anyMenuOpen || !ctl) return
     if (capturedRef.current) typingStays()
     ctl.releaseAll('menu')
-  }, [menuOpen, canControl, typingStays])
+  }, [anyMenuOpen, canControl, typingStays])
 
   useEffect(() => {
     changeCb.current?.({ available: canControl, captured })
   }, [canControl, captured])
+
+  // Leaving full screen (the button, a long Esc, the browser) lets go of the keyboard lock and every held key.
+  useEffect(() => {
+    const onChange = () => {
+      const on = document.fullscreenElement != null
+      setFullscreen(on)
+      if (on) return
+      keyboardApi()?.unlock?.()
+      inputCtl.current?.releaseAll('blur')
+    }
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
+
+  async function toggleFullscreen() {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen().catch(() => {})
+      return
+    }
+    const root = rootRef.current
+    if (!root) return
+    try {
+      await root.requestFullscreen()
+    } catch {
+      return // The browser refused full screen itself; nothing changed, nothing to explain.
+    }
+    // The click on the button blurred the stage, and Keyboard Lock only helps a focused page.
+    stageRef.current?.focus({ preventScroll: true })
+    let granted = false
+    try {
+      await keyboardApi()?.lock?.()
+      granted = keyboardApi()?.lock !== undefined
+    } catch {
+      // A refused lock is never an error: the browser keeps its shortcuts.
+    }
+    pushNotice({
+      Icon: ArrowsPointingOutIcon,
+      text: granted
+        ? 'Cmd and Esc shortcuts now go to the Mac. Hold Esc to leave full screen.'
+        : 'Full screen is on. This browser keeps Cmd shortcuts; use Send Keys for Cmd+Tab and Cmd+Space.',
+      dwell: 5000,
+    })
+  }
+
+  function toggleSwap(on: boolean) {
+    inputCtl.current?.setSwap(on)
+    setSwapOn(on)
+    pushNotice({
+      Icon: ArrowsRightLeftIcon,
+      text: on ? 'Ctrl and Cmd are swapped' : 'Ctrl and Cmd are back to normal',
+      dwell: 3000,
+    })
+  }
 
   if (status.kind === 'other_account') return <UserRefused />
 
@@ -437,11 +576,13 @@ export function DesktopView({
   else if (chipPhase !== 'gone' && viewers !== null && viewers >= 1) {
     chip = { text: `Streaming to ${viewers} ${viewers === 1 ? 'viewer' : 'viewers'}`, fading: chipPhase === 'fading' }
   }
+  // The bar is for a viewer that may control the Mac, while a picture is up and no card covers it.
+  const showBar = canControl && cardKey === null && (status.kind === 'streaming' || status.kind === 'reconnecting')
   const scrim = (cardKey !== null && cardKey !== 'connecting') || chip?.Icon === ArrowPathIcon
   const card = cardKey ? CARDS[cardKey] : null
 
   return (
-    <div className="desktop-view">
+    <div ref={rootRef} className={canControl ? 'desktop-view desktop-view--bar' : 'desktop-view'}>
       <div
         className={active && !paused ? 'desktop-stage desktop-stage--live' : 'desktop-stage'}
         ref={stageRef}
@@ -518,6 +659,46 @@ export function DesktopView({
           )}
         </div>
       </div>
+      {showBar && (
+        <div
+          className="desktop-overlay"
+          onPointerDownCapture={() => {
+            // The press itself takes the keyboard off the stage, so read it now.
+            stageHadFocus.current = capturedRef.current
+            if (capturedRef.current) typingStays()
+          }}
+        >
+          <DesktopControlBar
+            state={{
+              locked,
+              reconnecting: status.kind === 'reconnecting',
+              accessNeeded,
+              switching: switching !== null,
+              mode,
+              canSurface,
+              fullscreenAvailable: document.fullscreenEnabled === true,
+            }}
+            surface={surf ? { kind: surf.kind, id: surf.id, name: surf.name } : null}
+            requestSurfaces={() => clientRef.current?.requestSurfaces() ?? Promise.reject(new Error('not connected'))}
+            onSelectSurface={(pick) => {
+              if (switchingRef.current) return
+              const sw = { ...pick, previous: surfRef.current?.name ?? 'the main display' }
+              switchingRef.current = sw
+              setSwitching(sw)
+              clientRef.current?.selectSurface(pick.kind, pick.id)
+            }}
+            sendChord={(codes) => inputCtl.current?.sendChord(codes)}
+            onMenuOpenChange={setBarMenuOpen}
+            onSendKeysDone={() => { if (stageHadFocus.current) inputRef.current?.focus({ preventScroll: true }) }}
+            swapOn={swapOn}
+            onSwapChange={toggleSwap}
+            onModeChange={setMode}
+            fullscreen={fullscreen}
+            onFullscreen={() => void toggleFullscreen()}
+            controlRef={controlSegRef}
+          />
+        </div>
+      )}
     </div>
   )
 }

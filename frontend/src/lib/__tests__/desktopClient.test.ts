@@ -617,6 +617,105 @@ describe('input data channel (Phase 20-06)', () => {
   })
 })
 
+describe('surface list and select (Phase 20-07)', () => {
+  const golden = () =>
+    readFileSync(resolve(__dirname, '../../../../internal/desktop/testdata/signal-v1.jsonl'), 'utf8')
+      .trim().split('\n').map((l) => JSON.parse(l) as { name: string; dir: string; wire: object })
+  const wire = (name: string) => golden().find((l) => l.name === name)!.wire
+
+  async function connected() {
+    const e = setup()
+    e.client.start()
+    await handshakeWithInput(e)
+    return e
+  }
+
+  it('requestSurfaces sends the golden surfaces request and resolves with the reply (golden surfaces line)', async () => {
+    const e = await connected()
+    const p = e.client.requestSurfaces()
+    expect(lastT(e).last('surfaces')).toEqual(wire('surfaces-request'))
+    lastT(e).recv(wire('surfaces'))
+    await expect(p).resolves.toEqual({
+      displays: [
+        { id: 1, name: 'Main Display', w: 1470, h: 956, main: true },
+        { id: 2, name: 'Display 2', w: 1920, h: 1080, main: false },
+      ],
+      windows: [{ id: 4242, app: 'Terminal', title: 'zsh', name: 'Terminal \u2014 zsh' }],
+    })
+  })
+
+  it('emits a surfaces event for a good reply', async () => {
+    const e = await connected()
+    const got: unknown[] = []
+    e.client.on('surfaces', (s) => got.push(s))
+    lastT(e).recv(wire('surfaces'))
+    expect(got).toHaveLength(1)
+  })
+
+  it('a reply with error list_failed rejects', async () => {
+    const e = await connected()
+    const p = e.client.requestSurfaces()
+    lastT(e).recv(wire('surfaces-error'))
+    await expect(p).rejects.toThrow('list_failed')
+  })
+
+  it('rejects after 5 s with no reply, and a late reply does nothing', async () => {
+    const e = await connected()
+    const p = e.client.requestSurfaces()
+    const done = vi.fn()
+    p.catch(done)
+    await e.clock.advance(4999)
+    expect(done).not.toHaveBeenCalled()
+    await e.clock.advance(1)
+    await expect(p).rejects.toThrow('timeout')
+    lastT(e).recv(wire('surfaces'))
+  })
+
+  it('rejects when there is no connection to ask', async () => {
+    const e = setup()
+    await expect(e.client.requestSurfaces()).rejects.toThrow('not connected')
+  })
+
+  it('a dropped connection rejects what is waiting', async () => {
+    const e = await connected()
+    const p = e.client.requestSurfaces()
+    lastT(e).dropWith(1006)
+    await expect(p).rejects.toThrow('not connected')
+  })
+
+  it('keeps only typed fields from the list: strings as strings, ids and sizes as integers, junk dropped', async () => {
+    const e = await connected()
+    const p = e.client.requestSurfaces()
+    lastT(e).recv({
+      type: 'surfaces',
+      displays: [{ id: 1, name: 'Main Display', w: 1470, h: 956, main: true }, { id: 'x', name: 'bad', w: 1, h: 1 }, { id: 3, name: 7, w: 1.5, h: 1 }, null],
+      windows: [{ id: 9, app: 'A', title: '<img src=x onerror=alert(1)>', name: 'A \u2014 <img src=x onerror=alert(1)>' }, { id: 1.5, name: 'z' }, { id: 4, name: 12 }],
+    })
+    await expect(p).resolves.toEqual({
+      displays: [{ id: 1, name: 'Main Display', w: 1470, h: 956, main: true }],
+      windows: [{ id: 9, app: 'A', title: '<img src=x onerror=alert(1)>', name: 'A \u2014 <img src=x onerror=alert(1)>' }],
+    })
+  })
+
+  it('selectSurface sends the golden select line for a window and for a display', async () => {
+    const e = await connected()
+    e.client.selectSurface('window', 4242)
+    expect(lastT(e).last('select')).toEqual(wire('select-window'))
+    e.client.selectSurface('display', 0)
+    expect(lastT(e).last('select')).toEqual(wire('select-main'))
+  })
+
+  it('select_failed emits selectFailed with its code (golden line)', async () => {
+    const e = await connected()
+    const got: unknown[] = []
+    e.client.on('selectFailed', (v) => got.push(v))
+    lastT(e).recv(wire('select-failed'))
+    expect(got).toEqual([{ code: 'switch_failed' }])
+    lastT(e).recv({ type: 'select_failed', code: 7 })
+    expect(got[1]).toEqual({ code: '' })
+  })
+})
+
 describe('picture means ICE connected, not ontrack (Phase 19 review follow-up)', () => {
   it('a track alone is announced to the page but is not a picture', async () => {
     const e = setup()
