@@ -22,3 +22,9 @@ func (m *Manager) HandleInputForTest(v *InputViewerForTest, raw string) error {
 	m.handleInput(v, msg)
 	return nil
 }
+
+// SetControlInputForTest sets the input control value.
+func (m *Manager) SetControlInputForTest(s string) { m.setControlInput(s) }
+
+// SetControlWindowForTest sets the window control value, as the surface plan does.
+func (m *Manager) SetControlWindowForTest(s string) { m.setControlWindow(s) }

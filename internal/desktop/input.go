@@ -185,9 +185,10 @@ type viewerInput struct {
 	closed       bool              // the viewer's input life is over: nothing more is accepted
 	counts       map[string]uint64 // kinds and drop reasons only, for the summary at leave
 
-	lastMsgAt time.Time // Deps.Now when the last message arrived (the dead-man's clock)
-	tokens    float64   // the rate bucket
-	bucketAt  time.Time
+	lastMsgAt        time.Time // Deps.Now when the last message arrived (the dead-man's clock)
+	lastCursorReport time.Time
+	tokens           float64 // the rate bucket
+	bucketAt         time.Time
 
 	// Click counting from viewer timestamps: the previous down, and the count
 	// each held button was pressed with (its up reuses it).
@@ -221,6 +222,8 @@ type inputState struct {
 	// lockUntil: presses are refused until then, set when the Lock Screen chord
 	// posts, because the lock poll lags the lock by up to its cache.
 	lockUntil time.Time
+
+	ctl controlState // control.go
 
 	cancel func()
 	done   chan struct{}
@@ -290,6 +293,11 @@ func (m *Manager) acceptDataChannel(v Viewer, dc *webrtc.DataChannel) {
 		_ = dc.Close()
 		return
 	}
+	// The viewer learns the control state as soon as the channel is open.
+	dc.OnOpen(func() {
+		defer recoverLog()
+		m.sendControl(dc)
+	})
 	// pion runs OnMessage inline on the SCTP read loop: parse and hand off only.
 	dc.OnMessage(func(dm webrtc.DataChannelMessage) {
 		defer recoverLog()
@@ -413,6 +421,7 @@ func (m *Manager) inputTick() {
 			}
 		}
 	}
+	m.recoverControl(now)
 }
 
 // runInput does one work item and reports whether there was one. A panic in
@@ -436,6 +445,7 @@ func (m *Manager) runInput() bool {
 }
 
 func (m *Manager) postMouse(kind screencap.MouseKind, x, y float64, button, clickState, dx, dy int, flags uint64) {
+	m.notePointerPost()
 	if err := m.d.Input.PostMouse(kind, x, y, button, clickState, dx, dy, flags); err != nil {
 		m.countInput("post_failed")
 	}
@@ -554,6 +564,7 @@ func (m *Manager) postPointer(v *viewer, kind string, x, y float64) bool {
 		return true
 	}
 	m.postMouse(screencap.MouseMoved, x, y, 0, 0, p.dx, p.dy, p.flags)
+	m.scheduleMoveCheck(x, y)
 	return true
 }
 
@@ -584,7 +595,9 @@ func (m *Manager) handleRMove(v *viewer, msg inputMsg) {
 		}
 	}
 	x, y := integrateRelative(t, fx, fy, msg.DX, msg.DY)
-	m.postPointer(v, inRMove, x, y)
+	if m.postPointer(v, inRMove, x, y) {
+		m.reportCursor(v, t, x, y)
+	}
 }
 
 func (m *Manager) handlePress(v *viewer, msg inputMsg) {

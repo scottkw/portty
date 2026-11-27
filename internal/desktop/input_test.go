@@ -127,6 +127,16 @@ type inputViewer struct {
 	*fanViewer
 	dc   *webrtc.DataChannel
 	open chan struct{}
+
+	mu   sync.Mutex
+	msgs []string // what the daemon sent on the channel, in order
+}
+
+// received returns a copy of the daemon's messages so far.
+func (iv *inputViewer) received() []string {
+	iv.mu.Lock()
+	defer iv.mu.Unlock()
+	return append([]string(nil), iv.msgs...)
 }
 
 func (e *tracerEnv) joinInput(ctx context.Context, t *testing.T, tok string) *inputViewer {
@@ -138,6 +148,11 @@ func (e *tracerEnv) joinInput(ctx context.Context, t *testing.T, tok string) *in
 			t.Fatal(err)
 		}
 		dc.OnOpen(func() { close(iv.open) })
+		dc.OnMessage(func(m webrtc.DataChannelMessage) {
+			iv.mu.Lock()
+			iv.msgs = append(iv.msgs, string(m.Data))
+			iv.mu.Unlock()
+		})
 		iv.dc = dc
 	})
 	select {
@@ -395,6 +410,7 @@ func TestInput_ReleasesBypassGates(t *testing.T) {
 		{"locked", func() { setLocked(s.locked, s.clk, true) }, func() { setLocked(s.locked, s.clk, false) }},
 		{"stale_epoch", func() { mgr.BumpEpochForTest(); epoch++ }, func() {}},
 		{"no_right", func() { s.v.Rights = desktop.RightsViewOnly }, func() { s.v.Rights = desktop.RightsOwnAccount }},
+		{"no_accessibility", func() { mgr.SetControlInputForTest(desktop.ControlNeedsAccessibility) }, func() { mgr.SetControlInputForTest(desktop.ControlOK) }},
 		{"rate", func() {
 			for range 300 {
 				s.do(t, `{"t":"move","x":0.5,"y":0.5,"e":%d}`, epoch)
