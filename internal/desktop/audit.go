@@ -36,6 +36,12 @@ const (
 	AuditControlRevoked   = "control_revoked"
 	AuditClipboardGranted = "clipboard_granted"
 	AuditClipboardRevoked = "clipboard_revoked"
+
+	// Remote unlock (UNLK-01): one line per attempt that typed, and one when the
+	// Mac was locked again after the last own-account viewer left.
+	AuditUnlocked     = "unlocked"
+	AuditUnlockFailed = "unlock_failed"
+	AuditRelocked     = "relocked"
 )
 
 // Audit modes: guest events carry a share ID, own-account events do not.
@@ -57,6 +63,8 @@ const (
 	ReasonReplaced              = "replaced"
 	ReasonMediaIdentityMismatch = "media_identity_mismatch"
 	ReasonDenied                = "denied"
+	ReasonStillLocked           = "still_locked" // unlock_failed: the Mac was still locked after the retry
+	ReasonUnlockError           = "error"        // unlock_failed: typing failed part-way
 )
 
 // AuditRecord is one audit line. The field order is the persisted v1 format:

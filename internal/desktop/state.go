@@ -245,10 +245,18 @@ func (m *Manager) RefreshPermissions(ctx context.Context) {
 	m.pushIfChanged(ctx)
 }
 
+// stateMsg is the state message for st, with the audio failure the Manager holds.
+func (m *Manager) stateMsg(st Status) msgState {
+	msg := msgState{Type: typeState, State: st.State, Viewers: st.Viewers, Locked: st.Locked}
+	if m.audioFail.Load() {
+		msg.Audio = "failed"
+	}
+	return msg
+}
+
 // pushIfChanged broadcasts the state message when it differs from the last one.
 func (m *Manager) pushIfChanged(ctx context.Context) {
-	st := m.deriveState()
-	msg := msgState{Type: typeState, State: st.State, Viewers: st.Viewers, Locked: st.Locked}
+	msg := m.stateMsg(m.deriveState())
 	m.smu.Lock()
 	changed := !m.pushedKnown || m.pushed != msg
 	if changed {

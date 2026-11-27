@@ -155,7 +155,7 @@ describe('App: the Desktop row opens a Desktop tab (DVWR-01)', () => {
     expect(h.urls).toEqual([LOOPBACK])
     const t = h.transports[0]
     await act(async () => { t.open() })
-    expect(t.sent[0]).toEqual({ type: 'hello', v: 1, caps: { video: 1, input: 1 } })
+    expect(t.sent[0]).toEqual({ type: 'hello', v: 1, caps: { video: 1, audio: 1, input: 1 } })
     await act(async () => { t.recv({ type: 'hello', v: 1, viewer: 'abcd', caps: { video: 1 } }) })
     await flush()
     await act(async () => { t.recv({ type: 'answer', sdp: 'fake-answer-sdp' }) })

@@ -1,0 +1,168 @@
+G-10 audit file: mode, events, no secrets
+office=portty-test guest=portty-test-2; build 22.12.0 of HEAD dfa1a208 (tags wailsassets vmdesktop, Developer ID); times are the office VM's epoch seconds
+--- audit file (names scrubbed; the line list is the whole file, ts event mode reason share_id-length device) [office 1795809901.441]
+audit: mode=600 bytes=43199 lines=147
+audit: events: admit_request=17 admitted=16 control_granted=5 control_revoked=2 join=40 leave=40 revoked=3 share_start=12 share_stop=12 
+audit: leave/stop reasons: leave:gui_gone x1  leave:revoked x2  leave:share_stopped x11  leave:viewer_closed x26  revoked:media_identity_mismatch x1  revoked:revoked x2  share_stop:gui_gone x1  share_stop:share_stopped x11  
+audit: no capability parameter and no token-shaped string in any line
+audit: lines follow (ts event mode reason share_id-length viewer)
+2026-11-27T17:36:35Z share_start guest  32 
+2026-11-27T17:38:17Z admit_request guest  32 HOME
+2026-11-27T17:39:42Z share_stop guest share_stopped 32 
+2026-11-27T17:43:37Z share_start guest  32 
+2026-11-27T17:44:15Z admit_request guest  32 HOME
+2026-11-27T17:44:52Z admitted guest  32 HOME
+2026-11-27T17:44:55Z join guest  32 HOME
+2026-11-27T17:45:35Z share_stop guest share_stopped 32 
+2026-11-27T17:45:35Z leave guest share_stopped 32 HOME
+2026-11-27T17:46:36Z share_start guest  32 
+2026-11-27T17:47:05Z admit_request guest  32 HOME
+2026-11-27T17:47:37Z admitted guest  32 HOME
+2026-11-27T17:47:38Z join guest  32 HOME
+2026-11-27T17:48:16Z share_stop guest share_stopped 32 
+2026-11-27T17:48:17Z leave guest share_stopped 32 HOME
+2026-11-27T17:49:16Z share_start guest  32 
+2026-11-27T17:49:49Z admit_request guest  32 HOME
+2026-11-27T17:49:53Z admitted guest  32 HOME
+2026-11-27T17:49:54Z join guest  32 HOME
+2026-11-27T17:52:26Z control_granted guest  32 HOME
+2026-11-27T18:24:27Z control_revoked guest  32 HOME
+2026-11-27T18:28:49Z revoked guest media_identity_mismatch 32 HOME
+2026-11-27T18:28:50Z leave guest viewer_closed 32 HOME
+2026-11-27T18:29:17Z join guest  32 HOME
+2026-11-27T18:30:27Z leave guest viewer_closed 32 HOME
+2026-11-27T18:31:17Z join guest  32 HOME
+2026-11-27T18:32:04Z leave guest viewer_closed 32 HOME
+2026-11-27T18:32:35Z join guest  32 HOME
+2026-11-27T18:36:08Z share_stop guest share_stopped 32 
+2026-11-27T18:36:08Z leave guest share_stopped 32 HOME
+2026-11-27T18:36:27Z share_start guest  32 
+2026-11-27T18:36:39Z admit_request guest  32 HOME
+2026-11-27T18:36:44Z admitted guest  32 HOME
+2026-11-27T18:36:44Z join guest  32 HOME
+2026-11-27T18:36:51Z control_granted guest  32 HOME
+2026-11-27T18:47:46Z control_revoked guest  32 HOME
+2026-11-27T18:54:34Z control_granted guest  32 HOME
+2026-11-27T19:09:28Z leave guest viewer_closed 32 HOME
+2026-11-27T19:09:30Z join guest  32 HOME
+2026-11-27T19:09:30Z leave guest viewer_closed 32 HOME
+2026-11-27T19:09:31Z join guest  32 HOME
+2026-11-27T19:09:32Z leave guest viewer_closed 32 HOME
+2026-11-27T19:09:32Z join guest  32 HOME
+2026-11-27T19:09:34Z leave guest viewer_closed 32 HOME
+2026-11-27T19:09:35Z join guest  32 HOME
+2026-11-27T19:09:36Z leave guest viewer_closed 32 HOME
+2026-11-27T19:09:37Z join guest  32 HOME
+2026-11-27T19:09:39Z leave guest viewer_closed 32 HOME
+2026-11-27T19:09:40Z join guest  32 HOME
+2026-11-27T19:09:43Z leave guest viewer_closed 32 HOME
+2026-11-27T19:09:45Z join guest  32 HOME
+2026-11-27T19:09:45Z leave guest viewer_closed 32 HOME
+2026-11-27T19:09:46Z join guest  32 HOME
+2026-11-27T19:09:48Z leave guest viewer_closed 32 HOME
+2026-11-27T19:09:49Z join guest  32 HOME
+2026-11-27T19:09:50Z leave guest viewer_closed 32 HOME
+2026-11-27T19:09:51Z join guest  32 HOME
+2026-11-27T19:09:53Z leave guest viewer_closed 32 HOME
+2026-11-27T19:09:54Z join guest  32 HOME
+2026-11-27T19:09:56Z leave guest viewer_closed 32 HOME
+2026-11-27T19:09:57Z join guest  32 HOME
+2026-11-27T19:09:58Z leave guest viewer_closed 32 HOME
+2026-11-27T19:09:59Z join guest  32 HOME
+2026-11-27T19:10:01Z leave guest viewer_closed 32 HOME
+2026-11-27T19:10:03Z join guest  32 HOME
+2026-11-27T19:10:03Z leave guest viewer_closed 32 HOME
+2026-11-27T19:10:03Z join guest  32 HOME
+2026-11-27T19:10:05Z leave guest viewer_closed 32 HOME
+2026-11-27T19:10:08Z join guest  32 HOME
+2026-11-27T19:12:18Z leave guest viewer_closed 32 HOME
+2026-11-27T19:12:22Z join guest  32 HOME
+2026-11-27T19:12:28Z admit_request guest  32 OFFICE
+2026-11-27T19:12:43Z admitted guest  32 OFFICE
+2026-11-27T19:12:44Z join guest  32 OFFICE
+2026-11-27T19:15:33Z leave guest viewer_closed 32 OFFICE
+2026-11-27T19:17:35Z join guest  32 OFFICE
+2026-11-27T19:19:38Z leave guest viewer_closed 32 OFFICE
+2026-11-27T19:20:54Z share_stop guest share_stopped 32 
+2026-11-27T19:20:54Z leave guest share_stopped 32 HOME
+2026-11-27T19:21:12Z share_start guest  32 
+2026-11-27T19:21:26Z admit_request guest  32 HOME
+2026-11-27T19:21:31Z admitted guest  32 HOME
+2026-11-27T19:21:31Z join guest  32 HOME
+2026-11-27T19:23:20Z admit_request guest  32 OFFICE
+2026-11-27T19:23:50Z admitted guest  32 OFFICE
+2026-11-27T19:23:51Z join guest  32 OFFICE
+2026-11-27T19:24:41Z leave guest viewer_closed 32 OFFICE
+2026-11-27T19:28:35Z leave guest viewer_closed 32 HOME
+2026-11-27T19:28:36Z join guest  32 HOME
+2026-11-27T19:29:59Z share_stop guest share_stopped 32 
+2026-11-27T19:30:00Z leave guest share_stopped 32 HOME
+2026-11-27T19:30:20Z share_start guest  32 
+2026-11-27T19:30:35Z admit_request guest  32 HOME
+2026-11-27T19:30:40Z admitted guest  32 HOME
+2026-11-27T19:30:41Z join guest  32 HOME
+2026-11-27T19:32:43Z admit_request guest  32 OFFICE
+2026-11-27T19:33:40Z admitted guest  32 OFFICE
+2026-11-27T19:33:43Z join guest  32 OFFICE
+2026-11-27T19:34:32Z leave guest viewer_closed 32 OFFICE
+2026-11-27T19:36:43Z join guest  32 OFFICE
+2026-11-27T19:37:48Z share_stop guest share_stopped 32 
+2026-11-27T19:37:48Z leave guest share_stopped 32 OFFICE
+2026-11-27T19:37:55Z leave guest share_stopped 32 HOME
+2026-11-27T19:40:51Z share_start guest  32 
+2026-11-27T19:41:10Z admit_request guest  32 HOME
+2026-11-27T19:41:14Z admitted guest  32 HOME
+2026-11-27T19:41:15Z join guest  32 HOME
+2026-11-27T19:42:09Z admit_request guest  32 OFFICE
+2026-11-27T19:42:15Z admitted guest  32 OFFICE
+2026-11-27T19:42:16Z join guest  32 OFFICE
+2026-11-27T19:43:02Z share_stop guest share_stopped 32 
+2026-11-27T19:43:02Z leave guest share_stopped 32 OFFICE
+2026-11-27T19:43:03Z leave guest share_stopped 32 HOME
+2026-11-27T19:43:46Z share_start guest  32 
+2026-11-27T19:44:03Z admit_request guest  32 HOME
+2026-11-27T19:44:08Z admitted guest  32 HOME
+2026-11-27T19:44:09Z join guest  32 HOME
+2026-11-27T19:44:51Z leave guest viewer_closed 32 HOME
+2026-11-27T19:44:57Z admit_request guest  32 OFFICE
+2026-11-27T19:44:59Z join guest  32 HOME
+2026-11-27T19:45:04Z admitted guest  32 OFFICE
+2026-11-27T19:45:05Z join guest  32 OFFICE
+2026-11-27T19:45:46Z share_stop guest share_stopped 32 
+2026-11-27T19:45:46Z leave guest share_stopped 32 OFFICE
+2026-11-27T19:45:47Z leave guest share_stopped 32 HOME
+2026-11-27T19:46:55Z share_start guest  32 
+2026-11-27T19:47:14Z admit_request guest  32 HOME
+2026-11-27T19:47:19Z admitted guest  32 HOME
+2026-11-27T19:47:20Z join guest  32 HOME
+2026-11-27T19:47:24Z control_granted guest  32 HOME
+2026-11-27T19:49:44Z revoked guest revoked 32 HOME
+2026-11-27T19:49:44Z leave guest revoked 32 HOME
+2026-11-27T19:52:48Z share_stop guest share_stopped 32 
+2026-11-27T19:53:13Z share_start guest  32 
+2026-11-27T19:53:34Z admit_request guest  32 HOME
+2026-11-27T19:53:40Z admitted guest  32 HOME
+2026-11-27T19:53:42Z join guest  32 HOME
+2026-11-27T19:53:48Z control_granted guest  32 HOME
+2026-11-27T19:56:18Z revoked guest revoked 32 HOME
+2026-11-27T19:56:18Z leave guest revoked 32 HOME
+2026-11-27T19:59:50Z share_stop guest share_stopped 32 
+2026-11-27T20:00:07Z share_start guest  32 
+2026-11-27T20:00:22Z admit_request guest  32 HOME
+2026-11-27T20:00:27Z admitted guest  32 HOME
+2026-11-27T20:00:28Z join guest  32 HOME
+2026-11-27T20:01:03Z share_stop guest gui_gone 32 
+2026-11-27T20:01:04Z leave guest gui_gone 32 HOME
+secret check exit: 0
+event share_start present: 12 line(s)
+event admit_request present: 17 line(s)
+event admitted present: 16 line(s)
+event join present: 40 line(s)
+event control_granted present: 5 line(s)
+event control_revoked present: 2 line(s)
+event revoked present: 5 line(s)
+event leave present: 40 line(s)
+event share_stop present: 12 line(s)
+share_stop reasons seen:    1 gui_gone;  11 share_stopped;
+leave reasons seen:    1 gui_gone;   2 revoked;  11 share_stopped;  26 viewer_closed;
+--- done [office 1795809921.017]

@@ -61,7 +61,7 @@ Full details: `.planning/milestones/v1.2-ROADMAP.md`. Audit: `.planning/mileston
 - [x] **Phase 19: Unattended Desktop Viewing** - Always-available desktop for your own Macs: guided permissions, live view in Chrome and Safari with nobody at the Mac, visible state, display kept awake, automatic reconnect, media on the tailnet only (completed 2026-11-26; real-Mac verification deferred, see 19-UAT.md)
 - [x] **Phase 20: Remote Control** - Pointer, keyboard, Send-keys menu and explicit clipboard from any viewer; the sharer picks a display or a single window and switches displays mid-session (completed 2026-11-27; real-Mac verification deferred, see 20-UAT.md)
 - [x] **Phase 21: Portty App and iPhone Viewers** - A Desktop tab opened from the sidebar in the Portty app, with Cmd shortcuts forwarded in control mode, and an iPhone viewer with trackpad mode and touch controls (completed 2026-11-27; real-device verification deferred, see 21-UAT.md)
-- [ ] **Phase 22: Click-to-Share for Tailnet People** - A desktop link other tailnet people can open, an Admit prompt by tailnet identity, view-only until granted, instant stop and revoke, a "shared with N" indicator, an audit log, and soft control hand-off
+- [x] **Phase 22: Click-to-Share for Tailnet People** - A desktop link other tailnet people can open, an Admit prompt by tailnet identity, view-only until granted, instant stop and revoke, a "shared with N" indicator, an audit log, and soft control hand-off (completed 2026-11-27; live two-account and real-Mac verification deferred, see 22-UAT.md)
 - [ ] **Phase 23: Audio, Adaptive Quality, Unlock and Release** - System audio (starts muted), sharp-when-still and smooth-when-moving video, remote unlock shipped or cut per the spike, real-Mac hardening, and the v2.0 release (rc.1 dry run, then the real tag) on the Phase 18.1 pipeline
 
 ## Phase Details
@@ -329,7 +329,7 @@ Plans:
   3. The sharer can stop the share or revoke one viewer at any time, which ends that connection at once, and the link stops working when the share ends. The shared Mac shows join and leave notifications and a persistent "shared with N" indicator with one-click stop. (DSHR-05, DSHR-06)
   4. Every join, leave and control grant is written to a local audit log on the shared Mac. (DSHR-07)
   5. With several viewers allowed to control, whoever typed last holds control for about 2 seconds while the others wait. The person physically at the shared Mac always wins over remote input. (DCTL-04)
-**Plans**: 11/13 plans executed
+**Plans**: 13/13 plans executed
 
 Plans:
 **Wave 1**
@@ -360,10 +360,10 @@ Plans:
 - [x] 22-11-PLAN.md — Admit sheet (no default button, Esc inert, 600 ms guard), Secure Event Input and Share-stopped banners, quit sentence
 
 **Wave 9** *(blocked on Wave 8 completion)*
-- [ ] 22-12-PLAN.md — Tart VM rows G-01..G-10 and SC1 on portty-test/portty-test-2 (user checkpoints: VM permission clicks, optional second Tailscale user, real-Mac items; Appendix B recorded PARTIAL)
+- [x] 22-12-PLAN.md — Tart VM rows G-01..G-10 and SC1 on portty-test/portty-test-2 (user checkpoints: VM permission clicks, optional second Tailscale user, real-Mac items; Appendix B recorded PARTIAL)
 
 **Wave 10** *(blocked on Wave 9 completion)*
-- [ ] 22-13-PLAN.md — TESTING.md (M-NN at run time), README access-rules paragraph, recorded security review 22-SECURITY.md
+- [x] 22-13-PLAN.md — TESTING.md (M-NN at run time), README access-rules paragraph, recorded security review 22-SECURITY.md
 
 Every plan opens with a hard `test -f` gate on the upstream 20-/21-/22- SUMMARY.md files it needs and stops if one is missing.
 **Notes**: This phase widens who can reach a desktop. MOB-05 still holds for terminal links. The phase therefore gets a recorded security review covering admit, revoke, cross-token and wrong-identity cases.
@@ -379,26 +379,26 @@ Every plan opens with a hard `test -f` gate on the upstream 20-/21-/22- SUMMARY.
   3. Remote unlock has one of two outcomes, set by the Phase 17 evidence. If it is feasible, a viewer on the host's own account sees the lock screen of a locked, logged-in Mac and types the password to unlock it. The password is never stored or logged, and click-to-share guests never get unlock. If it is not feasible, the requirement is cut and the docs say "unattended desktop works while the Mac is awake and unlocked". (UNLK-01)
   4. A `v2.0.0-rc.1` draft release (never offered to installed copies) runs the Phase 18.1 pipeline end to end and both DMGs verify, then the real v2.0 release ships. An installed v1.2.x copy updates to v2.0 through the universal name, and a Phase 18 build updates through self-install. (release run of the REL-01 pipeline built in Phase 18.1)
   5. On a real Mac, a two-build upgrade with a live desktop viewer and live terminal sessions keeps every terminal session and brings the desktop viewer back by itself. A one-hour desktop soak on the office Mac ends with no crash, leak or stuck state. (DESK-03, final hardening)
-**Plans**: 0/16 plans executed
+**Plans**: 8/16 plans executed
 
 Plans:
 **Wave 1**
-- [ ] 23-01-PLAN.md — Daemon audio: same SCStream, AudioConverter Opus ~64 kbps stereo track, audio failure never touches the picture (DCTL-07)
-- [ ] 23-06-PLAN.md — Browser sound: audio transceiver + stereo=1 munge, DesktopSoundButton starting muted, hint, host strings (DCTL-07)
+- [x] 23-01-PLAN.md — Daemon audio: same SCStream, AudioConverter Opus ~64 kbps stereo track, audio failure never touches the picture (DCTL-07)
+- [x] 23-06-PLAN.md — Browser sound: audio transceiver + stereo=1 munge, DesktopSoundButton starting muted, hint, host strings (DCTL-07)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 23-02-PLAN.md — Adaptive bitrate: pion TWCC/GCC starting at max, minimum-of-viewers with hysteresis, bitrate→fps→resolution ladder via encoder rebuild, slow-viewer exclusion (DESK-07)
+- [x] 23-02-PLAN.md — Adaptive bitrate: pion TWCC/GCC starting at max, minimum-of-viewers with hysteresis, bitrate→fps→resolution ladder via encoder rebuild, slow-viewer exclusion (DESK-07)
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 23-03-PLAN.md — Sharp when still: refine after ~300 ms of no new content, idle refresh (DESK-07)
-- [ ] 23-04-PLAN.md — Daemon unlock: binary 0x01 message (never a Go string), own-account `unlock` cap, wake/type/check/retry once, 5 s rate limit, 15 min pause after 3 failures (UNLK-01)
+- [x] 23-03-PLAN.md — Sharp when still: refine after ~300 ms of no new content, idle refresh (DESK-07)
+- [x] 23-04-PLAN.md — Daemon unlock: binary 0x01 message (never a Go string), own-account `unlock` cap, wake/type/check/retry once, 5 s rate limit, 15 min pause after 3 failures (UNLK-01)
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 23-05-PLAN.md — Unlock audit events, re-lock fail-secure after last own-account viewer leaves, lock-time input drop (UNLK-01; gated on 22-02, 22-03)
-- [ ] 23-07-PLAN.md — Unlock This Mac panel (11 states), guest Locked chip, blocked-input notice, CSP e2e check (UNLK-01)
+- [x] 23-05-PLAN.md — Unlock audit events, re-lock fail-secure after last own-account viewer leaves, lock-time input drop (UNLK-01; gated on 22-02, 22-03)
+- [x] 23-07-PLAN.md — Unlock This Mac panel (11 states), guest Locked chip, blocked-input notice, CSP e2e check (UNLK-01)
 
 **Wave 5** *(blocked on Wave 4 completion)*
-- [ ] 23-08-PLAN.md — Slow connection chip, iPhone Sound item, app-tab playing indicator, phone locked-state bar rules (gated on 21-08, 21-10)
+- [x] 23-08-PLAN.md — Slow connection chip, iPhone Sound item, app-tab playing indicator, phone locked-state bar rules (gated on 21-08, 21-10)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 - [ ] 23-09-PLAN.md — VM proof of audio and adaptive quality (checkpoint: VM permission clicks)
@@ -437,5 +437,5 @@ Plans:
 | 19. Unattended Desktop Viewing | v2.0 | 17/17 | Complete    | 2026-11-26 |
 | 20. Remote Control | v2.0 | 11/11 | Complete    | 2026-11-27 |
 | 21. Portty App and iPhone Viewers | v2.0 | 13/13 | Complete    | 2026-11-27 |
-| 22. Click-to-Share for Tailnet People | v2.0 | 11/13 | In Progress | - |
-| 23. Audio, Adaptive Quality, Unlock and Release | v2.0 | 0/16 | Not started | - |
+| 22. Click-to-Share for Tailnet People | v2.0 | 13/13 | Complete    | 2026-11-27 |
+| 23. Audio, Adaptive Quality, Unlock and Release | v2.0 | 8/16 | In Progress | - |

@@ -139,6 +139,9 @@ describe('ShareDesktopSheet: start and copy (tracer)', () => {
     expect(text()).toContain(copy.WATCHING_HEADER)
     expect(text()).toContain(copy.WATCHING_EMPTY)
     expect(text()).toContain(copy.SHARE_FOOTNOTE)
+    // Everyone watching hears the Mac, even before they unmute; there is no audio switch (DCTL-07).
+    expect(text()).toContain("hears this Mac's sound, even before they unmute")
+    expect(container.querySelector('[role="switch"]')).toBeNull()
     // The link is never shown.
     expect(text()).not.toContain('PLACEHOLDER')
     expect(container.innerHTML).not.toContain('PLACEHOLDER')
@@ -168,6 +171,26 @@ describe('ShareDesktopSheet: start and copy (tracer)', () => {
     await click(button(copy.DONE)!)
     expect(onClose).toHaveBeenCalledTimes(2)
     expect(stop).not.toHaveBeenCalled()
+  })
+
+  it('Esc does nothing while the sheet is checking or getting a link, as Done does', async () => {
+    let ackDone!: (v: boolean) => void
+    hasCT.mockReturnValueOnce(new Promise((r) => { ackDone = r }))
+    let started!: (v: App.DesktopShareResult) => void
+    start.mockReturnValueOnce(new Promise((r) => { started = r }))
+    const esc = () => act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
+    await mount()
+    await esc() // checking
+    expect(onClose).not.toHaveBeenCalled()
+    await act(async () => { ackDone(true) })
+    await tick(0)
+    expect(text()).toContain(copy.SHARE_STARTING)
+    await esc() // starting
+    expect(onClose).not.toHaveBeenCalled()
+    await act(async () => { started(okStart()) })
+    await tick(0)
+    await esc()
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 
   it('a failed copy shows the inline error and no Copied!', async () => {
@@ -202,6 +225,7 @@ describe('ShareDesktopSheet: start and copy (tracer)', () => {
     await mount()
     expect(start).not.toHaveBeenCalled()
     expect(text()).toContain(copy.SHARE_NOT_SHARING_DESCRIPTION)
+    expect(text()).toContain('Show your screen and sound to someone')
     expect(text()).toContain(copy.SHARE_CT_LINE('my-mac.tailnet'))
     expect(button(copy.NOT_NOW)).toBeDefined()
 
@@ -232,6 +256,16 @@ describe('ShareDesktopSheet: start and copy (tracer)', () => {
     await tick(5000)
     expect(start).toHaveBeenCalledTimes(1)
     expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('a rejected StopDesktopShare shows the stop error and leaves the stopping state (UI-REVIEW #6)', async () => {
+    stop.mockRejectedValueOnce(new Error('daemon gone'))
+    await mount()
+    await click(button(copy.STOP_SHARING)!)
+    expect(container.querySelector('[role="alert"]')!.textContent).toBe(copy.shareDesktopStopError('daemon gone'))
+    await click(button(copy.STOP_SHARING)!)
+    expect(stop).toHaveBeenCalledTimes(2)
+    expect(text()).toContain(copy.SHARE_NOT_SHARING_DESCRIPTION)
   })
 
   it('a failed stop shows the error with the local detail and stays in Sharing', async () => {
@@ -287,6 +321,17 @@ describe('ShareDesktopSheet: start failures and reasons (Surface 2 table)', () =
     await click(button(copy.START_SHARING)!)
     expect(start).toHaveBeenCalledTimes(2)
     expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(text()).toContain(copy.SHARE_LINK_LABEL)
+  })
+
+  it('a rejected StartDesktopShare shows the start error and leaves Getting a link… (UI-REVIEW #6)', async () => {
+    start.mockRejectedValueOnce(new Error('daemon gone'))
+    await mount()
+    expect(container.querySelector('[role="alert"]')!.textContent).toBe(copy.shareDesktopStartError('daemon gone'))
+    expect(text()).not.toContain(copy.SHARE_STARTING)
+    expect(startBlocked()).toBe(false)
+    await click(button(copy.START_SHARING)!)
+    expect(start).toHaveBeenCalledTimes(2)
     expect(text()).toContain(copy.SHARE_LINK_LABEL)
   })
 

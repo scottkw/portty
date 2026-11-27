@@ -14,10 +14,13 @@ import {
   HandRaisedIcon,
   InformationCircleIcon,
   LockClosedIcon,
+  LockOpenIcon,
   MoonIcon,
   NoSymbolIcon,
   PlayIcon,
+  SignalIcon,
   SignalSlashIcon,
+  SpeakerXMarkIcon,
   StopIcon,
   UserIcon,
   WindowIcon,
@@ -35,6 +38,7 @@ import {
   type DesktopLeaseMsg,
   type DesktopStateMsg,
   type DesktopSurfaceMsg,
+  type DesktopUnlockMsg,
 } from '../lib/desktopClient'
 import { HINT_KEY, createDesktopInput, type DesktopInput, type ReleaseReason } from '../lib/desktopInput'
 import { isPhone, usePhone } from '../lib/phoneQuery'
@@ -43,6 +47,16 @@ import { UserRefused } from './UserRefused'
 import { DesktopCopyPopover, DesktopPastePopover } from './DesktopClipboardPopover'
 import { DEFAULT_RELEASE_CHORD, DesktopControlBar, SWITCH_TIMEOUT_MS, type ControlMode, type SurfacePick } from './DesktopControlBar'
 import { DesktopPhoneLayer } from './DesktopPhoneLayer'
+import { DesktopUnlockPanel } from './DesktopUnlockPanel'
+import {
+  SOUND_HINT,
+  SOUND_HINT_MS,
+  SOUND_HINT_PHONE,
+  SOUND_PLAY_REJECTED,
+  SOUND_PLAY_REJECTED_PHONE,
+  SOUND_UNAVAILABLE_NOTICE,
+  type SoundNotice,
+} from './DesktopSoundButton'
 import * as copy from '../lib/shareDesktopCopy'
 
 const TITLE = 'Portty Desktop'
@@ -126,23 +140,25 @@ const CARDS: Record<CardKey, { Icon: Icon; heading: string; body: string }> = {
 }
 
 /** The guest page's cards (22-UI-SPEC Surface 6); the words are shareDesktopCopy's and `mac` is set as text. */
-type GuestCardKey = 'guest_waiting' | 'guest_denied' | 'guest_timeout' | 'guest_revoked' | 'guest_ended' | 'guest_link' | 'guest_connecting' | 'guest_unreachable'
+type GuestCardKey = 'guest_waiting' | 'guest_denied' | 'guest_timeout' | 'guest_revoked' | 'guest_replaced' | 'guest_ended' | 'guest_link' | 'guest_connecting' | 'guest_unreachable'
 const guestCards = (mac: string): Record<GuestCardKey, { Icon: Icon; heading: string; body: string }> => ({
   guest_waiting: { Icon: ClockIcon, heading: copy.guestWaitingHeading(mac), body: copy.GUEST_CARD_WAITING_BODY },
   guest_denied: { Icon: NoSymbolIcon, heading: copy.GUEST_CARD_NOT_ADMITTED, body: copy.GUEST_CARD_DENIED_BODY },
   guest_timeout: { Icon: ClockIcon, heading: copy.GUEST_CARD_NOT_ADMITTED, body: copy.GUEST_CARD_TIMEOUT_BODY },
   guest_revoked: { Icon: NoSymbolIcon, heading: copy.GUEST_CARD_REVOKED, body: copy.GUEST_CARD_REVOKED_BODY },
+  guest_replaced: { Icon: ComputerDesktopIcon, heading: copy.GUEST_CARD_REPLACED, body: copy.GUEST_CARD_REPLACED_BODY },
   guest_ended: { Icon: StopIcon, heading: copy.GUEST_CARD_ENDED, body: copy.GUEST_CARD_ENDED_BODY },
   guest_link: { Icon: ExclamationTriangleIcon, heading: copy.GUEST_CARD_LINK, body: copy.GUEST_CARD_LINK_BODY },
   guest_connecting: { Icon: ComputerDesktopIcon, heading: copy.GUEST_CARD_CONNECTING, body: copy.guestConnectingBody(mac) },
   guest_unreachable: { Icon: SignalSlashIcon, heading: copy.GUEST_CARD_UNREACHABLE, body: copy.GUEST_CARD_UNREACHABLE_BODY },
 })
-/** The two guest cards that offer Reload Page. */
-const GUEST_RELOAD: ReadonlySet<GuestCardKey> = new Set<GuestCardKey>(['guest_timeout', 'guest_unreachable'])
+/** The guest cards that offer Reload Page. */
+const GUEST_RELOAD: ReadonlySet<GuestCardKey> = new Set<GuestCardKey>(['guest_timeout', 'guest_replaced', 'guest_unreachable'])
 const GUEST_FINAL_CARDS = {
   denied: 'guest_denied',
   admit_timeout: 'guest_timeout',
   revoked: 'guest_revoked',
+  replaced: 'guest_replaced',
   share_ended: 'guest_ended',
   token_invalid: 'guest_link',
 } as const
@@ -184,6 +200,14 @@ const STATE_CARDS: Partial<Record<DesktopStateMsg['state'], CardKey>> = {
 }
 
 const HINT_ID = 'desktop-stage-hint'
+/** After a Portty unlock the daemon's by_portty message is expected this soon after the state flips; later, the Mac was unlocked at its keyboard. */
+const UNLOCK_WAIT_MS = 1500
+const UNLOCKED_BY_PORTTY = 'Mac unlocked. It will lock again after you disconnect.'
+// Surface 3: every viewer's clicks and keys are dropped while the Mac is locked; the viewer says so instead of letting typing do nothing.
+const BLOCKED_GUEST = 'Clicks and typing are off while this Mac is locked.'
+const BLOCKED_OWN = `${BLOCKED_GUEST} Use Unlock This Mac to enter the password.`
+/** After the first notice of a lock episode, no more often than this while the user keeps typing. */
+const BLOCKED_REPEAT_MS = 10000
 const SURFACE_FALLBACKS: Record<string, string | undefined> = {
   window_closed: 'The shared window closed; showing the main display',
   display_gone: 'The shared display disconnected; showing the main display',
@@ -206,6 +230,8 @@ const WINDOW_CHIPS = {
   raise_failed: { Icon: ExclamationTriangleIcon, text: "Couldn't bring the window to the front. Click the picture to try again." },
   minimized: { Icon: WindowIcon, text: 'The shared window is minimized. Click the picture to bring it back.' },
 } as const
+/** The daemon put this viewer below its quality floor (23-UI-SPEC Surface 4). No setting, no sharpening indicator. */
+const SLOW_CHIP = { Icon: SignalIcon, text: 'Slow connection. The picture may freeze.' }
 const ACCESSIBILITY_CHIP = {
   Icon: ExclamationTriangleIcon,
   text: 'Control needs Accessibility. On the Mac, allow Portty in Privacy & Security.',
@@ -248,6 +274,12 @@ const PASTE_NOTICES: Partial<Record<ClipOutcome, NoticeSpec>> = {
 }
 const PASTE_CONCEALED: NoticeSpec = { Icon: ExclamationTriangleIcon, text: HOME_PASTE_WORDS.concealed, dwell: 5000 }
 const PASTE_FAILED: NoticeSpec = { Icon: ExclamationTriangleIcon, text: "Couldn't send to the Mac. Try again.", dwell: 5000, alert: true }
+
+/** The two Sound failure notices (23-UI-SPEC Surface 1); the phone's words say Tap. */
+function soundNoticeSpec(kind: SoundNotice, phone: boolean): NoticeSpec {
+  const text = kind === 'unavailable' ? SOUND_UNAVAILABLE_NOTICE : phone ? SOUND_PLAY_REJECTED_PHONE : SOUND_PLAY_REJECTED
+  return { Icon: ExclamationTriangleIcon, text, dwell: 5000, alert: true }
+}
 
 export type { ControlMode }
 
@@ -307,6 +339,11 @@ export interface DesktopViewProps {
   hostCard?: HostCard | null
   /** The host stopped the client (a hidden window): shows the Reconnecting chip until the host clears it. */
   paused?: boolean
+  /**
+   * The app tab's playing indicator (23-08): true while this viewer's sound is on and connected; false on mute,
+   * on disconnect (a hidden-window pause included) and on unmount.
+   */
+  onSound?: (on: boolean) => void
   /** True while a picture shows and no card covers it. */
   onPicture?: (has: boolean) => void
   /** True when the stage has the keyboard (the user clicked or tabbed onto it), false when it goes. */
@@ -349,6 +386,7 @@ export function DesktopView({
   hostCard = null,
   readClipboard,
   paused: hostPaused = false,
+  onSound,
   onPicture,
   onCaptureChange,
   onModeChange,
@@ -399,11 +437,37 @@ export function DesktopView({
   const [viewers, setViewers] = useState<number | null>(null)
   // Guest mode: where this connection stands at Admit. Null until the share server says, and again after a drop.
   const [admission, setAdmission] = useState<'waiting' | 'admitted' | null>(null)
-  // Guest mode: who holds the lease, and whether physical input at the Mac has held it for the 2 s minimum.
+  // Who holds the lease (guests and own-account controllers), and whether physical input at the Mac has held it for the 2 s minimum.
   const [lease, setLease] = useState<DesktopLeaseMsg | null>(null)
   const [someoneUsing, setSomeoneUsing] = useState(false)
   const prevClipboard = useRef(false)
   const [hasFrame, setHasFrame] = useState(false)
+  // The server hello offered sound (23-06). Without it no Sound item is shown at all.
+  const [hasAudio, setHasAudio] = useState(false)
+  // The server hello carried caps unlock 1 (own-account viewers only; 23-04). Without it the Unlock panel is not in the DOM.
+  const [hasUnlock, setHasUnlock] = useState(false)
+  // The daemon's last unlock message for this lock episode. The viewer keeps no counters of its own.
+  const [unlockMsg, setUnlockMsg] = useState<DesktopUnlockMsg | null>(null)
+  const wasLocked = useRef(false)
+  const lockedSeen = useRef(false)
+  // When a by_portty unlock message arrived before the state flip, and the timer that waits for one after it.
+  const byPorttyAt = useRef(0)
+  const flipTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // The Phase 20 capture notice is suppressed once, so Mac unlocked stays readable.
+  const suppressCapture = useRef(false)
+  // The lock episode counts up each time the Mac locks; the blocked-input notice shows once per episode, then at most every 10 s.
+  const lockEpisode = useRef(0)
+  const blockedShown = useRef({ episode: 0, at: 0 })
+  // Sound is on for this viewer. Not remembered: every page load starts muted.
+  const [soundOn, setSoundOn] = useState(false)
+  // The phone's Unlock field has focus: the bar slot is empty so the panel is the only thing above the keyboard.
+  const [unlockFocused, setUnlockFocused] = useState(false)
+  // The one-time Sound hint has been shown (or its moment passed) in this page load.
+  const hintDone = useRef(false)
+  const hintId = useRef(0)
+  const wasFailed = useRef(false)
+  // The daemon says this viewer is below its quality floor. It belongs to one connection, so a lost connection clears it.
+  const [slow, setSlow] = useState(false)
   const [needsTap, setNeedsTap] = useState(false)
   const [chipPhase, setChipPhase] = useState<'gone' | 'shown' | 'fading'>('gone')
   // The viewer may control the Mac (the hello grants it and this is not a phone). The keyboard is not
@@ -446,6 +510,12 @@ export function DesktopView({
     setNoticeFading(false)
     setNotice({ ...n, id: noticeSeq.current })
   }, [])
+  const unlockedNotice = useCallback(
+    (byPortty: boolean) => {
+      pushNotice({ Icon: LockOpenIcon, text: byPortty ? UNLOCKED_BY_PORTTY : 'Mac unlocked', dwell: byPortty ? 5000 : 3000 })
+    },
+    [pushNotice],
+  )
   const typingStays = useCallback(() => {
     if (hideCaptureRef.current) return
     pushNotice({ Icon: CursorArrowRaysIcon, text: 'Typing stays on this device', dwell: 3000 })
@@ -519,15 +589,26 @@ export function DesktopView({
   }, [updateRect])
 
   // A rejected play() (autoplay policy, always on iPhone) is the Tap to start card, not an error.
+  // With sound on (a reconnect inside the page) a refusal first drops the sound and tries once more:
+  // the picture matters more, and Unmute is one click away.
   const startPlay = useCallback(() => {
     const v = videoRef.current
     if (!v) return
-    try {
-      void Promise.resolve(v.play()).then(() => setNeedsTap(false), () => setNeedsTap(true))
-    } catch {
+    const refused = () => {
+      if (!v.muted) {
+        v.muted = true
+        pushNotice(soundNoticeSpec('play-rejected', isPhone()))
+        void Promise.resolve(v.play()).then(() => setNeedsTap(false), () => setNeedsTap(true))
+        return
+      }
       setNeedsTap(true)
     }
-  }, [])
+    try {
+      void Promise.resolve(v.play()).then(() => setNeedsTap(false), refused)
+    } catch {
+      refused()
+    }
+  }, [pushNotice])
 
   useEffect(() => {
     const client = createDesktopClient(guestProp === undefined ? optionsRef.current : { ...optionsRef.current, guest: guestProp })
@@ -604,7 +685,7 @@ export function DesktopView({
             onCapture: (c) => {
               capturedRef.current = c
               setCaptured(c)
-              if (!c || hideCaptureRef.current) return
+              if (!c || hideCaptureRef.current || suppressCapture.current) return
               let seen = false
               try {
                 seen = window.localStorage.getItem(HINT_KEY) === '1'
@@ -635,6 +716,25 @@ export function DesktopView({
         setCanSurface(r.surface && !guest)
         setCanClipboard(r.clipboard)
         setCanControl(true)
+      }),
+      client.on('caps', ({ audio, unlock }) => {
+        setHasAudio(audio)
+        setHasUnlock(unlock && !guest)
+      }),
+      client.on('quality', ({ slow: s }) => setSlow(s)),
+      client.on('unlock', (m) => {
+        if (m.state === 'unlocked') {
+          // Success is shown when the state flips to unlocked; this only says who typed it. Never stored: a stale
+          // 'unlocked' would greet the next lock episode.
+          if (!m.byPortty || guest) return
+          if (flipTimer.current !== null) {
+            clearTimeout(flipTimer.current)
+            flipTimer.current = null
+            unlockedNotice(true)
+          } else byPorttyAt.current = Date.now()
+          return
+        }
+        setUnlockMsg(m)
       }),
       client.on('input', ({ open }) => {
         if (open) return
@@ -706,6 +806,8 @@ export function DesktopView({
         if (s.kind === 'reconnecting' || s.kind === 'unreachable') {
           setAdmission(null)
           resetLease()
+          setUnlockMsg(null)
+          setSlow(false)
         }
         // A state card describes the connection that is gone; the next state message replaces it.
         if (s.kind !== 'streaming' && s.kind !== 'connecting') {
@@ -718,6 +820,8 @@ export function DesktopView({
     client.start()
     return () => {
       for (const off of offs) off()
+      if (flipTimer.current !== null) clearTimeout(flipTimer.current)
+      flipTimer.current = null
       inputCtl.current?.destroy()
       inputCtl.current = null
       client.stop()
@@ -725,7 +829,7 @@ export function DesktopView({
       clientCb.current?.(null)
       setPhoneClient(null)
     }
-  }, [startPlay, updateRect, pushNotice, typingStays, guest, guestProp, embedded])
+  }, [startPlay, updateRect, pushNotice, typingStays, unlockedNotice, guest, guestProp, embedded])
 
   // The count chip: 3 s after the first frame, and again whenever the count changes.
   useEffect(() => {
@@ -768,6 +872,50 @@ export function DesktopView({
   useEffect(() => {
     inputCtl.current?.setPaused(inputPaused)
   }, [inputPaused, canControl])
+
+  useEffect(() => {
+    if (locked) lockEpisode.current++
+  }, [locked])
+  // A viewer with Control on pressed a printable key or the picture while Locked: nothing is sent (the Phase 20 pause).
+  const blockedInput = useCallback(() => {
+    if (!locked || !active) return
+    const seen = blockedShown.current
+    const now = Date.now()
+    if (seen.episode === lockEpisode.current && now - seen.at < BLOCKED_REPEAT_MS) return
+    blockedShown.current = { episode: lockEpisode.current, at: now }
+    pushNotice({ Icon: LockClosedIcon, text: guest ? BLOCKED_GUEST : BLOCKED_OWN, dwell: 5000 })
+  }, [locked, active, guest, pushNotice])
+
+  // The Mac leaving Locked (23-UI-SPEC Surface 2): the panel is already gone with the lock. After a Portty unlock the
+  // stage takes focus (capture notice suppressed once) and the notice says it will lock again; if no by_portty message
+  // comes within 1.5 s the Mac was unlocked at its own keyboard. A dropped connection is not a flip.
+  useEffect(() => {
+    if (!desk) return
+    const nowLocked = desk.locked || desk.state === 'locked'
+    if (nowLocked) {
+      if (flipTimer.current !== null) clearTimeout(flipTimer.current)
+      flipTimer.current = null
+      byPorttyAt.current = 0
+    } else if (wasLocked.current && (desk.state === 'streaming' || desk.state === 'idle')) {
+      setUnlockMsg(null)
+      if (!phoneMode && active && document.activeElement === document.body) {
+        suppressCapture.current = true
+        stageRef.current?.focus({ preventScroll: true })
+        suppressCapture.current = false
+      }
+      if (!guest) {
+        if (byPorttyAt.current !== 0 && Date.now() - byPorttyAt.current < 10000) unlockedNotice(true)
+        else {
+          flipTimer.current = setTimeout(() => {
+            flipTimer.current = null
+            unlockedNotice(false)
+          }, UNLOCK_WAIT_MS)
+        }
+        byPorttyAt.current = 0
+      }
+    }
+    wasLocked.current = nowLocked
+  }, [desk, guest, active, phoneMode, unlockedNotice])
 
   // Held input is let go of when the Mac locks or the picture is lost; the user keeps the keyboard.
   useEffect(() => {
@@ -1004,6 +1152,8 @@ export function DesktopView({
   const stateCard = desk ? STATE_CARDS[desk.state] : undefined
   let cardKey: CardKey | GuestCardKey | null = null
   let chip: { Icon?: Icon; text: string; fading?: boolean } | null = null
+  // A phone has no desktop controller, so canControl stays false there; its grant is phoneRights.
+  const mayControl = phoneMode ? phoneRights?.control === true : canControl
   // Embedded, the other-account case is the Refused card (the page's Refused screen talks about a link).
   const clientStatus = embedded && status.kind === 'other_account' ? 'token_rejected' : status.kind
   if (hostCard) cardKey = null
@@ -1016,25 +1166,82 @@ export function DesktopView({
   else if (needsTap) cardKey = 'tap'
   else if (status.kind === 'reconnecting') chip = { Icon: ArrowPathIcon, text: 'Reconnecting…' }
   else if (!hasFrame) cardKey = guest ? 'guest_connecting' : 'connecting'
-  else if (locked) chip = { Icon: LockClosedIcon, text: 'Locked' }
+  else if (locked) chip = { Icon: LockClosedIcon, text: guest ? copy.GUEST_CHIP_LOCKED : 'Locked' }
   else if (canControl && ctlState.window !== '') chip = WINDOW_CHIPS[ctlState.window]
   else if (canControl && accessNeeded) chip = ACCESSIBILITY_CHIP
-  else if (guest && canControl && someoneUsing) chip = { Icon: HandRaisedIcon, text: copy.GUEST_CHIP_SOMEONE }
-  else if (guest && canControl && lease?.state === 'other') chip = { Icon: UserIcon, text: copy.controllingChip(lease.name || 'Someone') }
-  else if (guest && canControl) chip = { Icon: CursorArrowRaysIcon, text: copy.GUEST_CHIP_CONTROL }
+  // The lease chips are for every viewer that can control, own-account viewers included (22-UI-SPEC chip table, WR-07).
+  else if (mayControl && lease?.state === 'unavailable') chip = { Icon: ExclamationTriangleIcon, text: copy.CHIP_CONTROL_UNAVAILABLE }
+  else if (mayControl && someoneUsing) chip = { Icon: HandRaisedIcon, text: copy.GUEST_CHIP_SOMEONE }
+  else if (slow) chip = SLOW_CHIP
+  else if (mayControl && lease?.state === 'other') chip = { Icon: UserIcon, text: copy.controllingChip(lease.name || 'Someone') }
+  else if (guest && mayControl) chip = { Icon: CursorArrowRaysIcon, text: copy.GUEST_CHIP_CONTROL }
   else if (guest) chip = { Icon: EyeIcon, text: copy.GUEST_CHIP_VIEW_ONLY }
   else if (chipPhase !== 'gone' && viewers !== null && viewers >= 1) {
     chip = { text: `Streaming to ${viewers} ${viewers === 1 ? 'viewer' : 'viewers'}`, fading: chipPhase === 'fading' }
   }
   // The bar is for a viewer that may control the Mac, while a picture is up and no card covers it.
   // A guest granted only the clipboard still has a bar, holding the Clipboard menu alone.
-  const barAllowed = canControl || canClipboard
+  // A viewer with sound and no other right still gets the bar, holding the Sound item alone. The phone's own bar holds its Sound item (23-08).
+  const soundBar = hasAudio && !phoneMode
+  const barAllowed = canControl || canClipboard || soundBar
   const showBar = barAllowed && cardKey === null && !hostCard && !hostPaused && (status.kind === 'streaming' || status.kind === 'reconnecting')
   showBarRef.current = showBar
   const picture = hasFrame && cardKey === null && !hostCard && !hostPaused
+  // The Unlock panel: Locked (kept through a reconnect, when the state card is gone) and the hello's unlock capability, under no card.
+  if (desk) lockedSeen.current = locked
+  const unlockReconnecting = hostPaused || status.kind === 'reconnecting'
+  const showUnlock = hasUnlock && !guest && cardKey === null && !hostCard && (locked || (desk === null && unlockReconnecting && lockedSeen.current))
   useEffect(() => {
     pictureCb.current?.(picture)
   }, [picture])
+  // Sound (23-06). Audio failing is the daemon's state; the picture is never touched by it.
+  const audioFailed = desk?.audio === 'failed'
+  const soundNotice = useCallback((kind: SoundNotice) => pushNotice(soundNoticeSpec(kind, phoneMode)), [pushNotice, phoneMode])
+  const phoneSound = hasAudio && phoneMode ? { video: videoRef.current, failed: audioFailed, onNotice: soundNotice, onChange: setSoundOn } : undefined
+  // The app tab's playing indicator: sound on and a live connection. Mute, a lost connection (the hidden-window pause too) and unmount clear it.
+  const playing = soundOn && status.kind === 'streaming' && !hostPaused
+  const onSoundRef = useRef(onSound)
+  onSoundRef.current = onSound
+  useEffect(() => {
+    onSoundRef.current?.(playing)
+  }, [playing])
+  useEffect(() => () => onSoundRef.current?.(false), [])
+  // A field removed while focused fires no focusout everywhere (the Mac unlocked under it): the slot comes back with the panel's end.
+  useEffect(() => {
+    if (!showUnlock) setUnlockFocused(false)
+  }, [showUnlock])
+  // Focus in the Unlock password field empties the phone's bar slot. Document-level focus events are the only way to see it:
+  // the panel is a sibling of the stage, and the field is uncontrolled.
+  useEffect(() => {
+    if (!phoneMode) return
+    const field = (e: Event) => (e.target as Element | null)?.matches?.('.desktop-unlock__input') === true
+    const on = (e: FocusEvent) => { if (field(e)) setUnlockFocused(true) }
+    const off = (e: FocusEvent) => { if (field(e)) setUnlockFocused(false) }
+    document.addEventListener('focusin', on)
+    document.addEventListener('focusout', off)
+    return () => {
+      document.removeEventListener('focusin', on)
+      document.removeEventListener('focusout', off)
+      setUnlockFocused(false)
+    }
+  }, [phoneMode])
+  // The one-time hint: the first time the picture is up with sound negotiated and off, never under a card.
+  // It is not repeated after a reconnect, and unmuting takes it away.
+  useEffect(() => {
+    if (hintDone.current || !picture || !hasAudio || soundOn) return
+    hintDone.current = true
+    pushNotice({ Icon: SpeakerXMarkIcon, text: phoneMode ? SOUND_HINT_PHONE : SOUND_HINT, dwell: SOUND_HINT_MS })
+    hintId.current = noticeSeq.current
+  }, [picture, hasAudio, soundOn, phoneMode, pushNotice])
+  useEffect(() => {
+    if (soundOn) setNotice((n) => (n?.id === hintId.current ? null : n))
+  }, [soundOn])
+  // Losing sound that was playing says so once; a viewer that was muted is not told.
+  useEffect(() => {
+    if (audioFailed && !wasFailed.current && soundOn) soundNotice('unavailable')
+    wasFailed.current = audioFailed
+  }, [audioFailed, soundOn, soundNotice])
+
   // A popover belongs to the bar: when the bar goes (a card covers the picture), so does it.
   // A menu open when the bar went would otherwise block the copy/paste fallback popover
   // (the barMenuOpenRef guard) after the bar returns.
@@ -1076,6 +1283,10 @@ export function DesktopView({
       <div
         className={active && !inputPaused ? 'desktop-stage desktop-stage--live' : 'desktop-stage'}
         ref={stageRef}
+        onKeyDown={(e) => {
+          if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) blockedInput()
+        }}
+        onPointerDown={blockedInput}
         {...(canControl
           ? { role: 'application', 'aria-label': 'Mac desktop', 'aria-describedby': HINT_ID, tabIndex: active ? 0 : -1 }
           : guest
@@ -1094,6 +1305,9 @@ export function DesktopView({
             locked={locked}
             reconnecting={hostPaused || status.kind === 'reconnecting' || status.kind === 'unreachable'}
             onSelectSurface={pickSurface}
+            guest={guest}
+            sound={phoneSound}
+            slotHidden={unlockFocused}
           />
         )}
         <span id={HINT_ID} className="visually-hidden">
@@ -1175,6 +1389,15 @@ export function DesktopView({
           )}
         </div>
       </div>
+      {showUnlock && clientRef.current && (
+        <DesktopUnlockPanel
+          client={clientRef.current}
+          unlock={unlockMsg}
+          reconnecting={unlockReconnecting}
+          needsAccessibility={accessNeeded}
+          phone={phoneMode}
+        />
+      )}
       {showBar && (
         <div
           className="desktop-overlay"
@@ -1219,6 +1442,7 @@ export function DesktopView({
             popoverOpen={popover !== null}
             releaseChord={releaseChord}
             guest={guest}
+            sound={soundBar ? { video: videoRef.current, failed: audioFailed, onNotice: soundNotice, onChange: setSoundOn } : undefined}
           />
         </div>
       )}

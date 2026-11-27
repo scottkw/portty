@@ -9,6 +9,7 @@ import {
   PhotoIcon,
   PlusIcon,
   SignalIcon,
+  SpeakerWaveIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline'
 import { PeerDot, SidebarToggleIcon } from './Sidebar'
@@ -109,6 +110,8 @@ interface TabBarProps {
    * trailing chip slot only while a Desktop tab is active; null or absent shows nothing.
    */
   desktopLabel?: { line1: string; line2: string; controlling: boolean; tooltip: string } | null
+  /** 23-08: ids of the Desktop tabs whose sound is on and connected; each shows a speaker between its name and the peer dot. */
+  playingTabIds?: ReadonlySet<string>
 }
 
 const DESKTOP_LABEL_DESC_ID = 'desktop-label-description'
@@ -140,6 +143,7 @@ export function TabBar({
   shared = false,
   shareDisabled = false,
   desktopLabel = null,
+  playingTabIds,
   shareOpen = false,
   sharePopoverId,
   shareButtonRef,
@@ -229,6 +233,7 @@ export function TabBar({
           const label = peer ? `${peer.session} · ${peer.host}` : tab.name
           // UI-SPEC "Anatomy": a preview names its session (live while that tab is open) and, for a peer, the Mac.
           const isPreview = tab.type === 'preview'
+          const playing = tab.type === 'desktop' && playingTabIds?.has(tab.id) === true
           const owner = isPreview ? tabs.find((t) => t.id === tab.ownerTabId) ?? tab.owner : undefined
           const ownerPeer = owner ? peerTabParts(owner) : null
           const ownerSession = ownerPeer?.session ?? owner?.name ?? ''
@@ -254,7 +259,7 @@ export function TabBar({
                 className="tab__label"
                 aria-selected={active}
                 aria-controls={`tabpanel-${tab.id}`}
-                aria-label={isPreview ? `${tab.name}, preview from ${ownerSession}${ownerPeer ? ` on ${ownerPeer.host}` : ''}` : undefined}
+                aria-label={isPreview ? `${tab.name}, preview from ${ownerSession}${ownerPeer ? ` on ${ownerPeer.host}` : ''}` : playing ? `${label}, playing sound` : undefined}
                 tabIndex={active ? 0 : -1}
                 onClick={() => onSelect(tab.id)}
                 onKeyDown={(e) => {
@@ -281,6 +286,7 @@ export function TabBar({
                 >
                   {peer ? <>{peer.session}<span className="tab__host"> · {peer.host}</span></> : tab.name}
                 </span>
+                {playing && <SpeakerWaveIcon className="tab__sound" aria-hidden="true" />}
                 {peer && tab.peerHost && <PeerDot hostname={tab.peerHost} />}
                 {ownerPeer && owner?.peerHost && <PeerDot hostname={owner.peerHost} />}
               </button>

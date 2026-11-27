@@ -80,7 +80,24 @@ type AccessUnit struct {
 	Keyframe      bool
 	Width, Height int
 	Duration      time.Duration
+	Kind          UnitKind // how the unit came to be; the zero value is a fresh capture
 }
+
+// UnitKind says why an access unit exists. Only UnitFresh comes from a new
+// capture; the others re-encode the cached picture, so the stall watchdog and the
+// still machine must not mistake them for the screen changing.
+type UnitKind int
+
+const (
+	// UnitFresh is a captured frame (the zero value, so a Source that never sets it is right).
+	UnitFresh UnitKind = iota
+	// UnitForced is the cached picture re-encoded as a keyframe for a joiner or a PLI.
+	UnitForced
+	// UnitRefine is the cached picture re-encoded sharply after the screen went still.
+	UnitRefine
+	// UnitIdle is the cached picture re-encoded as a small non-key frame to keep a still stream alive.
+	UnitIdle
+)
 
 // Permissions is what the capture permission probe reports (19-09 fills it):
 // Screen Recording, Accessibility, and a pointer-event (nudge) capability.
@@ -118,4 +135,28 @@ type Source interface {
 	SelectSurface(s Surface) error
 	ForceKeyframe()
 	Rebuild(width, height int) error
+}
+
+// QualitySource is the optional live-quality half of a Source: the adaptive
+// controller (desktop quality.go) changes the running encoder's target bitrate
+// and the capture's frame rate through it, never by starting a new session.
+// A Source that does not implement it is simply never adapted. Both return
+// ErrNotRunning on a stopped source.
+type QualitySource interface {
+	// SetBitrate changes the running encoder's average bitrate in bits per second.
+	SetBitrate(bps int) error
+	// SetFPS changes the running capture's frame rate.
+	SetFPS(fps int) error
+}
+
+// StillSource is the optional still-screen half of a Source (DESK-07): when the
+// screen stops changing the desktop controller asks it to refine the cached
+// picture once and then to refresh it quietly. Both return ErrNotRunning on a
+// stopped source and do nothing while no picture is cached.
+type StillSource interface {
+	// Refine re-encodes the cached picture as a keyframe at bps (UnitRefine), then
+	// puts the previous target back for the next unit.
+	Refine(bps int) error
+	// IdleRefresh re-encodes the cached picture as a small non-key frame (UnitIdle).
+	IdleRefresh() error
 }

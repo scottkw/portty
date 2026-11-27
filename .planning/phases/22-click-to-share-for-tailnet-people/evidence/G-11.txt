@@ -1,0 +1,27 @@
+G-11 window share: keys dropped while a panel holds keyboard focus (M-05)
+office=portty-test guest=portty-test-2; build 22.12.0 of HEAD dfa1a208 (tags wailsassets vmdesktop, Developer ID); times are the office VM's epoch seconds
+--- pre: a share with one admitted guest holding control, TextEdit window shared [office 1795806274.782]
+TextEdit document window id from the probe list (on screen, titled Untitled): 3748
+select window: {"select_failed":"","surface":{"epoch":25,"h":420,"id":3748,"kind":"window","w":640}}
+guest-text: {"title":"Portty Desktop (debug fd=2389 fw=1280 csp=0 st=streaming)","stats":{"status":"streaming","w":1280,"h":840}}
+--- 1: baseline: guest clicks the window and types k1 [office 1795806314.912]
+document: k1 chars=2 utf8=2 
+counters: {"counters":{"btn":28,"covered":1,"effect_hit":11,"key":324,"move":15,"not_held":17,"physical":4,"raising":12},"pseudo_counters":{}}
+--- 2: Spotlight opened locally (untagged Cmd+Space through ~/p22/key), then 3 s idle, guest types zz [office 1795806347.209]
+windows at any layer (the panel owner/layer): cgwin owner=Siri pid=445 layer=23 id=26 @320,72 640x64
+frontmost: ax-front epoch=1795806358 front: TextEdit pid=55076
+counter changes (key, window_key_focus, raising, not_held, physical): key 324->324; window_key_focus 0->0; raising 12->14; not_held 17->19; physical 4->4;
+guest notice: n't bring the window to the front. Click the picture to try again. View Only Control
+document (no zz expected): k1 chars=2 utf8=2 
+Spotlight windows after two Escapes: 0
+panel closed, guest types k2: counter changes (key, window_key_focus, raising, physical): key 324->328; window_key_focus 0->0; raising 14->14; physical 4->4;
+document (k1k2 expected, no zz): k1k2 chars=4 utf8=4 
+--- 3: TextEdit's own Fonts panel opened locally (untagged Cmd+T), it takes keyboard focus; guest types zz [office 1795806422.336]
+Cmd+T try 1: TextEdit layer-3 windows: 1
+TextEdit windows at any layer (the panel is layer 3): cgwin owner=TextEdit pid=55076 layer=3 id=3765 @300,200 470x250;cgwin owner=TextEdit pid=55076 layer=0 id=3751 @106,86 66x20;cgwin owner=TextEdit pid=55076 layer=0 id=3748 @100,80 640x420;
+counter changes (key, window_key_focus, raising, not_held, physical): key 328->328; window_key_focus 0->0; raising 14->16; not_held 19->21; physical 4->4;
+document (no zz expected): k1k2 chars=4 utf8=4 
+--- 4: TextEdit quit to remove the Fonts panel (Cmd+W did not close it in an earlier run) [office 1795806469.056]
+--- restore: back to a display share [office 1795806479.089]
+select display 1: {"select_failed":"","surface":{"epoch":27,"h":720,"id":1,"kind":"display","w":1280}}
+--- done [office 1795806498.264]

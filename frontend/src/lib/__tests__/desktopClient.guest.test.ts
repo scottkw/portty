@@ -179,7 +179,7 @@ describe('guest waits then offers (tracer)', () => {
   it('sends hello, takes the hello with all rights false and admission waiting, sends no offer, then exactly one offer on admitted', async () => {
     const e = setup()
     await hello(e)
-    expect(lastT(e).sent[0]).toEqual({ type: 'hello', v: 1, caps: { video: 1, input: 1 } })
+    expect(lastT(e).sent[0]).toEqual({ type: 'hello', v: 1, caps: { video: 1, audio: 1, input: 1 } })
     lastT(e).recv({ type: 'admission', state: 'waiting' })
     await settle()
     expect(lastT(e).types()).toEqual(['hello'])
@@ -193,7 +193,7 @@ describe('guest waits then offers (tracer)', () => {
     expect(lastT(e).types()).toEqual(['hello', 'offer'])
     expect(lastT(e).sent[1]).toEqual({ type: 'offer', sdp: 'fake-offer-sdp' })
     // The input channel is opened before createOffer, as for an own-account viewer.
-    expect(lastPC(e).calls).toEqual(['createDataChannel', 'addTransceiver', 'createOffer'])
+    expect(lastPC(e).calls).toEqual(['createDataChannel', 'addTransceiver', 'addTransceiver', 'createOffer'])
     lastT(e).recv({ type: 'admission', state: 'admitted' })
     await settle()
     expect(lastT(e).types()).toEqual(['hello', 'offer'])
@@ -218,6 +218,24 @@ describe('guest waits then offers (tracer)', () => {
     expect(e.statuses.map((s) => s.kind)).not.toContain('unreachable')
   })
 
+  it('a wake while waiting at Admit pings; a pong keeps the socket and no answer redials', async () => {
+    const e = setup()
+    await hello(e)
+    lastT(e).recv({ type: 'admission', state: 'waiting' })
+    await settle()
+    e.client.wake('visibility')
+    const ping = lastT(e).sent.find((m) => m.type === 'ping')
+    expect(ping).toEqual({ type: 'ping', n: expect.any(Number) })
+    lastT(e).recv({ type: 'pong', n: ping!.n })
+    await e.clock.advance(RECONNECT.pingTimeoutMs + 1)
+    expect(e.transports).toHaveLength(1)
+
+    e.client.wake('pageshow')
+    expect(lastT(e).types().filter((x) => x === 'ping')).toHaveLength(2)
+    await e.clock.advance(RECONNECT.pingTimeoutMs + 1)
+    expect(e.transports.length).toBeGreaterThan(1)
+  })
+
   it('reports unreachable about 30 s after admission when no picture ever comes', async () => {
     const e = setup()
     await hello(e)
@@ -238,6 +256,7 @@ describe('guest close reasons and the check', () => {
     [4431, 'admit_timeout'],
     [4432, 'revoked'],
     [4433, 'share_ended'],
+    [4434, 'replaced'],
     [4401, 'token_invalid'],
   ]
 
@@ -347,7 +366,7 @@ describe('guest rights and lease messages', () => {
     ])
   })
 
-  it('an own-account client ignores admission, rights and lease messages', async () => {
+  it('an own-account client ignores admission and rights, and passes the lease on (WR-07)', async () => {
     const e = setup({ guest: false })
     e.client.start()
     lastT(e).open()
@@ -357,7 +376,12 @@ describe('guest rights and lease messages', () => {
     lastT(e).recv({ type: 'admission', state: 'waiting' })
     lastT(e).recv({ type: 'rights', rights: { control: true, clipboard: true, surface: true } })
     lastT(e).recv({ type: 'lease', state: 'physical' })
-    expect(e.events.map(([k]) => k)).toEqual(['rights'])
+    lastT(e).recv({ type: 'lease', state: 'unavailable' })
+    expect(e.events).toEqual([
+      ['rights', { control: false, clipboard: false, surface: false }],
+      ['lease', { state: 'physical', name: '' }],
+      ['lease', { state: 'unavailable', name: '' }],
+    ])
   })
 })
 
@@ -371,7 +395,7 @@ describe('signal-guest-v1.jsonl golden lines', () => {
     expect(lines.map((l) => l.name)).toEqual(expect.arrayContaining([
       'hello-guest', 'admission-waiting', 'admission-admitted', 'rights-view-only', 'rights-control-and-clipboard',
       'close-denied', 'close-admit-timeout', 'close-revoked', 'close-share-ended', 'close-token-invalid',
-      'close-replaced', 'close-full', 'lease-you', 'lease-other', 'lease-owner', 'lease-physical', 'lease-free',
+      'close-replaced', 'close-full', 'lease-you', 'lease-other', 'lease-owner', 'lease-physical', 'lease-unavailable', 'lease-free',
     ]))
   })
 
@@ -400,11 +424,12 @@ describe('signal-guest-v1.jsonl golden lines', () => {
       { state: 'other', name: 'Ada' },
       { state: 'owner', name: '' },
       { state: 'physical', name: '' },
+      { state: 'unavailable', name: '' },
       { state: 'free', name: '' },
     ])
   })
 
-  it('decodes each close line by its code to the reason the wire names, and replaced and full do not end the loop', async () => {
+  it('decodes each close line by its code to the reason the wire names, and only full does not end the loop', async () => {
     for (const l of named('close')) {
       const code = l.wire.close as number
       const reason = l.wire.reason as string
@@ -412,7 +437,8 @@ describe('signal-guest-v1.jsonl golden lines', () => {
       await hello(e)
       lastT(e).dropWith(code)
       const final = e.statuses.find((s) => s.kind === 'guest_final')
-      if (['denied', 'admit_timeout', 'revoked', 'share_ended', 'token_invalid'].includes(reason)) {
+      // replaced is final: a retry would knock again and replace the other tab, which would retry in turn.
+      if (['denied', 'admit_timeout', 'revoked', 'share_ended', 'token_invalid', 'replaced'].includes(reason)) {
         expect(final, l.name).toEqual({ kind: 'guest_final', reason })
       } else {
         expect(final, l.name).toBeUndefined()

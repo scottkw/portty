@@ -1,0 +1,30 @@
+G-09 quitting the GUI ends the share (gui_gone)
+office=portty-test guest=portty-test-2; build 22.12.0 of HEAD dfa1a208 (tags wailsassets vmdesktop, Developer ID); times are the office VM's epoch seconds
+--- pre: a new share with one admitted guest streaming [office 1795809587.486]
+framesDecoded 7 then 12
+share-status: {"active":true,"viewers":1}
+--- 1: SIGTERM to the GUI process only (timed inside the office) [office 1795809655.328]
+gui-quit-timed: SIGTERM to the GUI at epoch 1795809663.321 (UTC 20:01:03); GUI pid existed: yes
+gui-quit-timed: the daemon reports no active share 0.51 s after the SIGTERM (poll 1)
+gui-quit-timed: daemon still running: yes; GUI still running: 0 process(es)
+gui-quit-timed: audit share_stop and leave lines:
+2026-11-27T19:59:50Z share_stop share_stopped 
+2026-11-27T20:01:03Z share_stop gui_gone 
+2026-11-27T20:01:04Z leave gui_gone portty-vm-home
+guest page: seen after 0s
+guest-text: ng has ended The share has ended, so this link no longer works. Ask the person at that Mac for a new link.
+daemon answers on its socket after the GUI died (permissions route): {"sr":true,"ax":true}
+share-status from the daemon: {"type":"state","active":false,"viewers":[],"pending":[],"secureInput":false,"anyController":false}
+audit (last 6 lines, ts event mode reason): 
+2026-11-27T20:00:07Z share_start guest  32 
+2026-11-27T20:00:22Z admit_request guest  32 HOME
+2026-11-27T20:00:27Z admitted guest  32 HOME
+2026-11-27T20:00:28Z join guest  32 HOME
+2026-11-27T20:01:03Z share_stop guest gui_gone 32 
+2026-11-27T20:01:04Z leave guest gui_gone 32 HOME
+--- 2: GUI started again [office 1795809690.260]
+start: _LSOpenURLsWithCompletionHandler() failed with error -600.
+{"status":"ok","version":"v22.12.0","api":5,"handoff":1,"launchd":true,"pid":36792}
+tray: no status items
+note (added after the run): `open` answered -600 because LaunchServices still holds the surviving daemon process as the running Portty app; `open -n /Applications/Portty.app` started a fresh GUI (pid 72750). The AX helper then still read the daemon's pid (no status items); after it was changed to read the process that owns windows or a status item, the tray listed: Open Portty, Share Desktop…, Desktop: Ready, Quit Portty.
+--- done [office 1795809706.492]

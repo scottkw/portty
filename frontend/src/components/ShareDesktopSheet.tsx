@@ -79,7 +79,9 @@ function ShareDesktopSheetContent({ onClose, tailscaleHealth, state, stoppedNoti
   const sawActive = useRef(false)
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  useDialogFocus(dialogRef, { onCancel: onClose, initialFocus: 'primary' })
+  // Done is inert while checking or starting, and Esc follows it (useDialogFocus reads the latest onCancel).
+  const inert = phase === 'checking' || phase === 'starting'
+  useDialogFocus(dialogRef, { onCancel: () => { if (!inert) onClose() }, initialFocus: 'primary' })
 
   const tailscaleOff = !!tailscaleHealth && !tailscaleHealth.connected
 
@@ -148,7 +150,8 @@ function ShareDesktopSheetContent({ onClose, tailscaleHealth, state, stoppedNoti
     setActionError(null)
     setNotice(false)
     sawActive.current = false
-    const r = await StartDesktopShare()
+    // A rejected binding is a failed start: the error shows and the sheet leaves Getting a link….
+    const r = await StartDesktopShare().catch((err: unknown) => ({ url: '', firstShare: false, errorCode: 'unavailable', detail: String(err) }))
     if (!alive.current) return
     if (r.errorCode) {
       // Tailscale off and userspace mode block the button; the rest is an inline error with a next step.
@@ -219,7 +222,7 @@ function ShareDesktopSheetContent({ onClose, tailscaleHealth, state, stoppedNoti
     if (stopping) return
     setStopping(true)
     setActionError(null)
-    const r = await StopDesktopShare()
+    const r = await StopDesktopShare().catch((err: unknown) => ({ errorCode: 'unavailable', detail: String(err) }))
     if (!alive.current) return
     setStopping(false)
     if (r.errorCode) {
@@ -237,7 +240,6 @@ function ShareDesktopSheetContent({ onClose, tailscaleHealth, state, stoppedNoti
   const blocked = offNow || blocker === 'userspace'
   const reason = blocker === 'userspace' && !tailscaleOff ? USERSPACE_SENTENCE : offNow ? TAILSCALE_OFF_REASON : null
   const status = tailscaleOff ? { text: copy.STATUS_WAITING_FOR_TAILSCALE, dot: 'warn' as const } : STATUS_ROWS[desktopState]
-  const inert = phase === 'checking' || phase === 'starting'
   const host = (tailscaleHealth?.domain ?? '').replace(/\.ts\.net$/, '')
   const showCT = acknowledged === false && !!tailscaleHealth?.domain
 

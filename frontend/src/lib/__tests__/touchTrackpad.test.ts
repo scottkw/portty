@@ -212,6 +212,43 @@ describe('tap, double-tap, long-press and tap-then-drag', () => {
     expect(sum).toBeGreaterThanOrEqual(30) // gain is never below 1
   })
 
+  it('M-195: a second touch after a tap that rests 600 ms before it moves is a drag from 500 ms: no tap, no right click', () => {
+    const r = rig()
+    touchFor(r, 100)
+    r.clock.advance(150)
+    r.pad.start(ev(pt(100, 100)))
+    r.pad.move(ev(pt(102, 100))) // resting jitter
+    r.clock.advance(499)
+    expect(r.intents).toEqual([])
+    r.clock.advance(1)
+    expect(r.intents).toEqual([{ kind: 'dragStart', at: 750 }])
+    r.clock.advance(100)
+    for (let i = 1; i <= 6; i++) {
+      r.clock.advance(20)
+      r.pad.move(ev(pt(100 + i * 5, 100)))
+    }
+    r.pad.end({ touches: [], changedTouches: [pt(130, 100)] })
+    r.clock.advance(1000)
+    const k = kinds(r.intents)
+    expect(k[0]).toBe('dragStart')
+    expect(k.slice(1, -1).length).toBeGreaterThan(0)
+    expect(k.slice(1, -1).every((x) => x === 'dragMove')).toBe(true)
+    expect(k[k.length - 1]).toBe('dragEnd')
+    expect(k).not.toContain('tap')
+    expect(k).not.toContain('longPress')
+  })
+
+  it('M-195: a second touch after a tap held still and lifted is a press and a release, nothing else', () => {
+    const r = rig()
+    touchFor(r, 100)
+    r.clock.advance(150)
+    r.pad.start(ev(pt(100, 100)))
+    r.clock.advance(600)
+    r.pad.end({ touches: [], changedTouches: [pt(100, 100)] })
+    r.clock.advance(1000)
+    expect(kinds(r.intents)).toEqual(['dragStart', 'dragEnd'])
+  })
+
   it('held 520 ms with 3 px of movement is one longPress at 500 ms and the lift adds nothing', () => {
     const r = rig()
     r.pad.start(ev(pt(100, 100)))

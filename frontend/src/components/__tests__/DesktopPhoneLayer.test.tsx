@@ -229,6 +229,28 @@ describe('one-finger gestures reach the Mac as Phase 20 buttons', () => {
     expect(btns().map((m) => [m.b, m.d])).toEqual([[0, true], [0, false]])
   })
 
+  it('M-195: tap, then touch and rest on a title bar, then drag: left down at the cursor, relative moves, left up; no right click', () => {
+    tapAt()
+    advance(150)
+    const t = pt(100, 100)
+    touch('touchstart', [t])
+    advance(600) // the finger rests before it moves
+    expect(btns().map((m) => [m.b, m.d, m.x, m.y])).toEqual([[0, true, 0.5, 0.25]])
+    const before = wire().length
+    for (let i = 1; i <= 6; i++) {
+      advance(16)
+      touch('touchmove', [{ ...t, clientX: 100 + i * 5, clientY: 100 }])
+    }
+    const moves = wire().slice(before)
+    expect(moves.length).toBeGreaterThan(0)
+    expect(moves.every((m) => m.t === 'rmove' && m.dx! > 0)).toBe(true)
+    advance(16)
+    touch('touchend', [], [{ ...t, clientX: 130, clientY: 100 }])
+    expect(btns().map((m) => [m.b, m.d])).toEqual([[0, true], [0, false]])
+    advance(1000)
+    expect(btns().some((m) => m.b === 2)).toBe(false)
+  })
+
   it('the heartbeat runs every second while the button is held and stops after the lift', () => {
     const t = startDrag()
     client().sendInput.mockClear()
@@ -407,13 +429,22 @@ describe('the soft keyboard and the bars', () => {
   let vv: StubVV
   let frames: Array<() => void>
   const flush = () => act(() => { frames.splice(0).forEach((cb) => cb()) })
+  // On a phone the keyboard rises because the hidden field took focus, and goes down when it loses it.
   const raiseKeyboard = () => {
+    act(() => field().focus())
     vv.height = 400
     act(() => { vv.dispatchEvent(new Event('resize')) })
     flush()
   }
   const lowerKeyboard = () => {
+    act(() => field().blur())
     vv.height = 768
+    act(() => { vv.dispatchEvent(new Event('resize')) })
+    flush()
+  }
+  // The visual viewport alone, the field's focus untouched (Chrome for iOS's accessory bar, the keyboard animating).
+  const viewport = (height: number) => {
+    vv.height = height
     act(() => { vv.dispatchEvent(new Event('resize')) })
     flush()
   }
@@ -462,6 +493,91 @@ describe('the soft keyboard and the bars', () => {
     expect(toolbar()?.getAttribute('aria-label')).toBe('Desktop keys')
     lowerKeyboard()
     expect(toolbar()?.getAttribute('aria-label')).toBe('Desktop controls')
+  })
+
+  // M-197 (real iPhone 16 Pro, Chrome for iOS): the key row often never replaced the bottom bar with the keyboard up.
+  it('M-197: the key row shows whenever the hidden field has focus, even while the visual viewport reports no keyboard', () => {
+    act(() => byText('Show Keyboard').click())
+    expect(document.activeElement).toBe(field())
+    expect(toolbar()?.getAttribute('aria-label')).toBe('Desktop keys')
+    expect(container.querySelector('.keybar--kb-up')).not.toBeNull()
+    act(() => field().blur())
+    expect(toolbar()?.getAttribute('aria-label')).toBe('Desktop controls')
+  })
+
+  it('M-197: a viewport change while the field keeps focus neither swaps the row nor disarms a modifier', () => {
+    raiseKeyboard()
+    press(byText('Cmd'))
+    viewport(768)
+    expect(toolbar()?.getAttribute('aria-label')).toBe('Desktop keys')
+    expect(byText('Cmd').getAttribute('aria-pressed')).toBe('true')
+  })
+
+  // Regression from ddcc2b48 (real iPhone, Safari): tapping Esc hid the keyboard without blurring the field, so the
+  // key row stayed, the bottom bar never came back and Show Keyboard was out of reach.
+  it('keyboard hidden without a blur: once the viewport stays back at full height for 400 ms the field blurs and the bottom bar returns', () => {
+    raiseKeyboard()
+    press(byText('Cmd'))
+    viewport(768) // iOS hid the keyboard; the field still has focus
+    expect(document.activeElement).toBe(field())
+    expect(toolbar()?.getAttribute('aria-label')).toBe('Desktop keys')
+    advance(399)
+    expect(toolbar()?.getAttribute('aria-label')).toBe('Desktop keys')
+    advance(1)
+    expect(document.activeElement).not.toBe(field())
+    expect(toolbar()?.getAttribute('aria-label')).toBe('Desktop controls')
+    act(() => byText('Show Keyboard').click())
+    expect(document.activeElement).toBe(field())
+    expect(byText('Cmd').getAttribute('aria-pressed')).toBe('false') // the blur disarmed it
+  })
+
+  it('a viewport that comes back to full height for less than 400 ms (jitter, the keyboard swapping) keeps the field and the key row', () => {
+    raiseKeyboard()
+    viewport(768)
+    advance(200)
+    viewport(400)
+    advance(2000)
+    expect(document.activeElement).toBe(field())
+    expect(toolbar()?.getAttribute('aria-label')).toBe('Desktop keys')
+  })
+
+  it('a field that has focus while the viewport never showed a keyboard (Chrome for iOS, a hardware keyboard) is never blurred by the viewport', () => {
+    act(() => byText('Show Keyboard').click())
+    viewport(760)
+    advance(2000)
+    expect(document.activeElement).toBe(field())
+    expect(toolbar()?.getAttribute('aria-label')).toBe('Desktop keys')
+  })
+
+  // M-197: tapping Cmd dismissed the iPhone keyboard, so Cmd+A could never be sent.
+  it('M-197: arming a modifier keeps focus on the same hidden field: touchstart and mousedown are cancelled, no blur', () => {
+    raiseKeyboard()
+    const before = field()
+    const blurred = vi.fn()
+    before.addEventListener('blur', blurred)
+    const cmd = byText('Cmd')
+    const ts = new Event('touchstart', { bubbles: true, cancelable: true })
+    act(() => { cmd.dispatchEvent(ts) })
+    press(cmd)
+    const md = new MouseEvent('mousedown', { bubbles: true, cancelable: true })
+    act(() => { byText('Cmd').dispatchEvent(md) })
+    act(() => { byText('Cmd').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 })) })
+    expect(ts.defaultPrevented).toBe(true) // iOS: no synthetic mouse events, so no focus change
+    expect(md.defaultPrevented).toBe(true)
+    expect(byText('Cmd').getAttribute('aria-pressed')).toBe('true')
+    expect(field()).toBe(before)
+    expect(document.activeElement).toBe(before)
+    expect(blurred).not.toHaveBeenCalled()
+    expect(toolbar()?.getAttribute('aria-label')).toBe('Desktop keys')
+  })
+
+  it('M-197: Cmd armed from the key row then a typed a sends Cmd+A', () => {
+    raiseKeyboard()
+    press(byText('Cmd'))
+    typed('a')
+    const a = keys().find((k) => k.code === 'KeyA' && k.d)!
+    expect(a.m & 8).toBe(8)
+    expect(document.activeElement).toBe(field())
   })
 
   it('typed text goes as a Phase 20 text message and is kept out of the field', () => {

@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
   ArrowDownIcon,
   ArrowLeftIcon,
@@ -11,10 +11,12 @@ import type { DesktopClient, DesktopSurfacesMsg, SurfaceKind } from '../lib/desk
 import { ContextMenu, type ContextMenuEntry } from './ContextMenu'
 import { WINDOWS_CAPTION, type SurfacePick } from './DesktopControlBar'
 import { DesktopSendKeysMenu } from './DesktopSendKeysMenu'
+import { DesktopSoundButton, type DesktopSoundButtonProps } from './DesktopSoundButton'
 
 export type PhoneModifier = 'Control' | 'Alt' | 'Meta'
 
 export interface DesktopPhoneBarsProps {
+  /** The hidden typing field has focus (so the soft keyboard is up): the key row replaces the bottom bar. */
   keyboardUp: boolean
   /** The picture's zoom, 1 to 5. */
   zoom: number
@@ -35,6 +37,12 @@ export interface DesktopPhoneBarsProps {
   client: DesktopClient
   /** The view's pick handler: it tracks the switch and reports a refusal. */
   onSelectSurface(pick: SurfacePick): void
+  /** A guest page (22-07): Send Keys offers no Lock Screen…. */
+  guest?: boolean
+  /** The Sound item (23-08): the bottom bar's last, fixed 44 px icon-only item. Absent when the hello offered no audio. */
+  sound?: Pick<DesktopSoundButtonProps, 'video' | 'failed' | 'onNotice' | 'onChange'>
+  /** The Unlock field has focus: the 44 px slot is empty, neither bar, so the panel is the only thing above the keyboard. */
+  hidden?: boolean
 }
 
 const CAPTION_ID = 'desktop-phone-picker-caption'
@@ -50,7 +58,7 @@ const noop = () => {}
  */
 export function DesktopPhoneBars({
   keyboardUp, zoom, onFit, onShowKeyboard, onKey, armed, onToggleArm, sendChord,
-  surfaceName, surface, canControl, canPickSurface, disabledReason, client, onSelectSurface,
+  surfaceName, surface, canControl, canPickSurface, disabledReason, client, onSelectSurface, guest = false, sound, hidden = false,
 }: DesktopPhoneBarsProps): React.ReactElement {
   const [down, setDown] = useState<string | null>(null)
   const [sendKeys, setSendKeys] = useState<{ x: number; y: number } | null>(null)
@@ -59,6 +67,7 @@ export function DesktopPhoneBars({
   const listSeq = useRef(0)
   const pickerBtn = useRef<HTMLButtonElement>(null)
   const sendKeysBtn = useRef<HTMLButtonElement>(null)
+  const keyRowRef = useRef<HTMLDivElement>(null)
   const greyed = disabledReason !== null
 
   const anchorAbove = (btn: HTMLElement | null) => {
@@ -130,6 +139,8 @@ export function DesktopPhoneBars({
         aria-haspopup={extra.menu ? 'menu' : undefined}
         aria-disabled={off ? true : undefined}
         onPointerDown={(e) => { e.preventDefault(); setDown(name); if (!off) onFire() }}
+        // The compatibility mousedown is what moves focus off the hidden field; never let it.
+        onMouseDown={(e) => e.preventDefault()}
         onPointerUp={() => setDown(null)}
         onPointerCancel={() => setDown(null)}
         onPointerLeave={() => setDown(null)}
@@ -172,19 +183,35 @@ export function DesktopPhoneBars({
         <button
           type="button"
           className="keybar__key desktop-phone__key"
+          // Greyed while Locked only: typing is paused then, and the Unlock field has its own keyboard. Reconnecting stays live.
+          aria-disabled={disabledReason === 'Locked' ? true : undefined}
           onPointerDown={(e) => e.preventDefault()}
-          onClick={onShowKeyboard}
+          onClick={() => { if (disabledReason !== 'Locked') onShowKeyboard() }}
         >
           Show Keyboard
         </button>
       )}
       {zoom > 1 &&
         key(`Fit to screen, zoom ${zoomText}`, 'Fit to Screen', onFit, { disabled: false })}
+      {sound && <DesktopSoundButton {...sound} phone compact />}
     </div>
   )
 
+  // M-197: on the iPhone a key row tap still dismissed the keyboard (tapping Cmd made Cmd+A unsendable).
+  // A cancelled touchstart is how iOS is told the tap is ours: no synthetic mouse events, so no focus
+  // change, the same as the stage's touches. Native and non-passive: React's touchstart is passive.
+  // Keys still fire on pointerdown, and VoiceOver's click (detail 0) has no touchstart.
+  const showKeys = !hidden && keyboardUp
+  useEffect(() => {
+    const row = keyRowRef.current
+    if (!showKeys || !row) return
+    const hold = (e: TouchEvent) => { if (e.cancelable) e.preventDefault() }
+    row.addEventListener('touchstart', hold, { passive: false })
+    return () => row.removeEventListener('touchstart', hold)
+  }, [showKeys])
+
   const keyBar = (
-    <div className="desktop-phone__bar" role="toolbar" aria-label="Desktop keys" aria-orientation="horizontal">
+    <div ref={keyRowRef} className="desktop-phone__bar" role="toolbar" aria-label="Desktop keys" aria-orientation="horizontal">
       {key('Esc', 'Esc', () => onKey('Escape'), { plainLabel: true })}
       {key('Tab', 'Tab', () => onKey('Tab'), { plainLabel: true })}
       {modifier('Ctrl', 'Ctrl', 'Control')}
@@ -200,7 +227,7 @@ export function DesktopPhoneBars({
 
   return (
     <div className={`keybar desktop-phone__slot${keyboardUp ? ' keybar--kb-up' : ''}`}>
-      {keyboardUp ? keyBar : bottomBar}
+      {hidden ? null : showKeys ? keyBar : bottomBar}
       {sendKeys && (
         <DesktopSendKeysMenu
           anchor={sendKeys}
@@ -210,6 +237,7 @@ export function DesktopPhoneBars({
           windowShare={surface?.kind === 'window'}
           disabledReason={disabledReason ?? undefined}
           above
+          guest={guest}
         />
       )}
       {picker && (

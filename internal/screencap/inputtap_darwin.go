@@ -12,7 +12,7 @@ package screencap
 
 int pc_tap_start(void);
 void pc_tap_stop(void);
-void pc_tap_state(int *running, int *enabled);
+void pc_tap_state(int rebuild, int *running, int *enabled);
 uint64_t pc_tap_now_ns(void);
 uint64_t pc_tap_last_untagged_ns(void);
 uint64_t pc_tap_last_disabled_ns(void);
@@ -50,10 +50,13 @@ func StartInputTap() error {
 func StopInputTap() { C.pc_tap_stop() }
 
 // InputTapState reports whether a tap is running and whether the system has it
-// enabled right now. A tap disabled by user input is recreated here.
-func InputTapState() (running, enabled bool) {
+// enabled right now. A tap disabled by user input is recreated here; the
+// manager's 1 s poll is the one caller that should do that.
+func InputTapState() (running, enabled bool) { return tapState(1) }
+
+func tapState(rebuild C.int) (running, enabled bool) {
 	var r, e C.int
-	C.pc_tap_state(&r, &e)
+	C.pc_tap_state(rebuild, &r, &e)
 	return r != 0, e != 0
 }
 
@@ -68,9 +71,11 @@ type PhysicalReading struct {
 	Idle time.Duration
 }
 
-// PhysicalState reads the tap. It is cheap and safe from any goroutine.
+// PhysicalState reads the tap. It is cheap and safe from any goroutine: it
+// never rebuilds a dead tap (it runs on every input event, under the arbiter's
+// lock), so a dead tap stays unhealthy until the next poll recreates it.
 func PhysicalState() PhysicalReading {
-	running, enabled := InputTapState()
+	running, enabled := tapState(0)
 	last := uint64(C.pc_tap_last_untagged_ns())
 	disabled := uint64(C.pc_tap_last_disabled_ns())
 	now := uint64(C.pc_tap_now_ns())

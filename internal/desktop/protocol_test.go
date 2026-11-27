@@ -123,11 +123,14 @@ var signalShapes = []signalShape{
 	{"viewer", "clip_get", [][]string{{"xid"}}},
 	{"viewer", "clip_put", [][]string{{"xid", "seq", "total", "len", "text"}}},
 	{"server", "hello", [][]string{{"v", "viewer", "caps", "rights"}}},
+	{"server", "state", [][]string{{"state", "viewers", "locked"}}},
 	{"server", "surfaces", [][]string{{"displays", "windows"}, {"error"}}},
 	{"server", "surface", [][]string{{"e", "kind", "id", "name", "w", "h", "reason"}}},
 	{"server", "select_failed", [][]string{{"code"}}},
 	{"server", "clip_data", [][]string{{"xid", "seq", "total", "len", "text"}}},
 	{"server", "clip_result", [][]string{{"xid", "outcome"}}},
+	{"server", "quality", [][]string{{"slow"}}},
+	{"server", "unlock", [][]string{{"state", "failures"}}},
 }
 
 // TestProtocolGolden_SignalShapes: every signalling line is a JSON object of a
@@ -266,5 +269,67 @@ func TestProtocolGolden_ClipDecodes(t *testing.T) {
 	}
 	if viewer != 3 || server != 4 {
 		t.Errorf("checked %d viewer and %d server lines, want 3 and 4", viewer, server)
+	}
+}
+
+// TestAudio_GoldenLines: the Phase 23 audio additions to the v1 wire. The viewer
+// hello carries caps audio 1; the server hello decodes into msgHello and marshals
+// back equal; the state line with audio failed does the same through msgState.
+// A state message with no audio failure is byte-identical to what it was before
+// the field existed, and ProtocolVersion stays 1.
+func TestAudio_GoldenLines(t *testing.T) {
+	if ProtocolVersion != 1 {
+		t.Fatalf("ProtocolVersion is %d, want 1 (the audio additions are additive)", ProtocolVersion)
+	}
+	semantically := func(b []byte) any {
+		var v any
+		if err := json.Unmarshal(b, &v); err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	seen := map[string]bool{}
+	for _, l := range readGolden(t, "testdata/signal-v1.jsonl") {
+		var msg any
+		switch l.Name {
+		case "hello-viewer-audio":
+			var in inbound
+			if err := json.Unmarshal(l.Wire, &in); err != nil || in.Type != typeHello || in.V != 1 || in.Caps["audio"] != 1 {
+				t.Errorf("%s decoded as %+v, %v", l.Name, in, err)
+			}
+			seen[l.Name] = true
+			continue
+		case "hello-server-audio":
+			msg = &msgHello{}
+		case "state-audio-failed":
+			msg = &msgState{}
+		default:
+			continue
+		}
+		if err := json.Unmarshal(l.Wire, msg); err != nil {
+			t.Errorf("%s: %v", l.Name, err)
+			continue
+		}
+		back, err := json.Marshal(msg)
+		if err != nil {
+			t.Errorf("%s: %v", l.Name, err)
+			continue
+		}
+		if !reflect.DeepEqual(semantically(back), semantically(l.Wire)) {
+			t.Errorf("%s: marshals back as %s, want %s", l.Name, back, l.Wire)
+		}
+		seen[l.Name] = true
+	}
+	for _, name := range []string{"hello-viewer-audio", "hello-server-audio", "state-audio-failed"} {
+		if !seen[name] {
+			t.Errorf("golden line %q is missing", name)
+		}
+	}
+	got, err := json.Marshal(msgState{Type: typeState, State: StateStreaming, Viewers: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"type":"state","state":"streaming","viewers":1,"locked":false}`; string(got) != want {
+		t.Errorf("a state message with no audio failure is %s, want %s", got, want)
 	}
 }

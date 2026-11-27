@@ -30,13 +30,6 @@ export interface ShareState {
   anyController: boolean
 }
 
-/** One event line (admit_request, join, leave, share_stop); own-account lines carry viewer.mode "own". */
-export interface ShareEvent {
-  event: string
-  viewer?: ShareViewer
-  reason?: string
-}
-
 export const NO_SHARE: ShareState = { active: false, viewers: [], pending: [], secureInput: false, anyController: false }
 
 /** The Wails runtime's EventsOn; a test passes a fake. */
@@ -47,8 +40,6 @@ export const NO_SHARE_EVENTS: ShareSubscribe = () => () => {}
 
 export interface DesktopShareStore {
   state: ShareState
-  /** The latest event line, for the live region and tests; null before any. */
-  lastEvent: ShareEvent | null
   sheetOpen: boolean
   openSheet: () => void
   closeSheet: () => void
@@ -57,12 +48,12 @@ export interface DesktopShareStore {
 }
 
 /**
- * Subscribes to desktopshare:state, :event, :stopped and :open-sheet for the life
- * of the caller (App) and keeps the latest of each.
+ * Subscribes to desktopshare:state, :stopped and :open-sheet for the life of the
+ * caller (App) and keeps the latest of each. Go also emits desktopshare:event;
+ * nothing here reads it (the state line carries what the sheet shows).
  */
 export function useDesktopShare(subscribe: ShareSubscribe = EventsOn): DesktopShareStore {
   const [state, setState] = useState<ShareState>(NO_SHARE)
-  const [lastEvent, setLastEvent] = useState<ShareEvent | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [stoppedNotice, setStoppedNotice] = useState(false)
 
@@ -74,7 +65,6 @@ export function useDesktopShare(subscribe: ShareSubscribe = EventsOn): DesktopSh
         // A new share started: the earlier "stopped" notice no longer applies.
         if (s?.active) setStoppedNotice(false)
       }),
-      subscribe('desktopshare:event', (e: ShareEvent) => setLastEvent(e)),
       subscribe('desktopshare:stopped', () => {
         setState(NO_SHARE)
         setStoppedNotice(true)
@@ -96,7 +86,7 @@ export function useDesktopShare(subscribe: ShareSubscribe = EventsOn): DesktopSh
     setSheetOpen(false)
   }, [])
 
-  return { state, lastEvent, sheetOpen, openSheet, closeSheet, stoppedNotice }
+  return { state, sheetOpen, openSheet, closeSheet, stoppedNotice }
 }
 
 /** Drop Unicode categories Cc and Cf (bidi overrides, zero-width) and collapse whitespace: the daemon's rule, applied again. */

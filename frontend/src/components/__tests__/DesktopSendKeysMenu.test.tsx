@@ -140,9 +140,9 @@ describe('Lock Screen confirm and window share (Task 3)', () => {
     expect(dialog()).not.toBeNull()
     expect(dialog()!.getAttribute('aria-modal')).toBe('true')
     expect(dialog()!.querySelector('.dialog__title')?.textContent).toBe('Lock This Mac')
-    expect(dialog()!.textContent).toContain(
-      "The Mac will lock and stay locked until someone unlocks it at the Mac. Remote unlock isn't available yet.",
-    )
+    // 23-UI-SPEC Surface 3: Phase 23 ships remote unlock, so the Phase 20 sentence became false and was replaced.
+    expect(dialog()!.textContent).toContain("The Mac will lock. To unlock it from here you will need the Mac's password.")
+    expect(dialog()!.textContent).not.toContain("Remote unlock isn't available yet")
     expect(dlgButton("Don't Lock")).toBeDefined()
     expect(dlgButton('Lock Screen')).toBeDefined()
     expect(document.activeElement).toBe(dlgButton("Don't Lock"))

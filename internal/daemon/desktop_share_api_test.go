@@ -428,6 +428,36 @@ func TestDesktopShareAPI_StopStopsIdleServer(t *testing.T) {
 	_ = start
 }
 
+// WR-08: with always-available off (the usual click-to-share setup), GET
+// /desktop reports the running Manager's state while a guest share is on, so
+// the Share Desktop sheet's Status row can show it; AlwaysAvailable stays false.
+func TestDesktopShareAPI_StatusReportsTheGuestShareManager(t *testing.T) {
+	e, _ := guestEnv(t)
+	if st, err := e.client.DesktopStatus(); err != nil || st.State != "off" {
+		t.Fatalf("GET /desktop before any share = %+v, %v; want off", st, err)
+	}
+	startedShare(t, e)
+	if !e.hasManager() {
+		t.Fatal("a started share has no Manager")
+	}
+	st, err := e.client.DesktopStatus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.AlwaysAvailable {
+		t.Error("GET /desktop says always-available is on during a guest share with it off")
+	}
+	if st.State == "off" || st.State == "" {
+		t.Errorf("GET /desktop state %q during a guest share, want the Manager's state", st.State)
+	}
+	if err := e.client.StopDesktopShare(); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := e.client.DesktopStatus(); err != nil || st.State != "off" {
+		t.Errorf("GET /desktop after Stop = %+v, %v; want off", st, err)
+	}
+}
+
 func TestDesktopShareAPI_StopKeepsOwnViewer(t *testing.T) {
 	e, who := guestEnv(t)
 	on := e.mustOn(t)

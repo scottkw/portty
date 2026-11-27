@@ -15,7 +15,7 @@ import { createPhoneInput, type PhoneInput } from '../lib/desktopPhoneInput'
 import { attachTrackpad, type TrackpadIntent } from '../lib/touchTrackpad'
 import { useVisualViewportInset } from '../lib/visualViewportInset'
 import type { SurfacePick } from './DesktopControlBar'
-import { DesktopPhoneBars, type PhoneModifier } from './DesktopPhoneBars'
+import { DesktopPhoneBars, type DesktopPhoneBarsProps, type PhoneModifier } from './DesktopPhoneBars'
 import { videoContentRect } from './DesktopView'
 
 export interface DesktopPhoneLayerProps {
@@ -26,12 +26,25 @@ export interface DesktopPhoneLayerProps {
   locked: boolean
   reconnecting: boolean
   onSelectSurface(pick: SurfacePick): void
+  /** A guest page (22-07): passed to the bars so Send Keys offers no Lock Screen…. */
+  guest?: boolean
+  /** The bottom bar's Sound item (23-08); absent when the hello offered no audio. */
+  sound?: DesktopPhoneBarsProps['sound']
+  /** The Unlock field has focus: the bar slot stays empty (23-08). */
+  slotHidden?: boolean
 }
+
+/** The fields whose keyboard shrinks the visual viewport: the hidden typing field and (23-08) the Unlock password field. */
+export const PHONE_FIELDS = '.desktop-phone__input, .desktop-unlock__input'
 
 /** A tap before the Mac's first cursor report waits this long for it, then is dropped. */
 const CURSOR_WAIT_MS = 500
 const RIPPLE_MS = 150
 const RIPPLE_PX = 24
+/** A keyboard is at least this much of the visual viewport (the same floor as visualViewportInset). */
+const KEYBOARD_MIN_PX = 100
+/** The viewport must stay keyboard-free this long before a still-focused field is blurred (rides out jitter). */
+const KEYBOARD_GONE_MS = 400
 
 /** One character kept in the hidden field so a Backspace on the soft keyboard has something to delete. */
 const SENTINEL = '\u200b'
@@ -60,7 +73,7 @@ function keyFor(ch: string): { code: string; shift: boolean } | null {
  * (never window or document for touches) and sends Phase 20 messages. The pointer lives on the Mac:
  * drags are relative moves, clicks use the Mac's last cursor report, and zoom never leaves the phone.
  */
-export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconnecting, onSelectSurface }: DesktopPhoneLayerProps): React.ReactElement {
+export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconnecting, onSelectSurface, guest = false, sound, slotHidden = false }: DesktopPhoneLayerProps): React.ReactElement {
   const canControl = rights?.control === true
   const paused = locked || reconnecting
   const live = useRef({ canControl, paused })
@@ -74,7 +87,11 @@ export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconn
   const armedRef = useRef(armed)
   armedRef.current = armed
   const [surface, setSurface] = useState<{ kind: DesktopSurfaceMsg['kind']; id: number; name: string } | null>(null)
-  const { keyboardUp } = useVisualViewportInset(true, { rootSelector: '.desktop-view', fieldSelector: '.desktop-phone__input' })
+  // The viewport hook only sizes the root to the visual viewport. Whether the keyboard is up is the hidden
+  // field's focus (M-197): Chrome for iOS's accessory bar and the keyboard's animation made the viewport
+  // reading miss it, so the key row often never showed, and a false "down" disarmed an armed modifier.
+  useVisualViewportInset(true, { rootSelector: '.desktop-view', fieldSelector: PHONE_FIELDS })
+  const [keyboardUp, setKeyboardUp] = useState(false)
 
   useEffect(() => {
     if (!stage) return
@@ -286,16 +303,12 @@ export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconn
       return next
     })
 
-  // The keyboard going down lets go of everything and disarms: nothing waits for a key that cannot come.
+  // The keyboard going down (the field's blur) lets go of everything and disarms: nothing waits for a key that cannot come.
   const keyboardDown = useCallback(() => {
+    setKeyboardUp(false)
     disarm()
     input.current?.releaseAll()
   }, [disarm])
-  const wasUp = useRef(false)
-  useEffect(() => {
-    if (wasUp.current && !keyboardUp) keyboardDown()
-    wasUp.current = keyboardUp
-  }, [keyboardUp, keyboardDown])
 
   const sendable = () => live.current.canControl && !live.current.paused && input.current !== null
   const armedCodes = () => MODIFIER_CODES.filter(([m]) => armedRef.current.has(m)).map(([, code]) => code)
@@ -367,6 +380,10 @@ export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconn
       else if (field.value === '') typing.current.sendKey('Backspace') // the sentinel went without a beforeinput we could use
       reset()
     }
+    const onFocus = () => {
+      setKeyboardUp(true)
+      reset()
+    }
     const onCompositionStart = () => {
       composing = true
     }
@@ -377,7 +394,8 @@ export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconn
     }
 
     reset()
-    field.addEventListener('focus', reset)
+    setKeyboardUp(document.activeElement === field)
+    field.addEventListener('focus', onFocus)
     field.addEventListener('blur', keyboardDown)
     field.addEventListener('keydown', onKeyDown)
     field.addEventListener('beforeinput', onBeforeInput)
@@ -385,15 +403,67 @@ export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconn
     field.addEventListener('compositionstart', onCompositionStart)
     field.addEventListener('compositionend', onCompositionEnd)
     return () => {
-      field.removeEventListener('focus', reset)
+      field.removeEventListener('focus', onFocus)
       field.removeEventListener('blur', keyboardDown)
       field.removeEventListener('keydown', onKeyDown)
       field.removeEventListener('beforeinput', onBeforeInput)
       field.removeEventListener('input', onInput)
       field.removeEventListener('compositionstart', onCompositionStart)
       field.removeEventListener('compositionend', onCompositionEnd)
+      setKeyboardUp(false)
     }
   }, [canControl, disarm, keyboardDown])
+
+  // iOS can hide the keyboard without blurring the field (tapping Esc in the key row did, in Safari), which left
+  // the key row up and Show Keyboard out of reach. A keyboard is gone when the visual viewport, having been a
+  // keyboard shorter than its tallest at this width during this focus, stays back for KEYBOARD_GONE_MS: the field
+  // is blurred then, and the blur brings the bottom bar back. The tallest height, not innerHeight, is the
+  // baseline, because Chrome for iOS can shrink the layout viewport with the keyboard; a focus that never saw a
+  // keyboard (Chrome's misses, a hardware keyboard) is never blurred from here.
+  useEffect(() => {
+    const vv = window.visualViewport
+    const field = fieldRef.current
+    if (!vv || !field || !canControl) return
+    const tallest = new Map<number, number>()
+    let sawKeyboard = false
+    let timer: number | null = null
+    const stop = () => {
+      if (timer !== null) window.clearTimeout(timer)
+      timer = null
+    }
+    const keyboardShown = () => {
+      const top = Math.max(tallest.get(window.innerWidth) ?? 0, vv.height)
+      tallest.set(window.innerWidth, top)
+      return top - vv.height > KEYBOARD_MIN_PX
+    }
+    const check = () => {
+      const shown = keyboardShown()
+      if (document.activeElement !== field || shown) {
+        if (shown) sawKeyboard = document.activeElement === field
+        stop()
+        return
+      }
+      if (!sawKeyboard || timer !== null) return
+      timer = window.setTimeout(() => {
+        timer = null
+        if (document.activeElement === field && !keyboardShown()) field.blur()
+      }, KEYBOARD_GONE_MS)
+    }
+    const reset = () => {
+      sawKeyboard = false
+      stop()
+    }
+    check()
+    vv.addEventListener('resize', check)
+    field.addEventListener('focus', reset)
+    field.addEventListener('blur', reset)
+    return () => {
+      vv.removeEventListener('resize', check)
+      field.removeEventListener('focus', reset)
+      field.removeEventListener('blur', reset)
+      stop()
+    }
+  }, [canControl])
 
   const slot = stage?.parentElement
   return (
@@ -430,6 +500,9 @@ export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconn
             canPickSurface={rights?.surface === true}
             disabledReason={locked ? 'Locked' : reconnecting ? 'Reconnecting' : null}
             client={client}
+            guest={guest}
+            sound={sound}
+            hidden={slotHidden}
           />,
           slot,
         )}

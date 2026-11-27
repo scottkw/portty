@@ -1079,6 +1079,18 @@ function App(): React.ReactElement {
     })
   }, [])
 
+  // The Desktop tabs whose sound is on and connected (23-08). A tab reports false on mute, disconnect and close.
+  const [playingTabs, setPlayingTabs] = useState<ReadonlySet<string>>(() => new Set())
+  const handleDesktopPlaying = useCallback((tabId: string, playing: boolean) => {
+    setPlayingTabs((prev) => {
+      if (prev.has(tabId) === playing) return prev
+      const next = new Set(prev)
+      if (playing) next.add(tabId)
+      else next.delete(tabId)
+      return next
+    })
+  }, [])
+
   // Portty 05-05 (SHAR-07): run before each peer-tab redial. Re-running the
   // connect re-checks same-account access and Share, refills this daemon's cap
   // store, and the relay port may be new after a daemon restart. It must not
@@ -1256,6 +1268,7 @@ function App(): React.ReactElement {
           shared={activeShared}
           shareDisabled={tailscaleOff && !activeShared && !sharePopoverOpen}
           desktopLabel={activeId !== null ? desktopLabels[activeId] ?? null : null}
+          playingTabIds={playingTabs}
         />
 
         {/* INVARIANT: this gating expression must include the trigger of EVERY banner
@@ -1537,6 +1550,7 @@ function App(): React.ReactElement {
                     active={!hidden}
                     onDesktopState={handleDesktopState}
                     onLabel={(l) => handleDesktopLabel(tab.id, l)}
+                    onPlaying={(on) => handleDesktopPlaying(tab.id, on)}
                   />
                 </ErrorBoundary>
               </div>

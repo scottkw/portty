@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/scottkw/portty/internal/desktop"
+	"github.com/scottkw/portty/internal/screencap"
 )
 
 const (
@@ -230,15 +231,83 @@ func TestControl_CursorReportAfterRmove(t *testing.T) {
 		v.send(t, map[string]any{"t": "rmove", "dx": 0.001, "dy": 0, "e": 1})
 	}
 	fb.waitFor(t, 10)
+	// The nine moves inside the 33 ms window get one trailing report, with the last point.
+	eventually(t, 5*time.Second, "trailing report", func() bool { return len(cursors()) == 2 })
 	time.Sleep(100 * time.Millisecond)
-	if n := len(cursors()); n != 1 {
-		t.Errorf("%d reports for 10 rmoves inside 33 ms, want 1", n)
+	if n := len(cursors()); n != 2 {
+		t.Errorf("%d reports for 10 rmoves inside 33 ms, want 2 (the first and one trailing)", n)
+	}
+	last := fb.snapshot()[9]
+	if c := cursors()[1]; math.Abs(c.X-(last.X+1470)/1470) > 1e-9 {
+		t.Errorf("trailing report x = %v, want the last posted point %v", c.X, (last.X+1470)/1470)
 	}
 	clk.Advance(40 * time.Millisecond)
 	v.send(t, map[string]any{"t": "rmove", "dx": 0.001, "dy": 0, "e": 1})
-	eventually(t, 5*time.Second, "second report", func() bool { return len(cursors()) == 2 })
+	eventually(t, 5*time.Second, "third report", func() bool { return len(cursors()) == 3 })
 	if !strings.Contains(strings.Join(v.received(), ""), `"t":"cursor"`) {
 		t.Error("no cursor message received")
+	}
+}
+
+// TestControl_PhoneTapThenDrag is the iPhone's tap-then-drag as the daemon sees it
+// (M-195): relative moves put the pointer on a title bar, the phone presses at the
+// last cursor report, more relative moves drag, and a button-up drops. The press
+// must land where the pointer is, not at a report older than the last move (the
+// window-share title bar is 28 points tall), and every move while held is a drag.
+func TestControl_PhoneTapThenDrag(t *testing.T) {
+	fb := &fakeInputBridge{curX: -735, curY: 239}
+	env, v, _, _ := joinWithControl(t, fb)
+	cursors := func() (out []msgCursorT) {
+		for _, m := range v.received() {
+			var c msgCursorT
+			if json.Unmarshal([]byte(m), &c) == nil && c.T == "cursor" {
+				out = append(out, c)
+			}
+		}
+		return out
+	}
+
+	// The pointer goes to the title bar: one reported move, then four quick ones inside 33 ms.
+	v.send(t, map[string]any{"t": "rmove", "dx": 0.1, "dy": 0, "e": 1})
+	for range 4 {
+		v.send(t, map[string]any{"t": "rmove", "dx": 0.01, "dy": 0, "e": 1})
+	}
+	pos := fb.waitFor(t, 5)[4] // where the pointer is now
+	var at msgCursorT
+	eventually(t, 2*time.Second, "a report of where the pointer is", func() bool {
+		cs := cursors()
+		if len(cs) == 0 {
+			return false
+		}
+		at = cs[len(cs)-1]
+		return math.Abs(at.X*1470-1470-pos.X) < 0.5
+	})
+
+	// Tap then drag: the phone presses at the report, three moves, the lift.
+	v.send(t, map[string]any{"t": "btn", "b": 0, "d": true, "x": at.X, "y": at.Y, "e": 1, "ts": 1000})
+	for range 3 {
+		v.send(t, map[string]any{"t": "rmove", "dx": 0.02, "dy": 0, "e": 1})
+	}
+	v.send(t, map[string]any{"t": "btn", "b": 0, "d": false, "x": at.X, "y": at.Y, "e": 1, "ts": 1100})
+	calls := fb.waitFor(t, 10)[5:]
+	if len(calls) != 5 {
+		t.Fatalf("%d calls after the moves, want 5 (down, 3 drags, up): %+v", len(calls), calls)
+	}
+	if c := calls[0]; c.Kind != screencap.MouseDown || c.Button != 0 || c.X != pos.X || c.Y != pos.Y {
+		t.Errorf("press = %+v, want a left down at the pointer (%v, %v)", c, pos.X, pos.Y)
+	}
+	x := pos.X
+	for i, c := range calls[1:4] {
+		if c.Kind != screencap.MouseDragged || c.Button != 0 || c.X <= x {
+			t.Errorf("move %d while held = %+v, want a left drag right of %v", i, c, x)
+		}
+		x = c.X
+	}
+	if c := calls[4]; c.Kind != screencap.MouseUp || c.Button != 0 || c.X != x {
+		t.Errorf("lift = %+v, want a left up at the last drag point %v", c, x)
+	}
+	if n := counter(env, "drag"); n != 3 {
+		t.Errorf("drag counter = %d, want 3 (the summary tells a drag from a plain move)", n)
 	}
 }
 

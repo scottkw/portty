@@ -129,6 +129,8 @@ type msgState struct {
 	State   State  `json:"state"`
 	Viewers int    `json:"viewers"`
 	Locked  bool   `json:"locked"`
+	// Audio is "failed" while audio capture or encoding has failed; omitted otherwise.
+	Audio string `json:"audio,omitempty"`
 }
 
 type msgSize struct {
@@ -237,6 +239,17 @@ type Deps struct {
 	Probe           func(ctx context.Context) (screencap.Permissions, error) // fresh-child permission read
 	Wake            <-chan wakewatch.Reason                                  // nil means wakewatch.Watch on the Manager's context
 	ApprovalStore   func(ctx context.Context) (time.Time, error)             // replayd's LastAlerted date, if readable
+
+	// Unlock types a viewer's password at the lock screen; nil means
+	// screencap.NewUnlockBridge(), whose posting calls refuse under tests.
+	// UnlockSleep is the unlock sequence's wait (settle, key gap, lock poll); nil
+	// means time.Sleep, tests advance their fake clock with it.
+	Unlock      UnlockBridge
+	UnlockSleep func(time.Duration)
+
+	// Audit writes one own-account line (unlocked, unlock_failed, relocked) to the
+	// local audit log; nil writes nothing. It never blocks and never fails.
+	Audit func(event string, id Identity, reason string)
 }
 
 // Package-level defaults for the Deps seams.
@@ -281,12 +294,19 @@ type viewer struct {
 	ws    *websocket.Conn
 	pc    *webrtc.PeerConnection
 	track *webrtc.TrackLocalStaticRTP
-	ready bool // the media path is up (PeerConnection Connected)
-	armed bool // a keyframe has been written to this viewer, deltas may follow
+	// audio is the viewer's Opus track, nil when it did not offer audio (audio.go).
+	audio    *webrtc.TrackLocalStaticRTP
+	audioCap int  // the viewer's hello caps audio, 1 when it can play audio
+	ready    bool // the media path is up (PeerConnection Connected)
+	armed    bool // a keyframe has been written to this viewer, deltas may follow
 
 	inputCap int                 // the viewer's hello caps input, 1 when it can send input
 	in       *viewerInput        // its input state, guarded by Manager.in.mu
 	dc       *webrtc.DataChannel // its accepted input channel, guarded by Manager.vmu
+
+	// unlockCap is the explicit unlock capability: set once at hello on the
+	// own-account serve path, never derived from rights bits, so no guest has it.
+	unlockCap bool
 
 	gs       *GuestShare // the share a guest was admitted to; nil for an own-account viewer
 	mediaCut atomic.Bool // a media identity check already cut this guest
@@ -321,9 +341,33 @@ type Manager struct {
 	src      screencap.Source
 	srcStop  context.CancelFunc
 	fanDone  chan struct{}
+	// audioDone is closed when audioOut has ended; nil when the source has no audio.
+	audioDone chan struct{}
+	// audioFail is set while audio capture or encoding has failed (audio.go).
+	audioFail atomic.Bool
+	// vpkt and aclk number and stamp the video and audio RTP packets for the
+	// Manager's whole life, not per capture run: a viewer's track, SSRC and SRTP
+	// context outlive a source restart, and SRTP on the viewer drops packets
+	// behind the last sequence it accepted, so a new random sequence froze the
+	// picture until it overtook the old one. vlast is when the last video unit
+	// was stamped. Only fanOut (video) and audioOut (audio) touch them, one run
+	// at a time: a stop waits for both before the next start.
+	vpkt  rtp.Packetizer
+	aclk  *audioClock
+	vlast time.Time
+
+	// q is the adaptive quality controller and bwe the slot that hands each new
+	// PeerConnection's estimator to answer (quality.go, peer.go).
+	q   *qualityController
+	bwe bweSlot
 
 	// in is the input path's state (input.go).
 	in inputState
+
+	// ul is remote unlock's state (unlock.go); rl is the re-lock rule that follows
+	// a Portty unlock (relock.go).
+	ul unlockState
+	rl relockState
 
 	// surf is what the share shows (surface.go).
 	surf surfaceState
@@ -453,6 +497,9 @@ func NewManager(d Deps) (*Manager, error) {
 	if d.Input == nil {
 		d.Input = screencap.NewInputBridge()
 	}
+	if d.Unlock == nil {
+		d.Unlock = screencap.NewUnlockBridge()
+	}
 	if d.DisplayBounds == nil {
 		d.DisplayBounds = screencap.DisplayBounds
 	}
@@ -490,6 +537,9 @@ func NewManager(d Deps) (*Manager, error) {
 		d: d, ctx: context.Background(), viewers: make(map[ViewerID]*viewer),
 		reasons: make(map[string]string), kick: make(chan struct{}, 1), tickViewers: stateTickViewers, tickIdle: stateTickIdle,
 	}
+	m.vpkt = rtp.NewPacketizer(outboundMTU, 0, 0, &codecs.H264Payloader{}, rtp.NewRandomSequencer(), h264Capability.ClockRate)
+	m.aclk = newAudioClock()
+	m.q = newQualityController(m)
 	m.arb = newArbiter(d.Now, d.Physical)
 	m.lease.kick = make(chan struct{}, 1)
 	m.lease.sent = make(map[ViewerID]msgLease)
@@ -500,6 +550,7 @@ func NewManager(d Deps) (*Manager, error) {
 		m.d.OnDataChannel = m.acceptDataChannel
 	}
 	m.loadRuntimeState()
+	m.resumeRelock()
 	return m, nil
 }
 
@@ -523,7 +574,7 @@ func (m *Manager) Start(ctx context.Context) error {
 		pconn = m.wrapConn(conn)
 	}
 	mux := ice.NewUDPMuxDefault(ice.UDPMuxParams{UDPConn: pconn})
-	api, err := newAPI(mux, m.d.Bind)
+	api, err := newAPI(mux, m.d.Bind, m.d.Now, &m.bwe)
 	if err != nil {
 		_ = mux.Close()
 		_ = conn.Close()
@@ -660,7 +711,7 @@ func (m *Manager) ServeDesktopViewerAs(ctx context.Context, c *websocket.Conn, a
 	rights := RightsOwnAccount
 	hello := msgHello{
 		Type: typeHello, V: ProtocolVersion, Viewer: id,
-		Caps: map[string]int{"video": 1, "input": 1},
+		Caps: map[string]int{"video": 1, "input": 1, "audio": 1, "unlock": 1}, // unlock: own-account viewers only
 		Rights: map[string]bool{
 			"control":   rights&RightsControl != 0,
 			"clipboard": rights&RightsClipboard != 0,
@@ -671,7 +722,7 @@ func (m *Manager) ServeDesktopViewerAs(ctx context.Context, c *websocket.Conn, a
 		return
 	}
 
-	v := &viewer{Viewer: Viewer{ID: ViewerID(id), Rights: rights, JoinedAt: m.d.Now(), Mode: ModeOwn, Identity: ident}, ws: c, inputCap: inputCap, in: &viewerInput{}}
+	v := &viewer{Viewer: Viewer{ID: ViewerID(id), Rights: rights, JoinedAt: m.d.Now(), Mode: ModeOwn, Identity: ident}, ws: c, inputCap: inputCap, audioCap: in.Caps["audio"], unlockCap: true, in: &viewerInput{}}
 	v.setRightsBits(rights)
 	m.serveAdmitted(ctx, c, v, admit, nil)
 }
@@ -740,6 +791,8 @@ func (m *Manager) serveAdmitted(ctx context.Context, c *websocket.Conn, v *viewe
 	}
 	v.pc = pc
 	defer func() { _ = pc.Close() }()
+	// answer registered the viewer's estimator; whatever way this returns, it goes.
+	defer m.q.unregister(v.ID)
 	pc.OnConnectionStateChange(func(st webrtc.PeerConnectionState) {
 		switch st {
 		case webrtc.PeerConnectionStateConnected:
@@ -804,7 +857,8 @@ func (m *Manager) serveAdmitted(ctx context.Context, c *websocket.Conn, v *viewe
 			return
 		}
 		key := AdmissionKey{UserID: v.Identity.UserID, StableID: v.Identity.StableID}
-		v.gs.attach(key, v.ID, func() { _ = c.Close(websocket.StatusNormalClosure, guestReasonReplaced) })
+		// Replaced: cut (rights, held input, lease, media), then the socket under the ceiling.
+		v.gs.attach(key, v.ID, func() { m.cutViewer(v, CloseGuestReplaced, guestReasonReplaced) })
 		defer v.gs.detach(key, v.ID)
 	}
 	joined = true
@@ -820,6 +874,7 @@ func (m *Manager) serveAdmitted(ctx context.Context, c *websocket.Conn, v *viewe
 	v.leaseReady.Store(true) // lease messages follow the answer, never precede it
 	m.kickLease()
 	m.broadcastState(ctx)
+	m.sendUnlockJoin(ctx, v)
 	if w, h, ok := m.size(); ok {
 		_ = send(ctx, c, msgSize{Type: typeSize, W: w, H: h})
 	}
@@ -880,6 +935,7 @@ func (m *Manager) join(v *viewer, admit func() bool) error {
 	}
 	m.viewers[v.ID] = v
 	m.vmu.Unlock()
+	m.relockViewer(true, v)
 	// Remote activity lights a dark display before capture starts; viewers hold
 	// the display and system assertions until the last leaves (a join retries
 	// one that failed).
@@ -960,6 +1016,14 @@ func (m *Manager) startSource() error {
 	m.vmu.Unlock()
 	m.noteStartSuccess(src, now)
 	go m.fanOut(src, m.fanDone)
+	m.q.start(sctx, src)
+	if as, ok := src.(screencap.AudioSource); ok {
+		// A new capture run starts with a clean audio state: a failure it has is
+		// still queued on AudioErrors and sets the flag again.
+		m.audioFail.Store(false)
+		m.audioDone = make(chan struct{})
+		go m.audioOut(sctx, as, m.audioDone)
+	}
 	return nil
 }
 
@@ -995,6 +1059,7 @@ func (m *Manager) leave(v *viewer) {
 		m.releaseViewerHolds()
 	}
 	m.mu.Unlock()
+	m.relockViewer(false, v)
 	m.syncTap()
 	m.kickLease()
 	m.kickLoop()
@@ -1010,9 +1075,13 @@ func (m *Manager) stopSourceLocked() {
 		return
 	}
 	m.srcStop()
+	m.q.stop() // before the source stops: it may be inside a setter on it
 	_ = m.src.Stop()
 	<-m.fanDone
-	m.src, m.srcStop, m.fanDone = nil, nil, nil
+	if m.audioDone != nil {
+		<-m.audioDone
+	}
+	m.src, m.srcStop, m.fanDone, m.audioDone = nil, nil, nil, nil
 	m.vmu.Lock()
 	m.sizeKnow = false
 	m.vmu.Unlock()
@@ -1060,19 +1129,24 @@ func (m *Manager) forceKeyframeNow() {
 
 // fanOut packetizes every access unit of src once and writes it to each
 // viewer's track until Frames closes, announcing a changed picture size to the
-// viewers. SSRC and payload type are set per viewer by its track.
+// viewers. SSRC and payload type are set per viewer by its track; sequence and
+// timestamp continue from the previous run (m.vpkt).
 func (m *Manager) fanOut(src screencap.Source, done chan<- struct{}) {
 	defer close(done)
 	defer recoverLog()
-	pkt := rtp.NewPacketizer(outboundMTU, 0, 0, &codecs.H264Payloader{}, rtp.NewRandomSequencer(), h264Capability.ClockRate)
 	frames, errs := src.Frames(), src.Errors()
+	first := true
 	for {
 		select {
 		case au, ok := <-frames:
 			if !ok {
 				return
 			}
-			m.noteFrame()
+			// noteUnit says whether this unit is a captured frame for the stall
+			// watchdog (every unit is, until a refine unit exists).
+			if m.noteUnit(au) {
+				m.noteFrame()
+			}
 			if m.noteSize(au.Width, au.Height) {
 				m.broadcast(context.Background(), msgSize{Type: typeSize, W: au.Width, H: au.Height})
 			}
@@ -1081,7 +1155,14 @@ func (m *Manager) fanOut(src screencap.Source, done chan<- struct{}) {
 				// display is dark: the viewer is shown the state instead.
 				continue
 			}
-			m.writeUnit(au.Keyframe, packetize(pkt, au))
+			// A run's first unit carries a nominal duration; across a restart the
+			// RTP clock follows the real gap, as it does for a still screen.
+			now := m.d.Now().Round(0)
+			if first && !m.vlast.IsZero() {
+				au.Duration = max(au.Duration, now.Sub(m.vlast))
+			}
+			first, m.vlast = false, now
+			m.writeUnit(au.Keyframe, packetize(m.vpkt, au))
 		case err, ok := <-errs:
 			if !ok {
 				errs = nil // a nil channel never fires; the frames case ends the loop
@@ -1161,8 +1242,7 @@ func (m *Manager) broadcast(ctx context.Context, v any) {
 }
 
 func (m *Manager) broadcastState(ctx context.Context) {
-	st := m.Status()
-	msg := msgState{Type: typeState, State: st.State, Viewers: st.Viewers, Locked: st.Locked}
+	msg := m.stateMsg(m.Status())
 	m.smu.Lock()
 	m.pushed, m.pushedKnown = msg, true
 	m.smu.Unlock()

@@ -38,7 +38,7 @@ export type ClientStatus =
   | { kind: 'guest_final'; reason: GuestCloseReason }
 
 /** Why a guest connection ended for good (22-UI-SPEC Surface 6 close reasons). */
-export type GuestCloseReason = 'denied' | 'admit_timeout' | 'revoked' | 'share_ended' | 'token_invalid'
+export type GuestCloseReason = 'denied' | 'admit_timeout' | 'revoked' | 'share_ended' | 'token_invalid' | 'replaced'
 
 export interface SignalTransport {
   send(msg: object): void
@@ -74,6 +74,28 @@ export interface DesktopStateMsg {
   state: DesktopState
   viewers: number
   locked: boolean
+  /** The daemon's audio capture or encoder failed; the picture is unaffected. Absent when audio is fine. */
+  audio?: 'failed'
+}
+
+/** What the server hello offers this viewer: sound from the Mac, and the unlock panel (own-account viewers only). */
+export interface DesktopCaps {
+  audio: boolean
+  unlock: boolean
+}
+
+/** The daemon's unlock states (23-04 wire contract). The viewer holds no counters: failures, waits and the pause are the daemon's. */
+export type UnlockStateName =
+  | 'idle' | 'unlocking' | 'retrying' | 'unlocked' | 'failed' | 'rate_limited' | 'paused' | 'refused' | 'unavailable' | 'error'
+export type UnlockReason = '' | 'caps_lock' | 'unmappable' | 'accessibility'
+export interface DesktopUnlockMsg {
+  state: UnlockStateName
+  failures: number
+  /** Rate limit or pause: how long until the daemon accepts another try, in ms. 0 when absent. */
+  waitMs: number
+  reason: UnlockReason
+  /** Unlocked state only: Portty typed the password (false would be the Mac unlocked at its own keyboard). */
+  byPortty: boolean
 }
 
 export interface DesktopSizeMsg {
@@ -143,8 +165,12 @@ export interface DesktopAdmissionMsg {
   state: 'waiting' | 'admitted'
 }
 
-/** Who holds the 2 s input lease, from this guest's side. `name` is set only for `other`, and is the holder's sanitized display name. */
-export type LeaseState = 'you' | 'other' | 'owner' | 'physical' | 'free'
+/**
+ * Who holds the 2 s input lease, from this viewer's side (guests and own-account controllers). `name` is set only for
+ * `other` with a guest holder, and is its sanitized display name. `unavailable`: the Mac's input tap is unhealthy, so
+ * every press is dropped.
+ */
+export type LeaseState = 'you' | 'other' | 'owner' | 'physical' | 'unavailable' | 'free'
 export interface DesktopLeaseMsg {
   state: LeaseState
   name: string
@@ -157,8 +183,14 @@ export interface DesktopEvents {
   status: ClientStatus
   wake: WakeReason
   rights: DesktopRights
+  /** The server hello's capabilities, once per connection. */
+  caps: DesktopCaps
   /** The input data channel opened or closed. */
   input: { open: boolean }
+  /** Own-account viewers only: the daemon's unlock progress (23-04). */
+  unlock: DesktopUnlockMsg
+  /** The daemon put this viewer below its quality floor (slow) or took it off again; sent to this viewer only (23-02). */
+  quality: { slow: boolean }
   surface: DesktopSurfaceMsg
   /** A good reply to a surfaces request. */
   surfaces: DesktopSurfacesMsg
@@ -168,7 +200,7 @@ export interface DesktopEvents {
   cursor: DesktopCursorMsg
   /** Guest mode: the admission state of this connection. */
   admission: DesktopAdmissionMsg
-  /** Guest mode: the input lease. */
+  /** The input lease (a controlling guest, or an own-account controller). */
   lease: DesktopLeaseMsg
 }
 
@@ -246,6 +278,11 @@ export interface DesktopClient {
    * releases and wheel are never droppable.
    */
   sendInput(msg: object, droppable?: boolean): boolean
+  /**
+   * The unlock request: `bytes` (type byte 0x01, then UTF-8) as one binary message on the input channel,
+   * never the signalling socket. False when the channel is not open. The caller zeroes `bytes` afterwards.
+   */
+  sendUnlock(bytes: Uint8Array): boolean
   /** The surface epoch last announced by the server, or null until the first surface message. */
   currentEpoch(): number | null
   /** Asks for the displays and windows. Resolves on the next reply; rejects on an error reply, a dropped connection or after 5 s. */
@@ -291,6 +328,24 @@ export function defaultGuestWsUrl(loc: Location = window.location): string {
   return `wss://${loc.host}/desktop/guest/ws?cap=${encodeURIComponent(capToken ?? '')}`
 }
 
+/**
+ * Asks the Mac for stereo Opus: adds stereo=1 to the Opus fmtp line of the offer (or a new fmtp line when
+ * there is none). Browsers offer mono by default, and the Mac's music would come out as one channel.
+ * Every other line is left untouched.
+ */
+export function withOpusStereo(sdp: string): string {
+  const pt = /^a=rtpmap:(\d+) opus\/48000\/2\r?$/m.exec(sdp)?.[1]
+  if (!pt) return sdp
+  const fmtp = new RegExp(`^(a=fmtp:${pt} )(.*?)(\\r?)$`, 'm')
+  if (fmtp.test(sdp)) {
+    return sdp.replace(fmtp, (_, head: string, params: string, cr: string) => {
+      const kept = params.split(';').filter((p) => p !== '' && !p.startsWith('stereo='))
+      return `${head}${[...kept, 'stereo=1'].join(';')}${cr}`
+    })
+  }
+  return sdp.replace(new RegExp(`^(a=rtpmap:${pt} opus/48000/2)(\\r?)$`, 'm'), (_, line: string, cr: string) => `${line}${cr}\na=fmtp:${pt} stereo=1${cr}`)
+}
+
 export function webSocketTransport(url: string): SignalTransport {
   const ws = new WebSocket(url)
   return {
@@ -318,9 +373,11 @@ const GUEST_CLOSE: Readonly<Record<number, GuestCloseReason>> = {
   4431: 'admit_timeout',
   4432: 'revoked',
   4433: 'share_ended',
+  // Final, not retried: a retry would knock again and replace the other tab, which would retry in turn.
+  4434: 'replaced',
 }
 
-const LEASE_STATES: ReadonlySet<string> = new Set<LeaseState>(['you', 'other', 'owner', 'physical', 'free'])
+const LEASE_STATES: ReadonlySet<string> = new Set<LeaseState>(['you', 'other', 'owner', 'physical', 'unavailable', 'free'])
 
 /** Belt and braces on a name from the wire: no control or format characters, one space between words, at most 128 characters. */
 function cleanName(v: unknown): string {
@@ -332,6 +389,12 @@ function parseRights(v: unknown): DesktopRights {
   const r = (isObj(v) ? v : {}) as Record<string, unknown>
   return { control: r.control === true, clipboard: r.clipboard === true, surface: r.surface === true }
 }
+
+const UNLOCK_STATES: ReadonlySet<string> = new Set<UnlockStateName>([
+  'idle', 'unlocking', 'retrying', 'unlocked', 'failed', 'rate_limited', 'paused', 'refused', 'unavailable', 'error',
+])
+const UNLOCK_REASONS: ReadonlySet<string> = new Set(['caps_lock', 'unmappable', 'accessibility'])
+const UNLOCK_MAX_WAIT_MS = 3600000
 
 const STATES: ReadonlySet<string> = new Set<DesktopState>([
   'off', 'needs_permission', 'awaiting_approval', 'display_asleep', 'locked', 'idle', 'streaming', 'capture_paused',
@@ -355,7 +418,7 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
 
   const listeners: { [K in keyof DesktopEvents]: Set<(v: DesktopEvents[K]) => void> } = {
     track: new Set(), state: new Set(), size: new Set(), status: new Set(), wake: new Set(),
-    rights: new Set(), input: new Set(), surface: new Set(), surfaces: new Set(), selectFailed: new Set(),
+    rights: new Set(), caps: new Set(), input: new Set(), unlock: new Set(), quality: new Set(), surface: new Set(), surfaces: new Set(), selectFailed: new Set(),
     control: new Set(), cursor: new Set(), admission: new Set(), lease: new Set(),
   }
   function emit<K extends keyof DesktopEvents>(event: K, v: DesktopEvents[K]) {
@@ -380,10 +443,14 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
   // Guest mode: what the hello offered, kept until admission lets the offer start (once per connection).
   let helloInput = false
   let offered = false
+  // Guest mode: the socket is up and waiting at Admit, so a wake must ping it like a streaming one.
+  let waiting = false
   let hasPicture = false
   // Per peer connection: a picture needs both the track and ICE connected. ontrack fires
   // on setRemoteDescription, long before (or without) any media path.
   let gotTrack = false
+  // The one stream this connection's tracks play from (video and audio share it).
+  let stream: MediaStream | null = null
   let iceUp = false
   let inputChannel: RTCDataChannel | null = null
   let epoch: number | null = null
@@ -568,6 +635,7 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
     hadHello = false
     helloInput = false
     offered = false
+    waiting = false
     let t: SignalTransport
     try {
       t = makeTransport()
@@ -577,7 +645,7 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
     }
     transport = t
     t.onOpen(() => {
-      if (g === gen) t.send({ type: 'hello', v: 1, caps: { video: 1, input: 1 } })
+      if (g === gen) t.send({ type: 'hello', v: 1, caps: { video: 1, audio: 1, input: 1 } })
     })
     t.onMessage((m) => {
       if (g === gen) void handle(g, m)
@@ -639,8 +707,16 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
   }
 
   function onTrack(e: RTCTrackEvent) {
+    // Audio and video share one stream id, so the browser hands both the same stream and one <video> plays both.
+    // A peer that sent no stream id gets one stream built here instead.
+    const given = e.streams[0]
+    const s = given ?? stream ?? new MediaStream()
+    if (!given) s.addTrack(e.track)
+    stream = s
+    // The picture waits for the video track; audio alone is never a picture.
+    if (e.track.kind === 'audio') return
     gotTrack = true
-    emit('track', e.streams[0] ?? new MediaStream([e.track]))
+    emit('track', s)
     maybePicture()
   }
 
@@ -709,6 +785,7 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
   /** The peer connection and the offer: from the hello, or, for a guest, from admission. */
   async function beginOffer(g: number) {
     offered = true
+    stream = null
     const conn = makePC()
     pc = conn
     conn.ontrack = (e) => {
@@ -718,7 +795,9 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
     // Before addTransceiver and createOffer, so the offer carries an application m-line.
     if (helloInput) openInputChannel(g, conn)
     conn.addTransceiver('video', { direction: 'recvonly' })
-    await conn.setLocalDescription(await conn.createOffer())
+    conn.addTransceiver('audio', { direction: 'recvonly' })
+    const offer = await conn.createOffer()
+    await conn.setLocalDescription({ type: 'offer', sdp: withOpusStereo(offer.sdp ?? '') })
     await gathered(conn)
     if (g !== gen) return
     transport?.send({ type: 'offer', sdp: conn.localDescription?.sdp ?? '' })
@@ -734,7 +813,9 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
           hadHello = true
           helloTimer = cancel(helloTimer)
           emit('rights', parseRights(m.rights))
-          helloInput = (m.caps as Record<string, unknown> | undefined)?.input === 1
+          const caps = m.caps as Record<string, unknown> | undefined
+          helloInput = caps?.input === 1
+          emit('caps', { audio: caps?.audio === 1, unlock: caps?.unlock === 1 })
           // A guest sends no offer until the share server says admitted.
           if (!guest) await beginOffer(g)
           break
@@ -744,9 +825,11 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
           if (m.state === 'waiting') {
             // Waiting at Admit with the socket up is not an unreachable Mac, and not a lost picture.
             unreachableTimer = cancel(unreachableTimer)
+            waiting = true
             if (status.kind === 'reconnecting' || status.kind === 'unreachable') setStatus({ kind: 'connecting' })
             emit('admission', { state: 'waiting' })
           } else if (m.state === 'admitted' && !offered) {
+            waiting = false
             emit('admission', { state: 'admitted' })
             armUnreachable()
             await beginOffer(g)
@@ -757,7 +840,8 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
           if (guest) emit('rights', parseRights(m.rights))
           break
         case 'lease':
-          if (guest && typeof m.state === 'string' && LEASE_STATES.has(m.state)) {
+          // Own-account controllers hear it too: their input is dropped for the same reasons (WR-07).
+          if (typeof m.state === 'string' && LEASE_STATES.has(m.state)) {
             emit('lease', { state: m.state as LeaseState, name: m.state === 'other' ? cleanName(m.name) : '' })
           }
           break
@@ -769,8 +853,29 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
           if (typeof m.state === 'string' && STATES.has(m.state)) {
             lastState = m.state
             lastViewers = Number.isInteger(m.viewers) ? (m.viewers as number) : 0
-            emit('state', { state: m.state as DesktopState, viewers: lastViewers, locked: m.locked === true })
+            emit('state', {
+              state: m.state as DesktopState,
+              viewers: lastViewers,
+              locked: m.locked === true,
+              ...(m.audio === 'failed' ? { audio: 'failed' as const } : {}),
+            })
           }
+          break
+        case 'unlock':
+          // Only an enum value and bounded integers are taken from the wire.
+          if (typeof m.state === 'string' && UNLOCK_STATES.has(m.state)) {
+            const wait = m.wait_ms
+            emit('unlock', {
+              state: m.state as UnlockStateName,
+              failures: Number.isInteger(m.failures) && (m.failures as number) >= 0 ? (m.failures as number) : 0,
+              waitMs: Number.isFinite(wait) && (wait as number) > 0 ? Math.min(wait as number, UNLOCK_MAX_WAIT_MS) : 0,
+              reason: typeof m.reason === 'string' && UNLOCK_REASONS.has(m.reason) ? (m.reason as UnlockReason) : '',
+              byPortty: m.by_portty === true,
+            })
+          }
+          break
+        case 'quality':
+          emit('quality', { slow: m.slow === true })
           break
         case 'surface': {
           const kind = m.kind
@@ -866,7 +971,7 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
   function onWake(reason: WakeReason) {
     emit('wake', reason)
     if (!running) return
-    if (status.kind === 'streaming' && transport) {
+    if ((status.kind === 'streaming' || waiting) && transport) {
       // A dead iOS socket can still read OPEN, so ask and wait for the answer.
       if (pendingPing !== null) return
       const g = gen
@@ -961,6 +1066,12 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
       if (!ch || ch.readyState !== 'open') return false
       if (droppable && ch.bufferedAmount > MOVE_BUFFER_LIMIT) return false
       ch.send(JSON.stringify(msg))
+      return true
+    },
+    sendUnlock(bytes) {
+      const ch = inputChannel
+      if (!ch || ch.readyState !== 'open') return false
+      ch.send(bytes as Uint8Array<ArrayBuffer>)
       return true
     },
     currentEpoch: () => epoch,

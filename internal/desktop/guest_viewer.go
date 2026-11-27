@@ -11,14 +11,16 @@ import (
 // Close codes of a guest's signalling socket, beside 4401, 4410 and 4429. The
 // reasons are fixed codes the guest page reads, never text it must parse.
 const (
-	CloseGuestDenied  websocket.StatusCode = 4430 // the sharer said no, or the user was denied earlier
-	CloseGuestTimeout websocket.StatusCode = 4431 // nobody answered in admitTimeout
-	CloseGuestRevoked websocket.StatusCode = 4432 // the sharer cut the guest, or its media path was not its own
-	CloseShareEnded   websocket.StatusCode = 4433 // the share ended
+	CloseGuestDenied   websocket.StatusCode = 4430 // the sharer said no, or the user was denied earlier
+	CloseGuestTimeout  websocket.StatusCode = 4431 // nobody answered in admitTimeout
+	CloseGuestRevoked  websocket.StatusCode = 4432 // the sharer cut the guest, or its media path was not its own
+	CloseShareEnded    websocket.StatusCode = 4433 // the share ended
+	CloseGuestReplaced websocket.StatusCode = 4434 // a newer connection from the same node took this one's place
 )
 
 // Close reasons of a guest socket. A newer connection from the same node
-// closes the older one with a normal close (1000) and guestReasonReplaced.
+// closes the older one with CloseGuestReplaced, which is final on the page: a
+// retry would knock again and replace the newer one, which would retry in turn.
 const (
 	guestReasonDenied       = "denied"
 	guestReasonTimeout      = "admit_timeout"
@@ -121,7 +123,7 @@ func (m *Manager) ServeGuestViewer(ctx context.Context, c *websocket.Conn, admit
 
 	hello := msgHello{
 		Type: typeHello, V: ProtocolVersion, Viewer: vid,
-		Caps:   map[string]int{"video": 1, "input": 1},
+		Caps:   map[string]int{"video": 1, "input": 1, "audio": 1},
 		Rights: rightsMap(RightsViewOnly), // the rights message follows an admission
 	}
 	if send(ctx, c, hello) != nil {
@@ -150,7 +152,7 @@ func (m *Manager) ServeGuestViewer(ctx context.Context, c *websocket.Conn, admit
 		_ = c.Close(CloseGuestTimeout, guestReasonTimeout)
 		return
 	case ResultReplaced:
-		_ = c.Close(websocket.StatusNormalClosure, guestReasonReplaced)
+		_ = c.Close(CloseGuestReplaced, guestReasonReplaced)
 		return
 	case ResultEnded:
 		_ = c.Close(CloseShareEnded, guestReasonShareEnded)
@@ -169,7 +171,7 @@ func (m *Manager) ServeGuestViewer(ctx context.Context, c *websocket.Conn, admit
 	}
 	v := &viewer{
 		Viewer: Viewer{ID: ViewerID(vid), Rights: rights, JoinedAt: m.d.Now(), Mode: ModeGuest, Identity: id},
-		ws:     c, inputCap: in.Caps["input"], in: &viewerInput{}, gs: gs,
+		ws:     c, inputCap: in.Caps["input"], audioCap: in.Caps["audio"], in: &viewerInput{}, gs: gs,
 	}
 	v.setRightsBits(rights)
 	m.serveAdmitted(ctx, c, v, admit, pend)

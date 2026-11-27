@@ -153,6 +153,18 @@ describe('guest cards, one at a time', () => {
     expect(buttons()).toEqual([])
   })
 
+  it('Opened in another tab: final, with Reload Page to watch here instead', async () => {
+    const onReload = vi.fn()
+    render({ onReload })
+    await firstFrame()
+    status({ kind: 'guest_final', reason: 'replaced' })
+    expect(heading()).toBe(copy.GUEST_CARD_REPLACED)
+    expect(body()).toBe(copy.GUEST_CARD_REPLACED_BODY)
+    expect(buttons()).toEqual(['Reload Page'])
+    act(() => (container.querySelector('.desktop-card button') as HTMLButtonElement).click())
+    expect(onReload).toHaveBeenCalledTimes(1)
+  })
+
   it('Sharing has ended: final, the scrim stays over the frozen last frame', async () => {
     render()
     await firstFrame()
@@ -210,8 +222,8 @@ describe('guest chips, grants and the lease', () => {
     act(() => client().emit('rights', { control: false, clipboard: false, surface: false, ...r }))
   const lease = (state: DesktopEvents['lease']['state'], name = '') => act(() => client().emit('lease', { state, name }))
 
-  async function admitted(r: Partial<DesktopEvents['rights']> = {}) {
-    render()
+  async function admitted(r: Partial<DesktopEvents['rights']> = {}, props: DesktopViewProps = {}) {
+    render(props)
     for (const [a, b] of [['clientWidth', 1000], ['clientHeight', 500], ['videoWidth', 1600], ['videoHeight', 1000]] as const) {
       Object.defineProperty(video(), a, { configurable: true, value: b })
     }
@@ -279,6 +291,43 @@ describe('guest chips, grants and the lease', () => {
     lease('other', 'Ada')
     lease('free')
     expect(chips()).toEqual([copy.GUEST_CHIP_CONTROL])
+  })
+
+  it('an own-account viewer with control sees Someone is using this Mac and another holder too (WR-07)', async () => {
+    await admitted({ control: true }, { guest: false })
+    expect(chips()).toEqual([])
+    lease('physical')
+    expect(chips()).toEqual([copy.GUEST_CHIP_SOMEONE])
+    act(() => { vi.advanceTimersByTime(2100) })
+    lease('free')
+    expect(chips()).toEqual([])
+    lease('other')
+    expect(chips()).toEqual([copy.controllingChip('Someone')])
+    lease('unavailable')
+    expect(chips()).toEqual([copy.CHIP_CONTROL_UNAVAILABLE])
+    lease('free')
+    expect(chips()).toEqual([])
+  })
+
+  it('a tap that cannot tell whether someone is at the Mac shows the paused chip to a controlling guest (WR-07)', async () => {
+    await admitted({ control: true })
+    lease('unavailable')
+    expect(chips()).toEqual([copy.CHIP_CONTROL_UNAVAILABLE])
+    lease('free')
+    expect(chips()).toEqual([copy.GUEST_CHIP_CONTROL])
+  })
+
+  it('a phone guest with control sees You have control and the lease chips, not View only', async () => {
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (q: string) => ({ matches: true, media: q, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList,
+    )
+    await admitted({ control: true })
+    expect(chips()).toEqual([copy.GUEST_CHIP_CONTROL])
+    lease('other', 'Ada')
+    expect(chips()).toEqual([copy.controllingChip('Ada')])
+    lease('free')
+    rights({ control: false })
+    expect(chips()).toEqual([copy.GUEST_CHIP_VIEW_ONLY])
   })
 
   it('a view-only guest never shows a lease chip', async () => {

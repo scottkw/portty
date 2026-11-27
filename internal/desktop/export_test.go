@@ -2,6 +2,7 @@ package desktop
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/netip"
 	"time"
@@ -80,3 +81,84 @@ func (m *Manager) SetTicksForTest(viewers, idle time.Duration) {
 
 // BumpEpochForTest is what a surface change does to the input epoch.
 func (m *Manager) BumpEpochForTest() uint32 { return m.bumpEpoch() }
+
+// AudioClock is the audio RTP stamping of audio.go.
+type AudioClock struct{ c *audioClock }
+
+// NewAudioClockForTest returns a fresh audio clock.
+func NewAudioClockForTest() *AudioClock { return &AudioClock{newAudioClock()} }
+
+// Packetize stamps one Opus packet that arrived at now and returns its RTP timestamp.
+func (a *AudioClock) Packetize(now time.Time) uint32 {
+	return a.c.packetize(now, screencap.AudioPacket{Data: []byte{0xf8, 0xff, 0xfe}, Samples: screencap.OpusFrames})[0].Timestamp
+}
+
+// EnsureOpusStereoForTest is the answer's Opus fmtp completion.
+func EnsureOpusStereoForTest(sdp string) string { return ensureOpusStereo(sdp) }
+
+// SetQualityTickForTest shortens the quality controller's cadence; call before Start.
+func (m *Manager) SetQualityTickForTest(d time.Duration) { m.q.tickEvery = d }
+
+// QualityTickForTest runs one controller pass synchronously.
+func (m *Manager) QualityTickForTest() { m.q.tick() }
+
+// QualityViewersForTest is how many viewers the controller counts.
+func (m *Manager) QualityViewersForTest() int {
+	m.q.mu.Lock()
+	defer m.q.mu.Unlock()
+	return len(m.q.viewers)
+}
+
+// SetEstimateForTest replaces viewer id's bandwidth estimate with f.
+func (m *Manager) SetEstimateForTest(id ViewerID, f func() int) {
+	m.q.mu.Lock()
+	defer m.q.mu.Unlock()
+	if v := m.q.viewers[id]; v != nil {
+		v.stub = f
+	}
+}
+
+// ViewerEstimateForTest is viewer id's own GCC estimate in bits per second (not
+// the encoder's target); false when the controller does not count the viewer.
+func (m *Manager) ViewerEstimateForTest(id ViewerID) (int, bool) {
+	m.q.mu.Lock()
+	v := m.q.viewers[id]
+	m.q.mu.Unlock()
+	if v == nil || v.bwe == nil {
+		return 0, false
+	}
+	return v.bwe.GetTargetBitrate(), true
+}
+
+// ViewerBWEForTest says what the controller knows of every viewer's estimator: the
+// estimate, whether any transport-cc feedback came back, whether the controller has
+// decided there is none, whether the viewer is slow and its last reported loss.
+func (m *Manager) ViewerBWEForTest() map[ViewerID]string {
+	m.q.mu.Lock()
+	defer m.q.mu.Unlock()
+	out := map[ViewerID]string{}
+	for id, v := range m.q.viewers {
+		if v.bwe == nil {
+			continue
+		}
+		out[id] = fmt.Sprintf("est=%d feedback=%v noFB=%v slow=%v loss=%.2f", v.bwe.GetTargetBitrate(), v.bwe.feedback.Load(), v.noFB, v.slow.Slow, v.loss)
+	}
+	return out
+}
+
+// EpochForTest is the input epoch viewers stamp positional input with.
+func (m *Manager) EpochForTest() uint32 { return m.currentEpoch() }
+
+// QualityDistinctEstimatorsForTest is how many different estimator objects the
+// controller's viewers hold (a binding mix-up would make two share one).
+func (m *Manager) QualityDistinctEstimatorsForTest() int {
+	m.q.mu.Lock()
+	defer m.q.mu.Unlock()
+	seen := map[*viewerBWE]bool{}
+	for _, v := range m.q.viewers {
+		if v.bwe != nil {
+			seen[v.bwe] = true
+		}
+	}
+	return len(seen)
+}

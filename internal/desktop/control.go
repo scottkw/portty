@@ -217,21 +217,59 @@ func (m *Manager) recoverControl(now time.Time) {
 	}
 }
 
+// cursorReport is a point reportCursor held back for its trailing report.
+type cursorReport struct {
+	t    inputTarget
+	x, y float64
+}
+
 // reportCursor tells the viewer where its relative move put the pointer, as
-// normalized surface coordinates, at most every cursorReportEvery.
-// shortcut: no trailing report, so the last position of a burst is reported
-// with the next move; upgrade if the viewer needs it exact at rest.
+// normalized surface coordinates, at most every cursorReportEvery. A move
+// inside the window is reported when the window ends (the newest one only):
+// the iPhone clicks and presses at the last report, so the report of a pointer
+// at rest must be exact (M-195: a press at a report older than the last move
+// jumped the pointer back off a title bar).
 func (m *Manager) reportCursor(v *viewer, t inputTarget, x, y float64) {
 	now := m.d.Now()
 	m.in.mu.Lock()
-	due := v.in.lastCursorReport.IsZero() || now.Sub(v.in.lastCursorReport) >= cursorReportEvery
+	vi := v.in
+	due := vi.lastCursorReport.IsZero() || now.Sub(vi.lastCursorReport) >= cursorReportEvery
 	if due {
-		v.in.lastCursorReport = now
+		vi.lastCursorReport = now
+		vi.cursorPending = nil
+	} else {
+		vi.cursorPending = &cursorReport{t, x, y}
+		if !vi.cursorTimer {
+			vi.cursorTimer = true
+			time.AfterFunc(cursorReportEvery-now.Sub(vi.lastCursorReport), func() { m.trailingCursor(v) })
+		}
 	}
 	m.in.mu.Unlock()
-	if !due {
+	if due {
+		m.sendCursor(v, t, x, y)
+	}
+}
+
+// trailingCursor sends the point a throttled report held back, unless a due
+// report has sent a newer one since or the viewer's input life is over.
+func (m *Manager) trailingCursor(v *viewer) {
+	defer recoverLog()
+	m.in.mu.Lock()
+	vi := v.in
+	p := vi.cursorPending
+	vi.cursorPending, vi.cursorTimer = nil, false
+	if p != nil {
+		vi.lastCursorReport = m.d.Now()
+	}
+	gone := vi.closed
+	m.in.mu.Unlock()
+	if p == nil || gone || m.closed.Load() {
 		return
 	}
+	m.sendCursor(v, p.t, p.x, p.y)
+}
+
+func (m *Manager) sendCursor(v *viewer, t inputTarget, x, y float64) {
 	m.vmu.Lock()
 	dc := v.dc
 	m.vmu.Unlock()

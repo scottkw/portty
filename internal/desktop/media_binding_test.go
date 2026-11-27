@@ -3,6 +3,7 @@ package desktop_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/pion/webrtc/v4"
 
 	"github.com/scottkw/portty/internal/desktop"
 )
@@ -103,7 +105,7 @@ func TestMediaBinding_LookupErrorFailsClosed(t *testing.T) {
 	c, id := connectedGuest(ctx, t, e)
 	e.setPeer(func(string) (int64, string, error) { return 0, "", errors.New("tailscaled unreachable") })
 	e.mgr.CheckMediaIdentityForTest(id, true, "100.64.0.9", 4000)
-	wantCut(ctx, t, e, c)
+	wantRetryableCut(ctx, t, e, c)
 }
 
 func TestMediaBinding_NoSelectedPairFailsClosed(t *testing.T) {
@@ -112,7 +114,23 @@ func TestMediaBinding_NoSelectedPairFailsClosed(t *testing.T) {
 	e := newGuestEnv(t, nil)
 	c, id := connectedGuest(ctx, t, e)
 	e.mgr.CheckMediaIdentityForTest(id, false, "", 0)
-	wantCut(ctx, t, e, c)
+	wantRetryableCut(ctx, t, e, c)
+}
+
+// wantRetryableCut: a check that could not reach a verdict (lookup failed, no
+// pair) still cuts, but closes 1001 so the page retries, and writes no revoked
+// audit line or deny-list entry: nobody revoked the guest.
+func wantRetryableCut(ctx context.Context, t *testing.T, e *guestEnv, c *websocket.Conn) {
+	t.Helper()
+	if code, _ := closeOf(ctx, t, c); code != websocket.StatusGoingAway {
+		t.Errorf("close %d, want 1001 (retryable)", code)
+	}
+	if got := e.eventsOf("revoked"); len(got) != 0 {
+		t.Errorf("revoked events %+v, want none", got)
+	}
+	if e.gs.IsDenied(1001) {
+		t.Error("the guest was deny-listed")
+	}
 }
 
 func TestMediaBinding_TwoMismatchesCutOnceAndReportOnce(t *testing.T) {
@@ -166,5 +184,69 @@ func TestMediaBinding_NilSeamClosesAGuestButNeverAnOwnAccountViewer(t *testing.T
 	})
 	if n := e.mgr.Viewers(); n != 1 {
 		t.Errorf("Viewers() = %d, want the own-account viewer still joined", n)
+	}
+}
+
+// TestMediaBinding_MismatchRunsTheOrderedCut (WR-04): a mismatch cuts through
+// the ordered revoke: the grants are gone when the check returns, and the
+// PeerConnection (media and the input channel) closes at once, without waiting
+// for a peer that never answers the socket's close handshake.
+func TestMediaBinding_MismatchRunsTheOrderedCut(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	e := newGuestEnv(t, withGuestInput(&fakeInputBridge{}))
+	g := e.joinGuestAs(ctx, t, 1001, "nodeA", false) // never reads: never answers the close
+	if err := e.mgr.SetRights(g.viewerID(), true, true); err != nil {
+		t.Fatal(err)
+	}
+	e.setPeer(func(string) (int64, string, error) { return 2002, "stable-x", nil })
+	e.mgr.CheckMediaIdentityForTest(g.viewerID(), true, "100.64.0.9", 4000)
+	for _, v := range e.mgr.ViewerList() {
+		if v.ID == g.viewerID() && v.Rights != desktop.RightsViewOnly {
+			t.Errorf("rights %v right after the mismatch, want view-only", v.Rights)
+		}
+	}
+	eventually(t, 2*time.Second, "the input channel to close with the PeerConnection", func() bool {
+		return g.dc.ReadyState() == webrtc.DataChannelStateClosed
+	})
+	eventually(t, 9*time.Second, "the silent guest to be dropped", func() bool { return e.mgr.Viewers() == 0 })
+	if got := e.eventsOf("revoked"); len(got) != 1 || got[0].Reason != desktop.ReasonMediaIdentityMismatch {
+		t.Errorf("revoked events %+v, want one media_identity_mismatch", got)
+	}
+}
+
+// TestMediaBinding_NoVerdictWhenTheShareIsStoppingOrTheViewerIsCut (IN-01): a
+// lookup that cannot run because the share server has stopped, and a check that
+// finishes after the viewer was cut, are no verdict: no cut and no
+// media_identity_mismatch line. Any other lookup failure still fails closed
+// (TestMediaBinding_LookupErrorFailsClosed).
+func TestMediaBinding_NoVerdictWhenTheShareIsStoppingOrTheViewerIsCut(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+	defer cancel()
+	e := newGuestEnv(t, nil)
+	c, id := connectedGuest(ctx, t, e)
+	e.setPeer(func(string) (int64, string, error) {
+		return 0, "", fmt.Errorf("lookup: %w", desktop.ErrPeerLookupStopped)
+	})
+	e.mgr.CheckMediaIdentityForTest(id, true, "100.64.0.9", 4000)
+	if got := e.eventsOf("revoked"); len(got) != 0 {
+		t.Fatalf("revoked events %+v for a lookup the stopped share server could not run", got)
+	}
+	if n := e.mgr.Viewers(); n != 1 {
+		t.Fatalf("Viewers() = %d, want the guest still joined", n)
+	}
+
+	// Cut by the sharer; a check still in flight then finds a mismatch.
+	if err := e.mgr.CloseViewer(id); err != nil {
+		t.Fatal(err)
+	}
+	e.setPeer(func(string) (int64, string, error) { return 2002, "stable-x", nil })
+	e.mgr.CheckMediaIdentityForTest(id, true, "100.64.0.9", 4000)
+	e.mgr.CheckMediaIdentityForTest(id, false, "", 0)
+	if code, _ := closeOf(ctx, t, c); code != desktop.CloseGuestRevoked {
+		t.Errorf("close %d, want 4432 from the revoke", code)
+	}
+	if got := e.eventsOf("revoked"); len(got) != 0 {
+		t.Errorf("revoked events %+v: a check after the cut must not record a mismatch", got)
 	}
 }

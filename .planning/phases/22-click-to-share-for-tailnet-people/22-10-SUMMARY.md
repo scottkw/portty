@@ -48,7 +48,7 @@ key-decisions:
 status: complete
 commits: 4
 plan_head_before: 12cd903a29cf394ec04a57554df507d41d4f9986
-plan_head_after: 90fa81ecd9ca37a5d77c09982518e6081d9892e8
+plan_head_after: c8fefe80b8c47c3a0f551880cc0f00566a362006
 actuals:
   tokens: 60000
   tasks: 3
@@ -79,7 +79,7 @@ Gate passed: 20-10, 21-08, 21-10, 22-07 and 22-09 SUMMARY files all exist. `git 
 
 **Connect paths.** `connectPeerDesktop` (`peer_desktop.go`) and `handlePeerConnect` (`peer_connect.go`) already call `a.discoverPeers` (the filtered `tailnet.DiscoverPeers`) and match the requested host with `matchPeer` against that result; a name from the UI that is not listed gets `404 unknown_host` before any network call or cap fetch, and the probed-host list they return also comes from filtered discovery. No production change was needed there; I added tests pinning it.
 
-**Commit.** 0df42da6 `fix(22-10): AR-21-01 offer only own-account Tailscale peers`. Tests were written first and seen failing (`TestDiscoverPeers_OwnAccountOnly` and `_FailsClosedWithoutSelfIdentity`, nil Self case) before the filter was added.
+**Commit.** 130f64ea `fix(22-10): AR-21-01 offer only own-account Tailscale peers`. Tests were written first and seen failing (`TestDiscoverPeers_OwnAccountOnly` and `_FailsClosedWithoutSelfIdentity`, nil Self case) before the filter was added.
 
 **Tests** (fake `statusFunc`, `go test ./internal/tailnet ./internal/daemon ./internal/webserver -short` green):
 - `internal/tailnet/tailnet_test.go`: `TestDiscoverPeers_OwnAccountOnly` (other-account online peer excluded, own-account included), `TestDiscoverPeers_FailsClosedWithoutSelfIdentity` (nil Self and zero Self.UserID both return an empty non-nil list); the existing discovery tests now carry a `Self` and own `UserID`.
@@ -90,11 +90,11 @@ Gate passed: 20-10, 21-08, 21-10, 22-07 and 22-09 SUMMARY files all exist. `git 
 
 ## What was built
 
-**Task 1 (tracer, 127e7804).** `lib/desktopShare.ts` subscribes to `desktopshare:state`, `:event`, `:stopped` and `:open-sheet` (injectable `subscribe`, no-op in web mode) and exports the viewer types plus `sanitizeName` and `cleanDetail`. `ShareDesktopSheet` is `.dialog.dialog--setup.dialog--share`: on open it reads the CT acknowledgement and any running share; a running share shows Sharing with the same link, otherwise an acknowledged, connected Tailscale starts at once (Getting a link…). First run waits in Not sharing with the CT line and Start Sharing records the acknowledgement first. Sharing shows the Link row with Copy Link (`ClipboardSetText`, Copied! for 2 s, the link lives in a ref and is never rendered), the footnote, Stop Sharing (left, acts at once, drops to Not sharing without restarting) and Done (primary). App mounts the sheet after SettingsSheet. `Row` moved to `SettingsRow.tsx` in this commit (the Link row needs it), earlier than the plan's Task 2.
+**Task 1 (tracer, b40367f3).** `lib/desktopShare.ts` subscribes to `desktopshare:state`, `:event`, `:stopped` and `:open-sheet` (injectable `subscribe`, no-op in web mode) and exports the viewer types plus `sanitizeName` and `cleanDetail`. `ShareDesktopSheet` is `.dialog.dialog--setup.dialog--share`: on open it reads the CT acknowledgement and any running share; a running share shows Sharing with the same link, otherwise an acknowledged, connected Tailscale starts at once (Getting a link…). First run waits in Not sharing with the CT line and Start Sharing records the acknowledgement first. Sharing shows the Link row with Copy Link (`ClipboardSetText`, Copied! for 2 s, the link lives in a ref and is never rendered), the footnote, Stop Sharing (left, acts at once, drops to Not sharing without restarting) and Done (primary). App mounts the sheet after SettingsSheet. `Row` moved to `SettingsRow.tsx` in this commit (the Link row needs it), earlier than the plan's Task 2.
 
-**Task 2 (4c7d4c17).** `ViewerList`: oldest connection first (since, then id), names sanitized again and rendered in `bdi` (login wraps, device may ellipsize with `title`), the display-name-equals-login rule, `View only` / `Controlling` (follows the grant) / `Own account` badges with `aria-hidden` icons, independent Allow control and Allow clipboard switches that call `SetDesktopViewerRights(id, control, clipboard)` at once with a saving state, Disconnect with `aria-label="Disconnect <name>"`, the grant caption (name in `bdi`), a per-row `role="alert"` error, a polite live group and a visually hidden `role="status"` line that announces `<name> joined` and `<name> left`. `Switch` gained `aria-labelledby`.
+**Task 2 (f10975a4).** `ViewerList`: oldest connection first (since, then id), names sanitized again and rendered in `bdi` (login wraps, device may ellipsize with `title`), the display-name-equals-login rule, `View only` / `Controlling` (follows the grant) / `Own account` badges with `aria-hidden` icons, independent Allow control and Allow clipboard switches that call `SetDesktopViewerRights(id, control, clipboard)` at once with a saving state, Disconnect with `aria-label="Disconnect <name>"`, the grant caption (name in `bdi`), a per-row `role="alert"` error, a polite live group and a visually hidden `role="status"` line that announces `<name> joined` and `<name> left`. `Switch` gained `aria-labelledby`.
 
-**Task 3 (90fa81ec).** Settings Row 6 (last row of the Desktop group, always visible): Share Desktop… with the CT line until acknowledged, `aria-disabled` and described by the Tailscale reason when not connected; Shared with nobody yet / 1 person / N people plus Manage Sharing… while sharing (opening never blocked then). The Security pane Session keys sentence is the new one. The sheet gained the start-error table (tailscale_off and userspace block Start Sharing with their sentence, https_off and other codes are an inline `role="alert"`), the Status row for Needs permission (with Set Up Permissions…, opening the Phase 19 setup sheet after this one), Waiting for approval, Display asleep, Paused and Waiting for Tailscale, the `Sharing stopped…` notice (`role="status"`, no auto-start), and a quiet drop to Not sharing when the share ends elsewhere (the tray).
+**Task 3 (c8fefe80).** Settings Row 6 (last row of the Desktop group, always visible): Share Desktop… with the CT line until acknowledged, `aria-disabled` and described by the Tailscale reason when not connected; Shared with nobody yet / 1 person / N people plus Manage Sharing… while sharing (opening never blocked then). The Security pane Session keys sentence is the new one. The sheet gained the start-error table (tailscale_off and userspace block Start Sharing with their sentence, https_off and other codes are an inline `role="alert"`), the Status row for Needs permission (with Set Up Permissions…, opening the Phase 19 setup sheet after this one), Waiting for approval, Display asleep, Paused and Waiting for Tailscale, the `Sharing stopped…` notice (`role="status"`, no auto-start), and a quiet drop to Not sharing when the share ends elsewhere (the tray).
 
 ## Deviations from Plan
 
@@ -104,19 +104,19 @@ Gate passed: 20-10, 21-08, 21-10, 22-07 and 22-09 SUMMARY files all exist. `git 
 - **Found during:** Task 1
 - **Issue:** the sheet's Link row needs `Row`, which was private to SettingsSheet.tsx.
 - **Fix:** moved it (markup unchanged) with the tracer commit; Task 2's acceptance greps hold at HEAD.
-- **Commit:** 127e7804
+- **Commit:** b40367f3
 
 **2. [Rule 3 - Blocking] USERSPACE_SENTENCE moved to lib/tailscale.ts**
 - **Found during:** Task 1
 - **Issue:** the sheet and Settings both need the sentence; it was a private const in SettingsSheet.tsx.
 - **Files modified:** frontend/src/lib/tailscale.ts, frontend/src/components/SettingsSheet.tsx
-- **Commit:** 127e7804
+- **Commit:** b40367f3
 
 **3. [Rule 1 - Spec change] Existing Security-pane assertion updated**
 - **Found during:** Task 3
 - **Issue:** `SettingsSheet.test.tsx` asserted the old Session keys sentence the plan replaces.
 - **Fix:** updated the expected string.
-- **Commit:** 90fa81ec
+- **Commit:** c8fefe80
 
 **4. Small additions to the copy file.** `UNNAMED_VIEWER` ("Unknown viewer", for a row whose names are all empty after sanitizing) and `SHARE_STATUS_LABEL` ("Status") were added to `lib/shareDesktopCopy.ts` so the components still hold no literal UI string. `SECURITY_KEYS_DESCRIPTION` is imported into SettingsSheet under the alias `SESSION_KEYS_DESCRIPTION` (the plan's grep name).
 
@@ -158,4 +158,6 @@ None. The AR-21-01 filter narrows an existing surface; the GUI adds no endpoint,
 
 ## Self-Check: PASSED
 
-Files found: frontend/src/lib/desktopShare.ts, ShareDesktopSheet.tsx, ViewerList.tsx, SettingsRow.tsx, the three new test files. Commits 0df42da6, 127e7804, 4c7d4c17 and 90fa81ec are ancestors of HEAD.
+Files found: frontend/src/lib/desktopShare.ts, ShareDesktopSheet.tsx, ViewerList.tsx, SettingsRow.tsx, the three new test files. Commits 130f64ea, b40367f3, f10975a4 and c8fefe80 are ancestors of HEAD.
+
+Commit hashes updated 2026-11-27: a later rebase rewrote the plan's commits with identical content (0df42da6→130f64ea, 127e7804→b40367f3, 4c7d4c17→f10975a4, 90fa81ec→c8fefe80, e0116e79→218b8f17).

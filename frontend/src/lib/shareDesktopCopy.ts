@@ -8,7 +8,7 @@ export const SHARE_DESKTOP_ACTION = 'Share Desktop…'
 export const MANAGE_SHARING_ACTION = 'Manage Sharing…'
 export const SETTINGS_ROW_TITLE = 'Share Desktop'
 export const SETTINGS_ROW_DESCRIPTION =
-  'Show your screen to someone on your tailnet. They wait for you to let them in, and can only watch until you allow more.'
+  'Show your screen and sound to someone on your tailnet. They wait for you to let them in, and can only watch until you allow more.'
 export const QUIT_WARNING = 'Quitting also stops sharing your desktop and disconnects everyone watching.'
 export const SECURITY_KEYS_DESCRIPTION =
   'Regenerating signs out every browser and Mac attached to your sessions, stops every saved desktop link, and ends any desktop sharing.'
@@ -16,7 +16,7 @@ export const SECURITY_KEYS_DESCRIPTION =
 // ---- Share Desktop sheet (Surface 2) ----
 export const SHARE_SHEET_TITLE = 'Share Desktop'
 export const SHARE_NOT_SHARING_DESCRIPTION =
-  'Show your screen to someone on your tailnet. They wait at a prompt on this Mac until you let them in, and they can only watch until you allow more.'
+  'Show your screen and sound to someone on your tailnet. They wait at a prompt on this Mac until you let them in, and they can only watch until you allow more.'
 export const SHARE_CT_LINE = (host: string): string =>
   `The first time, this gets an HTTPS certificate for ${host}.ts.net. That name is published in public Certificate Transparency logs.`
 export const SHARE_STARTING = 'Getting a link…'
@@ -39,7 +39,7 @@ export const UNNAMED_VIEWER = 'Unknown viewer'
 export const grantCaption = (name: string): string =>
   `Control lets ${name} use this Mac as you, so they can do anything you can. Clipboard lets them copy text to and from this Mac.`
 export const SHARE_FOOTNOTE =
-  "Denying or disconnecting someone is final for this share. To let them back in, stop sharing and share again. Anyone watching sees everything on this screen, including this window. If someone can't open the link, your tailnet's access rules may not let them reach this Mac."
+  "Denying or disconnecting someone is final for this share. To let them back in, stop sharing and share again. Anyone watching sees everything on this screen, including this window, and hears this Mac's sound, even before they unmute. If someone can't open the link, your tailnet's access rules may not let them reach this Mac."
 export const STOP_SHARING = 'Stop Sharing'
 export const DONE = 'Done'
 export const NOT_NOW = 'Not Now'
@@ -69,7 +69,7 @@ export const ADMIT_TITLE = 'Someone Wants to Watch Your Desktop'
 export const ADMIT_LOGIN_LABEL = 'Login name'
 export const ADMIT_DEVICE_LABEL = 'Device'
 export const ADMIT_PARAGRAPH_1 =
-  'They will see your whole screen, and can only watch until you allow control. Deny is final for this share.'
+  "They will see your whole screen and hear this Mac's sound, and can only watch until you allow control. Deny is final for this share."
 export const ADMIT_PARAGRAPH_2 = "Check the login name. Anyone can set a display name that looks like someone else's."
 /** `more` is how many others are waiting besides the one shown; the line is for 1 or more. */
 export const morePeopleWaiting = (more: number): string =>
@@ -108,6 +108,9 @@ export const GUEST_CARD_REVOKED_BODY = "The person at that Mac ended your connec
 export const GUEST_CARD_ENDED = 'Sharing has ended'
 export const GUEST_CARD_ENDED_BODY =
   'The share has ended, so this link no longer works. Ask the person at that Mac for a new link.'
+export const GUEST_CARD_REPLACED = 'Opened in another tab'
+export const GUEST_CARD_REPLACED_BODY =
+  'This share is open in another tab or window on this device. Reload this page to watch here instead.'
 export const GUEST_CARD_LINK = 'This link no longer works'
 export const GUEST_CARD_LINK_BODY = 'The share has ended, or the link is incomplete. Ask the person who shared it for a new link.'
 export const GUEST_CARD_CONNECTING = 'Connecting…'
@@ -123,7 +126,10 @@ export const GUEST_CHIP_CONTROL = 'You have control'
 /** `name` is the lease holder's sanitized display name, the only name a guest page renders. */
 export const controllingChip = (name: string): string => `${name} is controlling`
 export const GUEST_CHIP_SOMEONE = 'Someone is using this Mac'
-export const GUEST_CHIP_LOCKED = 'Locked'
+/** Not in 22-UI-SPEC (added by the 22 review fix WR-07): the input tap is unhealthy, so remote input is held back. */
+export const CHIP_CONTROL_UNAVAILABLE = "Control paused. Portty can't tell if someone is at the Mac."
+// 23-UI-SPEC Surface 3: a guest cannot unlock, so the chip names who can. DesktopView renders the same words.
+export const GUEST_CHIP_LOCKED = 'Locked. Ask the person at the Mac to unlock it.'
 export const GUEST_CHIP_RECONNECTING = 'Reconnecting…'
 
 export const GUEST_NOTICE_CLIPBOARD_ON = 'You can now copy text to and from this Mac'

@@ -1,0 +1,17 @@
+G-06 Secure Event Input banner while a guest controls
+office=portty-test guest=portty-test-2; build 22.12.0 of HEAD dfa1a208 (tags wailsassets vmdesktop, Developer ID); times are the office VM's epoch seconds
+--- pre: a share with one admitted guest holding control [office 1795803467.762]
+banner before (Typing at this Mac in Portty's tree): no
+--- 1: Terminal frontmost, Secure Keyboard Entry on (timed inside the office: toggle start to banner seen) [office 1795803482.319]
+Terminal frontmost, Secure Keyboard Entry off: secure-input: before=off menu-item mark=[] want=off
+secure-input: after=off menu-item mark=[] frontmost=front: Terminal pid=44444
+timed toggle: secure-input-timed: on: menu press done after 0.06 s; banner seen 1.38 s after the toggle started (poll 4)
+hit role=AXStaticText title=[] desc=[] value=[Typing at this Mac isn't detected right now, because a password field or Secure ] mark=[] enabled=1 @328,90 864x32
+share-status: {"secureInput":true,"anyController":true}
+--- 2: the guest clicks into Terminal and types echo p22ske [office 1795803518.204]
+key counter 246 -> 268
+Terminal text lines holding the typed string (count): 1
+--- 3: Secure Keyboard Entry off (timed: toggle start to banner gone) [office 1795803558.320]
+timed toggle: secure-input-timed: off: menu press done after 0.10 s; banner gone 1.56 s after the toggle started (poll 4)
+banner now: no; share-status {"secureInput":false,"anyController":true}
+--- done [office 1795803580.811]

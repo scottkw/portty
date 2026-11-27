@@ -45,7 +45,18 @@ func (m *Manager) SetRights(id ViewerID, control, clipboard bool) error {
 		r |= RightsClipboard
 	}
 	m.rmu.Lock()
+	if v.cut.Load() { // being cut: it is gone as far as grants go
+		m.rmu.Unlock()
+		return ErrNoViewer
+	}
 	old := Rights(v.rights.Swap(uint32(r)))
+	if v.cut.Load() {
+		// A cut raced the swap: cutViewer sets cut before it clears the rights, so
+		// putting view-only back here leaves the cut's answer standing.
+		v.setRightsBits(RightsViewOnly)
+		m.rmu.Unlock()
+		return ErrNoViewer
+	}
 	if v.gs != nil {
 		v.gs.SetGrants(AdmissionKey{UserID: v.Identity.UserID, StableID: v.Identity.StableID}, r)
 	}

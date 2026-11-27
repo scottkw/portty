@@ -16,6 +16,7 @@ import {
   createDesktopClient,
   defaultDesktopWsUrl,
   fetchCheck,
+  withOpusStereo,
   type CheckVerdict,
   type ClientStatus,
   type DesktopClientOptions,
@@ -88,6 +89,9 @@ class FakeChannel {
   recv(m: unknown) { this.onmessage?.({ data: typeof m === 'string' ? m : JSON.stringify(m) }) }
 }
 
+/** What the fake peer connection offers; a test sets it, afterEach restores it. */
+let offerSdp = 'fake-offer-sdp'
+
 class FakePC {
   closed = false
   calls: string[] = []
@@ -109,7 +113,7 @@ class FakePC {
   }
   async createOffer() {
     this.calls.push('createOffer')
-    return { type: 'offer', sdp: 'fake-offer-sdp' } }
+    return { type: 'offer', sdp: offerSdp } }
   async setLocalDescription(d: { sdp: string }) { this.localDescription = d }
   async setRemoteDescription(d: { type: string; sdp: string }) { this.remote = d }
   close() { this.closed = true }
@@ -172,7 +176,10 @@ async function streaming(over: Partial<DesktopClientOptions> = {}) {
   return e
 }
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  offerSdp = 'fake-offer-sdp'
+  vi.unstubAllGlobals()
+})
 
 describe('transport injection', () => {
   it('sends hello first, then an offer carrying the injected peer connection SDP, with no real WebSocket', async () => {
@@ -182,14 +189,14 @@ describe('transport injection', () => {
     e.client.start()
     const t = lastT(e)
     t.open()
-    expect(t.sent[0]).toEqual({ type: 'hello', v: 1, caps: { video: 1, input: 1 } })
+    expect(t.sent[0]).toEqual({ type: 'hello', v: 1, caps: { video: 1, audio: 1, input: 1 } })
     t.recv({ type: 'hello', v: 1, viewer: 'abcd', caps: { video: 1 } })
     await settle()
     expect(t.sent[1]).toEqual({ type: 'offer', sdp: 'fake-offer-sdp' })
     t.recv({ type: 'answer', sdp: 'fake-answer-sdp' })
     await settle()
     expect(lastPC(e).remote).toEqual({ type: 'answer', sdp: 'fake-answer-sdp' })
-    expect(lastPC(e).transceivers).toEqual([['video', { direction: 'recvonly' }]])
+    expect(lastPC(e).transceivers).toEqual([['video', { direction: 'recvonly' }], ['audio', { direction: 'recvonly' }]])
     expect(ws).not.toHaveBeenCalled()
   })
 
@@ -1023,6 +1030,179 @@ describe('clipboard transfer (Phase 20-08)', () => {
   })
 })
 
+describe('audio (Phase 23-06)', () => {
+  const CHROME_AUDIO = [
+    'v=0',
+    'm=video 9 UDP/TLS/RTP/SAVPF 96',
+    'a=rtpmap:96 VP8/90000',
+    'a=fmtp:96 profile-id=0',
+    'm=audio 9 UDP/TLS/RTP/SAVPF 111 63',
+    'a=rtpmap:111 opus/48000/2',
+    'a=fmtp:111 minptime=10;useinbandfec=1',
+    'a=rtpmap:63 red/48000/2',
+    'a=fmtp:63 111/111',
+    '',
+  ].join('\r\n')
+
+  it('withOpusStereo adds stereo=1 to the Opus fmtp line and touches no other line', () => {
+    const out = withOpusStereo(CHROME_AUDIO)
+    expect(out.split('\r\n')).toEqual(
+      CHROME_AUDIO.split('\r\n').map((l) => (l === 'a=fmtp:111 minptime=10;useinbandfec=1' ? 'a=fmtp:111 minptime=10;useinbandfec=1;stereo=1' : l)),
+    )
+  })
+
+  it('withOpusStereo replaces stereo=0, adds an fmtp line when there is none, and leaves a video-only offer alone', () => {
+    expect(withOpusStereo('a=rtpmap:111 opus/48000/2\r\na=fmtp:111 stereo=0;useinbandfec=1\r\n')).toBe(
+      'a=rtpmap:111 opus/48000/2\r\na=fmtp:111 useinbandfec=1;stereo=1\r\n',
+    )
+    expect(withOpusStereo('m=audio 9 RTP/AVP 111\r\na=rtpmap:111 opus/48000/2\r\na=sendrecv\r\n')).toBe(
+      'm=audio 9 RTP/AVP 111\r\na=rtpmap:111 opus/48000/2\r\na=fmtp:111 stereo=1\r\na=sendrecv\r\n',
+    )
+    expect(withOpusStereo('a=rtpmap:111 opus/48000/2\na=fmtp:111 minptime=10\n')).toBe('a=rtpmap:111 opus/48000/2\na=fmtp:111 minptime=10;stereo=1\n')
+    expect(withOpusStereo('m=video 9 RTP/AVP 96\r\na=rtpmap:96 VP8/90000\r\n')).toBe('m=video 9 RTP/AVP 96\r\na=rtpmap:96 VP8/90000\r\n')
+  })
+
+  it('adds the audio recvonly transceiver after video and before createOffer, and offers stereo', async () => {
+    offerSdp = CHROME_AUDIO
+    const e = setup()
+    e.client.start()
+    await handshake(e)
+    const pc = lastPC(e)
+    expect(pc.transceivers).toEqual([['video', { direction: 'recvonly' }], ['audio', { direction: 'recvonly' }]])
+    expect(pc.localDescription?.sdp).toContain('a=fmtp:111 minptime=10;useinbandfec=1;stereo=1')
+    expect(lastT(e).sent[1]).toMatchObject({ type: 'offer' })
+    expect((lastT(e).sent[1] as { sdp: string }).sdp).toContain('stereo=1')
+  })
+
+  // Phase 23-08: the daemon's quality message (golden lines from internal/desktop/testdata/signal-v1.jsonl).
+  it('turns the golden quality lines into quality events and takes only a true slow as slow', async () => {
+    const e = setup()
+    const got: { slow: boolean }[] = []
+    e.client.on('quality', (q) => got.push(q))
+    e.client.start()
+    await handshakeWithInput(e)
+    const lines = readFileSync(resolve(__dirname, '../../../../internal/desktop/testdata/signal-v1.jsonl'), 'utf8')
+      .trim().split('\n').map((l) => JSON.parse(l) as { name: string; wire: object })
+    for (const n of ['quality-slow-true', 'quality-slow-false']) lastT(e).recv(lines.find((l) => l.name === n)!.wire)
+    lastT(e).recv({ type: 'quality', slow: 'yes' })
+    expect(got).toEqual([{ slow: true }, { slow: false }, { slow: false }])
+  })
+
+  // Phase 23-07: the unlock panel's wire (golden lines from internal/desktop/testdata/signal-v1.jsonl).
+  describe('unlock', () => {
+    const goldenLines = () =>
+      readFileSync(resolve(__dirname, '../../../../internal/desktop/testdata/signal-v1.jsonl'), 'utf8')
+        .trim().split('\n').map((l) => JSON.parse(l) as { name: string; dir: string; wire: object })
+
+    it('turns every golden unlock line into a typed event', async () => {
+      const e = setup()
+      const got: unknown[] = []
+      e.client.on('unlock', (u) => got.push(u))
+      e.client.start()
+      await handshakeWithInput(e)
+      const lines = goldenLines().filter((l) => l.name.startsWith('unlock-'))
+      expect(lines).toHaveLength(11)
+      for (const l of lines) lastT(e).recv(l.wire)
+      const b = { failures: 0, waitMs: 0, reason: '', byPortty: false }
+      expect(got).toEqual([
+        { ...b, state: 'unlocking' },
+        { ...b, state: 'unlocked', byPortty: true },
+        { ...b, state: 'idle' },
+        { ...b, state: 'retrying' },
+        { ...b, state: 'failed', failures: 1 },
+        { ...b, state: 'rate_limited', failures: 1, waitMs: 3000 },
+        { ...b, state: 'paused', failures: 3, waitMs: 900000 },
+        { ...b, state: 'refused', reason: 'caps_lock' },
+        { ...b, state: 'refused', reason: 'unmappable' },
+        { ...b, state: 'unavailable', reason: 'accessibility' },
+        { ...b, state: 'error' },
+      ])
+    })
+
+    it('takes only enum values and bounded numbers from an unlock message', async () => {
+      const e = setup()
+      const got: { state: string; failures: number; waitMs: number; reason: string }[] = []
+      e.client.on('unlock', (u) => got.push(u))
+      e.client.start()
+      await handshakeWithInput(e)
+      lastT(e).recv({ type: 'unlock', state: 'open-sesame', failures: 0 })
+      lastT(e).recv({ type: 'unlock', state: 7 })
+      lastT(e).recv({ type: 'unlock', state: 'failed', failures: -4, wait_ms: 'x', reason: '<b>' })
+      lastT(e).recv({ type: 'unlock', state: 'paused', failures: 3, wait_ms: 9e15 })
+      expect(got).toHaveLength(2)
+      expect(got[0]).toMatchObject({ state: 'failed', failures: 0, waitMs: 0, reason: '' })
+      expect(got[1].waitMs).toBe(3600000)
+    })
+
+    it('sendUnlock is false until the input channel opens, then puts the bytes on it as one message and sends nothing on the socket', async () => {
+      const e = setup()
+      e.client.start()
+      await handshakeWithInput(e)
+      const ch = (lastPC(e) as unknown as FakePC).channels[0]
+      const bytes = Uint8Array.from([1, 0x61, 0x62])
+      expect(e.client.sendUnlock(bytes)).toBe(false)
+      ch.open()
+      const before = lastT(e).sent.length
+      expect(e.client.sendUnlock(bytes)).toBe(true)
+      expect(ch.sent).toHaveLength(1)
+      expect(ch.sent[0]).toBe(bytes)
+      expect(lastT(e).sent).toHaveLength(before)
+    })
+  })
+
+  it('emits caps from the server hello: audio and unlock are booleans, missing is false', async () => {
+    const e = setup()
+    const seen: unknown[] = []
+    e.client.on('caps', (c) => seen.push(c))
+    e.client.start()
+    const t = lastT(e)
+    t.open()
+    t.recv({ type: 'hello', v: 1, viewer: 'abcd', caps: { video: 1, audio: 1, unlock: 1 } })
+    await settle()
+    expect(seen).toEqual([{ audio: true, unlock: true }])
+    // A reconnect's hello with no audio says so.
+    t.dropWith(1006)
+    await e.clock.advance(RECONNECT.delaysMs[0])
+    lastT(e).open()
+    lastT(e).recv({ type: 'hello', v: 1, viewer: 'abcd', caps: { video: 1 } })
+    await settle()
+    expect(seen[1]).toEqual({ audio: false, unlock: false })
+  })
+
+  it('carries the state message audio failed, and only that value', async () => {
+    const e = setup()
+    const seen: unknown[] = []
+    e.client.on('state', (s) => seen.push(s))
+    e.client.start()
+    await handshake(e)
+    lastT(e).recv({ type: 'state', state: 'streaming', viewers: 1, audio: 'failed' })
+    lastT(e).recv({ type: 'state', state: 'streaming', viewers: 1, audio: 'whatever' })
+    lastT(e).recv({ type: 'state', state: 'streaming', viewers: 1 })
+    expect(seen).toEqual([
+      { state: 'streaming', viewers: 1, locked: false, audio: 'failed' },
+      { state: 'streaming', viewers: 1, locked: false },
+      { state: 'streaming', viewers: 1, locked: false },
+    ])
+  })
+
+  it('an audio track alone is not a picture; the video track is, and both play from one stream', async () => {
+    const e = setup()
+    const streams: unknown[] = []
+    e.client.on('track', (s) => streams.push(s))
+    e.client.start()
+    await handshake(e)
+    const pc = lastPC(e)
+    const shared = { id: 'portty-desktop' }
+    pc.ontrack?.({ streams: [shared], track: { kind: 'audio' } })
+    pc.setConn('connected')
+    expect(streams).toEqual([])
+    expect(kinds(e)).not.toContain('streaming')
+    pc.ontrack?.({ streams: [shared], track: { kind: 'video' } })
+    expect(streams).toEqual([shared])
+    expect(kinds(e)).toContain('streaming')
+  })
+})
+
 describe('stop and scope', () => {
   it('stop closes the socket and the peer connection and removes the wake listeners', async () => {
     const e = await streaming()
@@ -1039,7 +1219,7 @@ describe('stop and scope', () => {
     const e = await streaming()
     e.client.wake('visibility')
     expect(new Set(lastT(e).types())).toEqual(new Set(['hello', 'offer', 'ping']))
-    expect(lastPC(e).transceivers).toHaveLength(1)
+    expect(lastPC(e).transceivers).toHaveLength(2)
   })
 })
 
