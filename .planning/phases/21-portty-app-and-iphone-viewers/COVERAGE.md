@@ -1,0 +1,1 @@
+No external API integration: Phase 21 only adds routes between two copies of Portty's own binary (GET /api/sessions/meta header, POST /api/peer/desktop/cap, /desktop/ws through a loopback proxy) plus local OS surfaces (Wails bindings, Info.plist, NSPasteboard via Phase 20's bridge); no third-party service, SDK or cloud endpoint is called.

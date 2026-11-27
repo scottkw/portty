@@ -396,6 +396,7 @@ Recent decisions affecting current work:
 - [Phase 17]: UNLK-01 feasible (R15-R17 GO): ship, not cut
 - [Phase 17]: 17-12 host tccutil proof accepted from 17-11 session 3 revoke (user reply: accept); permission system refused the host reset in 17-12
 - [Phase 20]: planned 2026-11-26 while Phase 19 executes: 11 plans in 7 waves (UI-SPEC approved); 20-09 gated on 19-12 and 19-15, 20-10 on 19-13 and 19-14, 20-11 on 19-16 (SUMMARY.md preconditions); M-NN numbers computed at execution after Phase 19's
+- [Phase 21]: planned 2026-11-26 while Phase 20 is unbuilt: 13 plans in 8 waves (UI-SPEC approved); 21-01..21-07 ungated, 21-08..21-13 gated on Phase 20 SUMMARY.md preconditions (20-01/02/05/06/07/08/09/11); M-NN numbers computed at execution
 
 ### Pending Todos
 

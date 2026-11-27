@@ -286,7 +286,37 @@ Plans:
   1. In the Portty app on another Mac, the sidebar lists a peer's desktop next to its sessions. Clicking it opens a Desktop tab that shows and controls that desktop, with the same state and reconnect behaviour as the browser viewer. If Phase 17 found WebRTC unusable in the Wails web view, the row opens the browser link instead and the docs say so. (DVWR-01)
   2. In control mode in a Desktop tab, Cmd+W, Cmd+Q and Cmd+C go to the remote Mac instead of closing the tab, quitting Portty or copying locally. Leaving control mode gives Portty its shortcuts back. (DVWR-04)
   3. On an iPhone, in Safari or from the Home Screen, the viewer offers trackpad mode, pinch-zoom, long-press for right-click, two-finger scroll and the soft keyboard, and it picks up again after the phone sleeps. (DVWR-03)
-**Plans**: TBD
+**Plans**: 0/13 plans executed
+
+Plans:
+**Wave 1**
+- [ ] 21-01-PLAN.md — Office side: `X-Portty-Desktop: always` on the sessions meta answer, same-user `POST /api/peer/desktop/cap`, desktop token provider, tailnet header reader and `FetchPeerDesktopCap`
+- [ ] 21-02-PLAN.md — Key-routing probe in the real Portty.app in portty-test-2 (page-level, then blank-in-place, then menu rebuild); writes KEYROUTE, CMDKEYUP, RELEASE_CHORD, HIDDEN_VISIBILITY verdicts (user checkpoint)
+- [ ] 21-03-PLAN.md — iPhone gesture engine and zoom/pan math as pure code (relative moves, host-side pointer)
+- [ ] 21-04-PLAN.md — Sidebar Desktop row with muted state line and the `desktop` tab type and tab chrome (frontend only)
+- [ ] 21-05-PLAN.md — Desktop tab connection logic: key refresh before redial, check mapping, Local Network watcher, 2-minute hidden pause, app card copy
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 21-06-PLAN.md — Home daemon: in-memory desktop key store, `POST /peers/desktop`, loopback signalling proxy `GET /api/relay/remote-desktop/{host}/ws` with one automatic key refresh
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 21-07-PLAN.md — Bindings (`ConnectPeerDesktop`, `OpenPeerDesktopInBrowser`, `OpenLocalNetworkSettings`), desktop flag in the peer poll, `NSLocalNetworkUsageDescription`
+
+**Wave 4** *(blocked on Wave 3 completion; gated on 20-06, 20-07, 20-08 SUMMARY.md)*
+- [ ] 21-08-PLAN.md — The Desktop tab: additive DesktopView props, DesktopTab, Local Network and Refused cards, hidden tab and window rules, toolbar label
+
+**Wave 5** *(blocked on Wave 4 completion; gated on Phase 20 SUMMARY.md files)*
+- [ ] 21-09-PLAN.md — Control mode: exits with release-all, Cmd+V through the explicit paste message (concealed never sent), native fallback only if KEYROUTE calls for it (gated on 20-05, 20-06, 20-07, 20-08)
+- [ ] 21-10-PLAN.md — iPhone viewer: touch layer, bottom bar and key bar, soft keyboard, Tap to start after sleep (gated on 20-01, 20-02, 20-06, 20-07, 20-08)
+
+**Wave 6** *(blocked on Wave 5 completion; gated on 20-06, 20-09)*
+- [ ] 21-11-PLAN.md — Tart VM rows: Desktop row and tab in the real app, Local Network denied state (user checkpoints)
+
+**Wave 7** *(blocked on Wave 6 completion; gated on 20-02, 20-05, 20-06, 20-08, 20-09)*
+- [ ] 21-12-PLAN.md — Tart VM rows: Local Network allowed and heal, hidden tab and window, one tab per peer, Cmd+W/Q/C forwarded and given back, no held keys, Cmd+V (user checkpoint)
+
+**Wave 8** *(blocked on Wave 7 completion; gated on 20-02, 20-11)*
+- [ ] 21-13-PLAN.md — TESTING.md Sections 2, 4, 5 (M-NN at run time), README Help paragraphs, real iPhone and real-Mac sessions (user checkpoint)
 **UI hint**: yes
 
 ### Phase 22: Click-to-Share for Tailnet People
@@ -327,6 +357,6 @@ Plans:
 | 18.1. Apple Silicon Release Pipeline (INSERTED) | v2.0 | 4/4 | Complete    | 2026-11-26 |
 | 19. Unattended Desktop Viewing | v2.0 | 17/17 | Complete    | 2026-11-26 |
 | 20. Remote Control | v2.0 | 0/11 | Planned | - |
-| 21. Portty App and iPhone Viewers | v2.0 | 0/TBD | Not started | - |
+| 21. Portty App and iPhone Viewers | v2.0 | 0/13 | Planned | - |
 | 22. Click-to-Share for Tailnet People | v2.0 | 0/TBD | Not started | - |
 | 23. Audio, Adaptive Quality, Unlock and Release | v2.0 | 0/TBD | Not started | - |
