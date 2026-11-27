@@ -329,7 +329,7 @@ Plans:
   3. The sharer can stop the share or revoke one viewer at any time, which ends that connection at once, and the link stops working when the share ends. The shared Mac shows join and leave notifications and a persistent "shared with N" indicator with one-click stop. (DSHR-05, DSHR-06)
   4. Every join, leave and control grant is written to a local audit log on the shared Mac. (DSHR-07)
   5. With several viewers allowed to control, whoever typed last holds control for about 2 seconds while the others wait. The person physically at the shared Mac always wins over remote input. (DCTL-04)
-**Plans**: 4/13 plans executed
+**Plans**: 5/13 plans executed
 
 Plans:
 **Wave 1**
@@ -341,7 +341,7 @@ Plans:
 - [x] 22-04-PLAN.md — Manager guest path: admission queue, limits, 5-minute timeout, deny by user ID, re-admit, no PeerConnection before Admit, media bound to the admitted node (gated on 20-04, 20-05)
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 22-05-PLAN.md — Live grants (`SetRights`), revoke and Stop in the safe order with concurrent close, lease and physical-wins in `pressAllowed`, lease messages
+- [x] 22-05-PLAN.md — Live grants (`SetRights`), revoke and Stop in the safe order with concurrent close, lease and physical-wins in `pressAllowed`, lease messages
 
 **Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 22-06-PLAN.md — Daemon guest share lifecycle, GUI events stream (doubles as GUI liveness), admit/deny/rights/disconnect on the daemon socket only, audit wiring (gated on 20-10)
@@ -437,5 +437,5 @@ Plans:
 | 19. Unattended Desktop Viewing | v2.0 | 17/17 | Complete    | 2026-11-26 |
 | 20. Remote Control | v2.0 | 11/11 | Complete    | 2026-11-27 |
 | 21. Portty App and iPhone Viewers | v2.0 | 12/13 | In Progress | - |
-| 22. Click-to-Share for Tailnet People | v2.0 | 4/13 | In Progress | - |
+| 22. Click-to-Share for Tailnet People | v2.0 | 5/13 | In Progress | - |
 | 23. Audio, Adaptive Quality, Unlock and Release | v2.0 | 0/16 | Not started | - |
