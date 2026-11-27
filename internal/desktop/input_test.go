@@ -355,6 +355,9 @@ func TestInputTracer_KeyHeldReleasedOnClose(t *testing.T) {
 	if c := calls[1]; c.Op != "key" || c.VK != 0x00 || c.Down {
 		t.Errorf("after the channel closed: %+v, want KeyA up", c)
 	}
+	if n := env.mgr.InputChannelsForTest(); n != 0 {
+		t.Errorf("%d input channels open after the viewer's channel closed, want 0", n)
+	}
 
 	v2 := env.joinInput(ctx, t, env.token(t, "g1"))
 	v2.send(t, map[string]any{"t": "key", "code": "MetaLeft", "d": true, "m": 8})
@@ -601,6 +604,28 @@ func TestInput_ModifierReconcile(t *testing.T) {
 	}
 	if n := counter(s.env, "reconciled"); n != 1 {
 		t.Errorf("reconciled = %d, want 1", n)
+	}
+}
+
+// TestInput_RepeatAfterReleaseNotHeld: a repeat must never press a key a release
+// already let go of (holdKey answers not_held and posts nothing).
+func TestInput_RepeatAfterReleaseNotHeld(t *testing.T) {
+	s := newSyncInput(t)
+	s.do(t, `{"t":"key","code":"KeyA","d":true,"m":0}`)
+	s.do(t, `{"t":"key","code":"KeyA","d":false,"m":0}`)
+	s.do(t, `{"t":"key","code":"KeyA","d":true,"r":true,"m":0}`)
+	calls := s.fb.snapshot()
+	if len(calls) != 2 {
+		t.Fatalf("%d calls, want 2 (down, up): %+v", len(calls), calls)
+	}
+	if c := calls[0]; c.Op != "key" || c.VK != 0x00 || !c.Down || c.Repeat {
+		t.Errorf("call 0 = %+v, want KeyA down, not a repeat", c)
+	}
+	if c := calls[1]; c.Op != "key" || c.VK != 0x00 || c.Down {
+		t.Errorf("call 1 = %+v, want KeyA up", c)
+	}
+	if n := counter(s.env, "not_held"); n != 1 {
+		t.Errorf("not_held = %d, want 1", n)
 	}
 }
 

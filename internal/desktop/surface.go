@@ -365,7 +365,7 @@ func (m *Manager) flushInput() {
 	select {
 	case <-flush:
 	case <-time.After(flushWait):
-		slog.Warn("desktop: input releases not posted before a surface switch")
+		slog.Warn("desktop: queued input not posted in time")
 	}
 }
 

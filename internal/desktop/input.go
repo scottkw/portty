@@ -318,6 +318,13 @@ func (m *Manager) acceptDataChannel(v Viewer, dc *webrtc.DataChannel) {
 	})
 	dc.OnClose(func() {
 		defer recoverLog()
+		// A closed channel must stop counting as open (control sends, cursor
+		// reports) and let a new one be accepted; never clear a different one.
+		m.vmu.Lock()
+		if vw.dc == dc {
+			vw.dc = nil
+		}
+		m.vmu.Unlock()
 		m.ReleaseViewer(v.ID, "channel_closed")
 	})
 }
@@ -880,8 +887,8 @@ func (m *Manager) endViewerInput(v *viewer, reason string) {
 	}
 }
 
-// releaseAllViewers ends every viewer's input life, then waits up to flushWait
-// for the input goroutine to post what it queued.
+// releaseAllViewers ends every viewer's input life, then flushes so the input
+// goroutine has posted what it queued.
 func (m *Manager) releaseAllViewers(reason string) {
 	m.vmu.Lock()
 	vs := make([]*viewer, 0, len(m.viewers))
@@ -892,20 +899,5 @@ func (m *Manager) releaseAllViewers(reason string) {
 	for _, v := range vs {
 		m.endViewerInput(v, reason)
 	}
-	flush := make(chan struct{})
-	m.in.mu.Lock()
-	running := m.in.done != nil
-	if running {
-		m.in.rels = append(m.in.rels, release{flush: flush})
-	}
-	m.in.mu.Unlock()
-	if !running {
-		return
-	}
-	m.wakeInput()
-	select {
-	case <-flush:
-	case <-time.After(flushWait):
-		slog.Warn("desktop: input releases not posted before close")
-	}
+	m.flushInput()
 }

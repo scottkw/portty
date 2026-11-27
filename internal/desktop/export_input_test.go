@@ -28,3 +28,6 @@ func (m *Manager) SetControlInputForTest(s string) { m.setControlInput(s) }
 
 // SetControlWindowForTest sets the window control value, as the surface plan does.
 func (m *Manager) SetControlWindowForTest(s string) { m.setControlWindow(s) }
+
+// InputChannelsForTest is how many viewers' input channels the Manager counts as open.
+func (m *Manager) InputChannelsForTest() int { return len(m.inputChannels()) }

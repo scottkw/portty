@@ -1097,6 +1097,10 @@ func (m *Manager) Close() error {
 	if icancel != nil {
 		icancel()
 		<-idone
+		// Nothing runs now: a later flushInput must return at once, not wait flushWait.
+		m.in.mu.Lock()
+		m.in.done = nil
+		m.in.mu.Unlock()
 	}
 	m.mu.Lock()
 	cancel, done, surfDone, winDone := m.loopCancel, m.loopDone, m.surf.done, m.win.done
