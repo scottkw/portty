@@ -84,7 +84,13 @@ type clipState struct {
 }
 
 // clipPut is one viewer's paste being reassembled.
-type clipPut struct{}
+type clipPut struct {
+	xid   string
+	total int
+	size  int // the declared byte length of the whole paste
+	next  int // the next seq expected
+	buf   []byte
+}
 
 func (c *clipState) hasPut(id ViewerID) bool {
 	c.mu.Lock()
@@ -193,10 +199,78 @@ func (m *Manager) sendClipText(ctx context.Context, v *viewer, xid, text string)
 	m.clipResult(ctx, v, xid, clipOK, len(text))
 }
 
-// handleClipPut takes one chunk of a viewer's Paste to Mac (completed in a
-// later commit; until then every paste fails).
+// handleClipPut takes one chunk of a viewer's Paste to Mac. Only the last
+// chunk of a valid transfer is answered ok, after the Mac's clipboard has been
+// set to one plain string; a chunk that breaks the rules discards the transfer
+// and answers at once. Nothing is typed into any app.
 func (m *Manager) handleClipPut(ctx context.Context, v *viewer, in inbound) {
-	m.clipResult(ctx, v, in.Xid, clipFailed, 0)
+	xid := in.Xid
+	if !validXid(xid) {
+		m.clip.drop(v.ID)
+		m.clipResult(ctx, v, "", clipFailed, 0)
+		return
+	}
+	if out := m.clipGate(v); out != "" {
+		m.clip.drop(v.ID)
+		m.clipResult(ctx, v, xid, out, 0)
+		return
+	}
+	text, out := m.clip.accept(v.ID, in)
+	switch out {
+	case "": // more chunks to come
+	case clipOK:
+		if err := m.d.Pasteboard.WriteText(text); err != nil {
+			m.clipResult(ctx, v, xid, clipFailed, 0)
+			return
+		}
+		m.clipResult(ctx, v, xid, clipOK, len(text))
+	default:
+		m.clipResult(ctx, v, xid, out, 0)
+	}
+}
+
+// accept takes one chunk into the viewer's transfer. It returns "" while more
+// chunks are due, clipOK with the whole text when the last one has arrived and
+// everything checks out, or the outcome to answer; a failure discards the
+// transfer. The first chunk fixes xid, total and len and every later one must
+// match them, arrive in order and stay within len.
+func (c *clipState) accept(id ViewerID, in inbound) (string, string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	t := c.puts[id]
+	fail := func() (string, string) {
+		delete(c.puts, id)
+		return "", clipFailed
+	}
+	if t == nil {
+		switch {
+		case in.Seq != 0 || in.Total < 1 || in.Len < 0:
+			return fail()
+		case in.Len == 0:
+			return "", clipEmpty
+		case in.Len > clipMaxBytes:
+			return "", clipTooLarge
+		}
+		t = &clipPut{xid: in.Xid, total: in.Total, size: in.Len, buf: make([]byte, 0, in.Len)}
+		if c.puts == nil {
+			c.puts = make(map[ViewerID]*clipPut)
+		}
+		c.puts[id] = t
+	}
+	if in.Xid != t.xid || in.Total != t.total || in.Len != t.size || in.Seq != t.next ||
+		len(in.Text) > clipChunkBytes || len(t.buf)+len(in.Text) > t.size {
+		return fail()
+	}
+	t.buf = append(t.buf, in.Text...)
+	t.next++
+	if t.next < t.total {
+		return "", ""
+	}
+	delete(c.puts, id)
+	if len(t.buf) != t.size || !utf8.Valid(t.buf) {
+		return "", clipFailed
+	}
+	return string(t.buf), clipOK
 }
 
 func validXid(xid string) bool { return xid != "" && len(xid) <= clipMaxXid }
