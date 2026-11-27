@@ -62,7 +62,7 @@ export function videoContentRect(elementWidth: number, elementHeight: number, vi
 }
 
 type Icon = React.ComponentType<React.SVGProps<SVGSVGElement>>
-type CardKey =
+export type CardKey =
   | 'connecting' | 'needs_permission' | 'awaiting_approval' | 'display_asleep' | 'capture_paused'
   | 'tap' | 'unreachable' | 'token_rejected' | 'desktop_off'
 
@@ -115,6 +115,30 @@ const CARDS: Record<CardKey, { Icon: Icon; heading: string; body: string }> = {
     body: "Turn on Always-available desktop in Portty's Settings, under Sharing, then copy the link from there.",
   },
 }
+
+/** What the host shell may do to a viewer in control mode (Task 3 fills the handle). */
+export interface DesktopControlHandle {
+  releaseAll(): void
+  releaseKeyboard(): void
+  notify(text: string, kind: 'status' | 'alert'): void
+}
+
+/** What a host may replace on a card: its words, and the label of its one action. */
+export interface CardOverride {
+  heading: string
+  body: string
+  action?: string
+}
+
+/** A card the host shell shows over every client card (the app's Local Network card). Its actions sit outside the live region. */
+export interface HostCard {
+  heading: string
+  body: string
+  actions: { label: string; onClick: () => void }[]
+}
+
+/** The page's own button on a card, when the host gives none. Only the unreachable card has one. */
+const DEFAULT_ACTIONS: Partial<Record<CardKey, string>> = { unreachable: 'Reload Page' }
 
 const STATE_CARDS: Partial<Record<DesktopStateMsg['state'], CardKey>> = {
   needs_permission: 'needs_permission',
@@ -228,6 +252,14 @@ export interface DesktopViewProps {
   onStatus?: (s: ClientStatus) => void
   /** The Mac's last state message; null when the connection that sent it is gone. */
   onDesktopState?: (s: DesktopStateMsg | null) => void
+  /** Per-card words and action label, merged over the page's copy (the app's wording has no link, page or browser). */
+  cards?: Partial<Record<CardKey, CardOverride>>
+  /** A card that wins over every client card. */
+  hostCard?: HostCard | null
+  /** The host stopped the client (a hidden window): shows the Reconnecting chip until the host clears it. */
+  paused?: boolean
+  /** True while a picture shows and no card covers it. */
+  onPicture?: (has: boolean) => void
 }
 
 /**
@@ -249,6 +281,10 @@ export function DesktopView({
   onClient,
   onStatus,
   onDesktopState,
+  cards,
+  hostCard = null,
+  paused: hostPaused = false,
+  onPicture,
 }: DesktopViewProps = {}): React.ReactElement {
   const rootRef = useRef<HTMLDivElement>(null)
   const controlSegRef = useRef<HTMLButtonElement>(null)
@@ -270,6 +306,8 @@ export function DesktopView({
   statusCb.current = onStatus
   const stateCb = useRef(onDesktopState)
   stateCb.current = onDesktopState
+  const pictureCb = useRef(onPicture)
+  pictureCb.current = onPicture
   const capturedRef = useRef(false)
   const noticeSeq = useRef(0)
 
@@ -559,7 +597,7 @@ export function DesktopView({
   const locked = desk?.locked === true || desk?.state === 'locked'
   const accessNeeded = ctlState.input === 'needs_accessibility'
   const active = canControl && mode === 'control'
-  const paused = locked || status.kind === 'reconnecting' || status.kind === 'unreachable' || accessNeeded
+  const inputPaused = hostPaused || locked || status.kind === 'reconnecting' || status.kind === 'unreachable' || accessNeeded
 
   useEffect(() => {
     const ctl = inputCtl.current
@@ -570,16 +608,16 @@ export function DesktopView({
   }, [active, typingStays])
 
   useEffect(() => {
-    inputCtl.current?.setPaused(paused)
-  }, [paused, canControl])
+    inputCtl.current?.setPaused(inputPaused)
+  }, [inputPaused, canControl])
 
   // Held input is let go of when the Mac locks or the picture is lost; the user keeps the keyboard.
   useEffect(() => {
     if (locked) inputCtl.current?.releaseAll('lock')
   }, [locked, canControl])
   useEffect(() => {
-    if (status.kind === 'reconnecting' || status.kind === 'unreachable') inputCtl.current?.releaseAll('disconnect')
-  }, [status.kind, canControl])
+    if (hostPaused || status.kind === 'reconnecting' || status.kind === 'unreachable') inputCtl.current?.releaseAll('disconnect')
+  }, [hostPaused, status.kind, canControl])
 
   // Opening a bar menu or dialog is a user action: release, hand the keyboard back, say so.
   const anyMenuOpen = menuOpen || barMenuOpen || popover !== null
@@ -759,7 +797,11 @@ export function DesktopView({
   const stateCard = desk ? STATE_CARDS[desk.state] : undefined
   let cardKey: CardKey | null = null
   let chip: { Icon?: Icon; text: string; fading?: boolean } | null = null
-  if (status.kind === 'token_rejected' || status.kind === 'desktop_off' || status.kind === 'unreachable') cardKey = status.kind
+  // Embedded, the other-account case is the Refused card (the page's Refused screen talks about a link).
+  const clientStatus = embedded && status.kind === 'other_account' ? 'token_rejected' : status.kind
+  if (hostCard) cardKey = null
+  else if (hostPaused) chip = { Icon: ArrowPathIcon, text: 'Reconnecting…' }
+  else if (clientStatus === 'token_rejected' || clientStatus === 'desktop_off' || clientStatus === 'unreachable') cardKey = clientStatus
   else if (stateCard) cardKey = stateCard
   else if (needsTap) cardKey = 'tap'
   else if (status.kind === 'reconnecting') chip = { Icon: ArrowPathIcon, text: 'Reconnecting…' }
@@ -771,8 +813,12 @@ export function DesktopView({
     chip = { text: `Streaming to ${viewers} ${viewers === 1 ? 'viewer' : 'viewers'}`, fading: chipPhase === 'fading' }
   }
   // The bar is for a viewer that may control the Mac, while a picture is up and no card covers it.
-  const showBar = canControl && cardKey === null && (status.kind === 'streaming' || status.kind === 'reconnecting')
+  const showBar = canControl && cardKey === null && !hostCard && !hostPaused && (status.kind === 'streaming' || status.kind === 'reconnecting')
   showBarRef.current = showBar
+  const picture = hasFrame && cardKey === null && !hostCard && !hostPaused
+  useEffect(() => {
+    pictureCb.current?.(picture)
+  }, [picture])
   // A popover belongs to the bar: when the bar goes (a card covers the picture), so does it.
   useEffect(() => {
     if (!showBar) setPopover(null)
@@ -789,9 +835,14 @@ export function DesktopView({
     return () => window.removeEventListener('resize', measureChip)
   }, [measureChip])
 
-  if (status.kind === 'other_account') return <UserRefused />
-  const scrim = (cardKey !== null && cardKey !== 'connecting') || chip?.Icon === ArrowPathIcon
-  const card = cardKey ? CARDS[cardKey] : null
+  if (status.kind === 'other_account' && !embedded) return <UserRefused />
+  const scrim = hostCard !== null || (cardKey !== null && cardKey !== 'connecting') || chip?.Icon === ArrowPathIcon
+  const card = hostCard
+    ? { Icon: ExclamationTriangleIcon, heading: hostCard.heading, body: hostCard.body }
+    : cardKey
+      ? { ...CARDS[cardKey], ...cards?.[cardKey] }
+      : null
+  const cardAction = cardKey ? (cards?.[cardKey]?.action ?? DEFAULT_ACTIONS[cardKey]) : undefined
 
   return (
     <div
@@ -799,7 +850,7 @@ export function DesktopView({
       className={`desktop-view${canControl ? ' desktop-view--bar' : ''}${embedded ? ' desktop-view--embedded' : ''}`}
     >
       <div
-        className={active && !paused ? 'desktop-stage desktop-stage--live' : 'desktop-stage'}
+        className={active && !inputPaused ? 'desktop-stage desktop-stage--live' : 'desktop-stage'}
         ref={stageRef}
         {...(canControl
           ? { role: 'application', 'aria-label': 'Mac desktop', 'aria-describedby': HINT_ID, tabIndex: active ? 0 : -1 }
@@ -850,18 +901,23 @@ export function DesktopView({
           </div>
           {cardKey === 'tap' && (
             <button type="button" className="button button--primary desktop-card__action" autoFocus onClick={startPlay}>
-              Tap to Start
+              {cards?.tap?.action ?? 'Tap to Start'}
             </button>
           )}
-          {cardKey === 'unreachable' && (
+          {(cardKey === 'unreachable' || cardKey === 'token_rejected') && cardAction && (
             <button
               type="button"
               className="button button--secondary desktop-card__action"
               onClick={onReload ?? (() => window.location.reload())}
             >
-              Reload Page
+              {cardAction}
             </button>
           )}
+          {hostCard?.actions.map((a) => (
+            <button key={a.label} type="button" className="button button--secondary desktop-card__action" onClick={a.onClick}>
+              {a.label}
+            </button>
+          ))}
         </div>
         {/* The notice slot: one at a time, the newest replaces the older, directly below the state chip. */}
         <div role="status" aria-live="polite" className="desktop-notice-slot">

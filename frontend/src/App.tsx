@@ -41,6 +41,7 @@ import {
 import { aggregateProgress } from './lib/aggregateProgress'
 import type { SessionInfo, RemotePeerSessions } from './wailsjs/go/main/App'
 import type { RemotePeerSessions as SidebarPeer } from './lib/remoteSession'
+import type { DesktopRowState } from './lib/sidebarPeers'
 import { daemon } from './wailsjs/go/models'
 type PluginSettings = daemon.PluginSettings
 import { EventsOn } from './wailsjs/wailsjs/runtime/runtime'
@@ -494,6 +495,12 @@ function App(): React.ReactElement {
       window.dispatchEvent(new CustomEvent('portty:wake', { detail: reason }))
     })
 
+    // The native window occlusion (covered or uncovered): a covered window still reads visible to the
+    // web view, so the Desktop tab hears it as a window event (21-08, T-21-26).
+    const offOcclusion = EventsOn('window:occluded', (hidden: boolean) => {
+      window.dispatchEvent(new CustomEvent('portty:window-hidden', { detail: hidden === true }))
+    })
+
     // Native menu: File > New Session (Cmd+T).
     const offMenuNewSession = EventsOn('menu:new-session', () => setShowNewSessionModal(true))
     // Native menu: File > Close Tab (Cmd+W). Detach only; with no tab open it does nothing.
@@ -553,6 +560,7 @@ function App(): React.ReactElement {
       offMenuSettings()
       offMenuToggleSidebar()
       offWake()
+      offOcclusion()
     }
   }, [])
 
@@ -803,6 +811,11 @@ function App(): React.ReactElement {
         if (!cancelled) {
           setRemotePeers(peers ?? [])
           setRemoteLoaded(true)
+          // A peer that stopped announcing its desktop takes its muted line with it.
+          setDesktopStates((prev) => {
+            const keep = Object.entries(prev).filter(([host]) => (peers ?? []).some((p) => (p.dnsName || p.hostname) === host && p.desktop === true))
+            return keep.length === Object.keys(prev).length ? prev : Object.fromEntries(keep)
+          })
         }
       } catch {
         // Absorbed: the sidebar keeps its last state until the next poll succeeds.
@@ -1032,6 +1045,19 @@ function App(): React.ReactElement {
     setActiveId(id)
   }, [])
 
+  // The Mac's last muted state per Desktop tab (connect host), for the sidebar row's line. In memory only.
+  const [desktopStates, setDesktopStates] = useState<Record<string, DesktopRowState>>({})
+  const handleDesktopState = useCallback((host: string, s: DesktopRowState | null) => {
+    setDesktopStates((prev) => {
+      if (s === null) {
+        if (!(host in prev)) return prev
+        const { [host]: _gone, ...rest } = prev
+        return rest
+      }
+      return prev[host] === s ? prev : { ...prev, [host]: s }
+    })
+  }, [])
+
   // Portty 05-05 (SHAR-07): run before each peer-tab redial. Re-running the
   // connect re-checks same-account access and Share, refills this daemon's cap
   // store, and the relay port may be new after a daemon restart. It must not
@@ -1177,6 +1203,7 @@ function App(): React.ReactElement {
         peerView={peerView(tailscaleOff, remoteLoaded, remotePeers, reconnectingHost)}
         onOpenPeer={(peer, s) => void handleOpenRemoteSession(adaptRemoteSession(peer, s))}
         onOpenDesktop={handleOpenDesktop}
+        desktopStates={desktopStates}
         tailscaleHealth={tailscaleHealth}
         onHide={() => setSidebarHidden(true)}
         onRename={(id, name) => void renameSession(id, name)}
@@ -1467,7 +1494,7 @@ function App(): React.ReactElement {
                 inert={hidden}
               >
                 <ErrorBoundary label="desktop">
-                  <DesktopTab tab={tab} />
+                  <DesktopTab tab={tab} active={!hidden} onDesktopState={handleDesktopState} />
                 </ErrorBoundary>
               </div>
             )

@@ -309,6 +309,8 @@ func (a *App) startup(ctx context.Context) {
 	// Frontend.Run creates the window before starting OnStartup, so it exists here.
 	// It is still hidden (StartHidden), and the serial main queue runs this before the later WindowShow.
 	applySidebarMaterial()
+	// A covered window still reads visible to the web view; the Desktop tab needs to know (21-08).
+	startWindowOcclusionObserver()
 
 	// UPGR-05: Wails' signal.Start (run before OnStartup) routes SIGTERM to the
 	// quit modal, and its one-shot listener swallows every later SIGTERM. Undo
