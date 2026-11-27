@@ -8,7 +8,7 @@ status: executing
 stopped_at: Phase 22 complete (live two-account and real-Mac verification deferred, see 22-UAT.md), Phase 23 executing
 last_updated: "2026-11-27T17:17:54.217Z"
 last_activity: 2026-11-27
-last_activity_desc: "Phase 22 closed (human_needed 5/7, M-206..M-220 tracked in 22-UAT.md); Phase 23 executing"
+last_activity_desc: "Phase 22 shipped as PR #15"
 state_head: 38dd7bf3944475b1decef22fa6afe4e4015eacee
 progress:
   total_phases: 8
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-24)
 
 Phase: 23 (Audio, Adaptive Quality, Unlock and Release) — EXECUTING
 Status: Phase 22 complete 2026-11-27 (verification human_needed 5/7, live two-account and real-Mac items deferred; see Deferred Verification); Phase 23 executing
-Last activity: 2026-11-27 -- Phase 22 closed with M-206..M-220 tracked in 22-UAT.md; Phase 23 executing
+Last activity: 2026-11-27 -- Phase 22 shipped as PR #15
 
 ## Performance Metrics
 
