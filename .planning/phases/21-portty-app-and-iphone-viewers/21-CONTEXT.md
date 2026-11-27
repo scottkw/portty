@@ -60,6 +60,7 @@ User delegated: 'I don't need to answer a bunch of questions' (2026-11-25). Clau
 - After research: a Desktop tab disconnects after its window has been hidden for about 2 minutes and reconnects when shown, so a hidden Portty window does not keep the office display awake.
 - After research: no Wake Lock on the iPhone viewer.
 - After research: the seams Phase 21 reuses (pluggable connection, pre-redial hook, wake event, mode detection, CSP video check, manifest without start_url, distinct proxy errors) are requested from Phase 19 (noted in 19-CONTEXT); any not delivered are built in Phase 21's first wave.
+- After the 21-02 probe (2026-11-27, user delegated): Ctrl+Option+Cmd+Return is taken by the system in the Portty app (RELEASE_CHORD: taken), so the release chord for control mode in the Portty app is Ctrl+Option+Cmd+Shift+Return (reaches the page in 21-02; least likely to collide with a remote app's shortcut). 21-09 applies it and keeps the browser viewer's chord consistent with Phase 20's viewer where that chord reaches the page; the control bar always shows the active chord.
 </decisions>
 
 <code_context>
