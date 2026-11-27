@@ -4,7 +4,7 @@ import type { Tab } from './TabBar'
 import type { SessionInfo } from '../wailsjs/go/main/App'
 import type { RemotePeerSessions, RemoteSession } from '../lib/remoteSession'
 import type { TailscaleHealth } from '../lib/tailscale'
-import { peerColorIndex, shortHost, type PeerView } from '../lib/sidebarPeers'
+import { peerColorIndex, shortHost, type DesktopRowState, type PeerView } from '../lib/sidebarPeers'
 import { peerSnapshotHost } from '../lib/peerSnapshots'
 import { ContextMenu, isMenuKey } from './ContextMenu'
 import { InlineSessionName } from './InlineSessionName'
@@ -56,6 +56,10 @@ interface SidebarProps {
   hideNewSessionRow?: boolean
   /** Full hostname of the peer whose open tab is reconnecting: its dot turns amber. */
   reconnectingHost?: string | null
+  /** DVWR-01: opens or focuses the peer's Desktop tab. The Desktop row renders only when App passes it. */
+  onOpenDesktop?: (peer: RemotePeerSessions) => void
+  /** DVWR-01: the last state each peer's desktop reported, keyed by connect host; a non-ready one mutes the row. */
+  desktopStates?: Record<string, DesktopRowState>
 }
 
 export function Sidebar({
@@ -72,6 +76,7 @@ export function Sidebar({
   onNewSession,
   hideNewSessionRow = false,
   reconnectingHost = null,
+  onOpenDesktop,
 }: SidebarProps): React.ReactElement {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [menu, setMenu] = useState<{ id: string; x: number; y: number; invoker: HTMLElement } | null>(null)
@@ -198,6 +203,8 @@ export function Sidebar({
               peerView.groups.map((g, i) => {
                 // Reconnecting wins over the poll: a blocked link can read unreachable while the tab still retries.
                 const reconnecting = g.key === reconnectingHost
+                // The row needs a reachable peer that announced the desktop, and App's open callback.
+                const showDesktop = !!onOpenDesktop && g.reachable && g.peer.desktop === true
                 const status = reconnecting ? 'Reconnecting' : g.reachable ? 'Reachable' : 'Not reachable'
                 return (
                   <li key={g.key} className="sidebar__host-item">
@@ -214,7 +221,16 @@ export function Sidebar({
                     <ul className="sidebar__rows sidebar__rows--nested" aria-labelledby={`sidebar-peer-${i}`}>
                       {/* The text line, not the dot colour, carries the state. */}
                       {!g.reachable && <li className="sidebar__muted">{PEER_UNREACHABLE}</li>}
-                      {g.reachable && g.peer.sessions.length === 0 && (
+                      {showDesktop && (
+                        <li>
+                          <button type="button" className="sidebar__row" onClick={() => onOpenDesktop!(g.peer)}>
+                            <ComputerDesktopIcon className="sidebar__row-icon" aria-hidden="true" />
+                            <span className="sidebar__row-name">Desktop</span>
+                            <PeerDot hostname={g.key} />
+                          </button>
+                        </li>
+                      )}
+                      {g.reachable && g.peer.sessions.length === 0 && !showDesktop && (
                         <li className="sidebar__muted">{PEER_NOTHING_SHARED}</li>
                       )}
                       {g.reachable && g.peer.sessions.map((s) => (

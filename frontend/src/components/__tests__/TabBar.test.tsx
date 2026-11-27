@@ -714,3 +714,22 @@ describe('TabBar: single-tab class (Portty 14-11)', () => {
     expect(bar({ tabs: one, activeId: web.id }).classList.contains('tab-bar--single')).toBe(false)
   })
 })
+
+// Phase 21-04 (DVWR-01): the Desktop tab's entry chrome.
+describe('TabBar desktop tab (DVWR-01)', () => {
+  it('a desktop tab renders Desktop · host with the desktop icon and a Close Desktop · host button', () => {
+    const { container, root } = renderTabBarWithTabs({
+      tabs: [{ id: 'desktop:office-air.example.ts.net', name: 'office-air › Desktop', sessionId: 'desktop:office-air.example.ts.net', type: 'desktop', peerHost: 'office-air.example.ts.net' }],
+      activeId: 'desktop:office-air.example.ts.net',
+    })
+    const tab = container.querySelector('[role="tab"]')!
+    expect(tab.textContent).toBe('Desktop · office-air')
+    expect(tab.querySelector('.tab__host')?.textContent).toBe(' · office-air')
+    expect(tab.querySelector('svg.tab__remote-icon')?.getAttribute('aria-hidden')).toBe('true')
+    expect(tab.querySelector('.peer-dot')).not.toBeNull()
+    expect(tab.closest('.tab')?.getAttribute('title')).toBe('Desktop · office-air')
+    expect(tab.closest('.tab')?.querySelector('.tab__close')?.getAttribute('aria-label')).toBe('Close Desktop · office-air')
+    act(() => root.unmount())
+    container.remove()
+  })
+})

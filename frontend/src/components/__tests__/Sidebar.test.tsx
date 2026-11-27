@@ -531,3 +531,20 @@ describe('Sidebar: local row menu and rename (Portty 02-08)', () => {
     expect(c.querySelector('input')).toBeNull()
   })
 })
+
+// Phase 21-04 (DVWR-01): the Desktop row.
+describe('Sidebar: Desktop row (DVWR-01)', () => {
+  it('a peer with desktop true shows Desktop first and the click calls onOpenDesktop with that peer', () => {
+    const p = { ...peer('office-air.example.ts.net', true, [['s1', 'build']]), desktop: true }
+    const onOpenDesktop = vi.fn()
+    const { c } = render({ peerView: peerView(false, true, [p]), onOpenDesktop })
+    const rowsOf = peerRows(c, 'office-air')
+    expect(rowsOf.map((r) => r.textContent)).toEqual(['Desktop', 'build'])
+    expect(rowsOf[0].compareDocumentPosition(rowsOf[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(rowsOf[0].querySelector('svg.sidebar__row-icon')).not.toBeNull()
+    expect(rowsOf[0].querySelector('.peer-dot')).not.toBeNull()
+    act(() => rowsOf[0].click())
+    expect(onOpenDesktop).toHaveBeenCalledTimes(1)
+    expect(onOpenDesktop).toHaveBeenCalledWith(p)
+  })
+})

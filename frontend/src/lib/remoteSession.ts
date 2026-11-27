@@ -22,6 +22,8 @@ export interface RemotePeerSessions {
   dnsName?: string
   /** Phase 130 — true when the peer responded to the metadata probe; false when unreachable. */
   reachable: boolean
+  /** True when the peer's meta response carried the X-Portty-Desktop header (always-available desktop on). Absent on a v1.x peer. */
+  desktop?: boolean
   sessions: RemoteSession[]
 }
 
