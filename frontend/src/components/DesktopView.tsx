@@ -204,7 +204,6 @@ const HINT_ID = 'desktop-stage-hint'
 const UNLOCK_WAIT_MS = 1500
 const UNLOCKED_BY_PORTTY = 'Mac unlocked. It will lock again after you disconnect.'
 // Surface 3: every viewer's clicks and keys are dropped while the Mac is locked; the viewer says so instead of letting typing do nothing.
-const LOCKED_GUEST = 'Locked. Ask the person at the Mac to unlock it.'
 const BLOCKED_GUEST = 'Clicks and typing are off while this Mac is locked.'
 const BLOCKED_OWN = `${BLOCKED_GUEST} Use Unlock This Mac to enter the password.`
 /** After the first notice of a lock episode, no more often than this while the user keeps typing. */
@@ -1167,7 +1166,7 @@ export function DesktopView({
   else if (needsTap) cardKey = 'tap'
   else if (status.kind === 'reconnecting') chip = { Icon: ArrowPathIcon, text: 'Reconnecting…' }
   else if (!hasFrame) cardKey = guest ? 'guest_connecting' : 'connecting'
-  else if (locked) chip = { Icon: LockClosedIcon, text: guest ? LOCKED_GUEST : 'Locked' }
+  else if (locked) chip = { Icon: LockClosedIcon, text: guest ? copy.GUEST_CHIP_LOCKED : 'Locked' }
   else if (canControl && ctlState.window !== '') chip = WINDOW_CHIPS[ctlState.window]
   else if (canControl && accessNeeded) chip = ACCESSIBILITY_CHIP
   // The lease chips are for every viewer that can control, own-account viewers included (22-UI-SPEC chip table, WR-07).
