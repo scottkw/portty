@@ -245,6 +245,43 @@ func FetchPeerCap(ctx context.Context, baseURL, sessionID string, client *http.C
 	return body.Cap, nil
 }
 
+// FetchPeerDesktopCap asks a same-account peer for its standing always-available
+// desktop token via POST /api/peer/desktop/cap, a twin of FetchPeerCap. Returns
+// ErrPeerForbidden on 403 and ErrPeerDesktopOff on 404: always-available is off on
+// that Mac (turning it off kills the token) or it has no signing key yet. The
+// token is never part of an error.
+func FetchPeerDesktopCap(ctx context.Context, baseURL string, client *http.Client) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/api/peer/desktop/cap", strings.NewReader("{}"))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("peer desktop cap: %w", err)
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusOK:
+	case http.StatusForbidden:
+		return "", ErrPeerForbidden
+	case http.StatusNotFound:
+		return "", ErrPeerDesktopOff
+	default:
+		return "", fmt.Errorf("peer desktop cap: unexpected status %d", resp.StatusCode)
+	}
+	var body struct {
+		Cap string `json:"cap"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&body); err != nil {
+		return "", fmt.Errorf("peer desktop cap: decode response: %w", err)
+	}
+	if body.Cap == "" {
+		return "", errors.New("peer desktop cap: empty capability")
+	}
+	return body.Cap, nil
+}
+
 // FetchAllPeerSessionsMeta fetches shareable-session metadata from all given peers
 // concurrently (max 5 goroutines). Unreachable peers stay in the result
 // (Reachable=false, Sessions=[]) and so do reachable peers with zero sessions
