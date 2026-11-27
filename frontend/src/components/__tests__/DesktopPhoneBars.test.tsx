@@ -21,6 +21,7 @@ function props(over: Partial<DesktopPhoneBarsProps> = {}): DesktopPhoneBarsProps
     armed: new Set<PhoneModifier>(),
     onToggleArm: vi.fn(),
     sendChord: vi.fn(),
+    onSelectSurface: vi.fn(),
     surfaceName: 'Main Display',
     surface: { kind: 'display', id: 1 },
     canControl: true,
@@ -230,7 +231,7 @@ describe('menus open upward', () => {
     expect(p.sendChord).not.toHaveBeenCalled()
   })
 
-  it('the picker lists displays and windows as radio items above the bar, checks the current one, and selects through the client', async () => {
+  it("the picker lists displays and windows as radio items above the bar, checks the current one, and selects through the view's pick handler", async () => {
     rects(300)
     const p = props()
     render(p)
@@ -244,7 +245,8 @@ describe('menus open upward', () => {
     expect(menu.textContent).toContain('Displays')
     expect(menu.textContent).toContain('Windows')
     act(() => menuItem('Terminal — zsh').click())
-    expect(p.client.selectSurface).toHaveBeenCalledWith('window', 4242)
+    expect(p.onSelectSurface).toHaveBeenCalledWith({ kind: 'window', id: 4242, name: 'Terminal — zsh' })
+    expect(p.client.selectSurface).not.toHaveBeenCalled()
   })
 
   it('the picker says so when the list cannot be loaded', async () => {

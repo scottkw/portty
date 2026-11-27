@@ -9,7 +9,7 @@ import {
 } from '@heroicons/react/24/outline'
 import type { DesktopClient, DesktopSurfacesMsg, SurfaceKind } from '../lib/desktopClient'
 import { ContextMenu, type ContextMenuEntry } from './ContextMenu'
-import { WINDOWS_CAPTION } from './DesktopControlBar'
+import { WINDOWS_CAPTION, type SurfacePick } from './DesktopControlBar'
 import { DesktopSendKeysMenu } from './DesktopSendKeysMenu'
 
 export type PhoneModifier = 'Control' | 'Alt' | 'Meta'
@@ -33,6 +33,8 @@ export interface DesktopPhoneBarsProps {
   canPickSurface: boolean
   disabledReason: 'Locked' | 'Reconnecting' | null
   client: DesktopClient
+  /** The view's pick handler: it tracks the switch and reports a refusal. */
+  onSelectSurface(pick: SurfacePick): void
 }
 
 const CAPTION_ID = 'desktop-phone-picker-caption'
@@ -48,7 +50,7 @@ const noop = () => {}
  */
 export function DesktopPhoneBars({
   keyboardUp, zoom, onFit, onShowKeyboard, onKey, armed, onToggleArm, sendChord,
-  surfaceName, surface, canControl, canPickSurface, disabledReason, client,
+  surfaceName, surface, canControl, canPickSurface, disabledReason, client, onSelectSurface,
 }: DesktopPhoneBarsProps): React.ReactElement {
   const [down, setDown] = useState<string | null>(null)
   const [sendKeys, setSendKeys] = useState<{ x: number; y: number } | null>(null)
@@ -75,7 +77,7 @@ export function DesktopPhoneBars({
   }
 
   function pickerItems(): ContextMenuEntry[] {
-    const pick = (kind: SurfaceKind, id: number) => () => client.selectSurface(kind, id)
+    const pick = (kind: SurfaceKind, id: number, name: string) => () => onSelectSurface({ kind, id, name })
     const current = (kind: SurfaceKind, id: number) => surface?.kind === kind && surface.id === id
     const out: ContextMenuEntry[] = [{ kind: 'label', text: 'Displays' }]
     if (pickerList.state === 'failed') {
@@ -91,7 +93,7 @@ export function DesktopPhoneBars({
           hint: `${d.w} x ${d.h}`,
           title: d.name,
           checked: current('display', d.id),
-          onSelect: current('display', d.id) ? noop : pick('display', d.id),
+          onSelect: current('display', d.id) ? noop : pick('display', d.id, d.name),
         })
       }
       out.push({ kind: 'label', text: 'Windows', separatorBefore: true })
@@ -101,7 +103,7 @@ export function DesktopPhoneBars({
           label: w.name,
           title: w.name,
           checked: current('window', w.id),
-          onSelect: current('window', w.id) ? noop : pick('window', w.id),
+          onSelect: current('window', w.id) ? noop : pick('window', w.id, w.name),
         })
       }
     }

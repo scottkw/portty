@@ -855,6 +855,14 @@ export function DesktopView({
     })
   }
 
+  function pickSurface(pick: SurfacePick) {
+    if (switchingRef.current) return
+    const sw = { ...pick, previous: surfRef.current?.name ?? 'the main display' }
+    switchingRef.current = sw
+    setSwitching(sw)
+    clientRef.current?.selectSurface(pick.kind, pick.id)
+  }
+
   function toggleSwap(on: boolean) {
     inputCtl.current?.setSwap(on)
     setSwapOn(on)
@@ -1085,6 +1093,7 @@ export function DesktopView({
             rights={phoneRights}
             locked={locked}
             reconnecting={hostPaused || status.kind === 'reconnecting' || status.kind === 'unreachable'}
+            onSelectSurface={pickSurface}
           />
         )}
         <span id={HINT_ID} className="visually-hidden">
@@ -1189,13 +1198,7 @@ export function DesktopView({
             }}
             surface={surf ? { kind: surf.kind, id: surf.id, name: surf.name } : null}
             requestSurfaces={() => clientRef.current?.requestSurfaces() ?? Promise.reject(new Error('not connected'))}
-            onSelectSurface={(pick) => {
-              if (switchingRef.current) return
-              const sw = { ...pick, previous: surfRef.current?.name ?? 'the main display' }
-              switchingRef.current = sw
-              setSwitching(sw)
-              clientRef.current?.selectSurface(pick.kind, pick.id)
-            }}
+            onSelectSurface={pickSurface}
             sendChord={(codes) => inputCtl.current?.sendChord(codes)}
             onMenuOpenChange={(open) => {
                 barMenuOpenRef.current = open // eagerly, for a popover that opens before the next render

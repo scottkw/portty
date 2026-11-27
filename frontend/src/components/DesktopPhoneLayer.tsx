@@ -14,6 +14,7 @@ import {
 import { createPhoneInput, type PhoneInput } from '../lib/desktopPhoneInput'
 import { attachTrackpad, type TrackpadIntent } from '../lib/touchTrackpad'
 import { useVisualViewportInset } from '../lib/visualViewportInset'
+import type { SurfacePick } from './DesktopControlBar'
 import { DesktopPhoneBars, type PhoneModifier } from './DesktopPhoneBars'
 import { videoContentRect } from './DesktopView'
 
@@ -24,6 +25,7 @@ export interface DesktopPhoneLayerProps {
   rights: { control: boolean; surface: boolean } | null
   locked: boolean
   reconnecting: boolean
+  onSelectSurface(pick: SurfacePick): void
 }
 
 /** A tap before the Mac's first cursor report waits this long for it, then is dropped. */
@@ -58,7 +60,7 @@ function keyFor(ch: string): { code: string; shift: boolean } | null {
  * (never window or document for touches) and sends Phase 20 messages. The pointer lives on the Mac:
  * drags are relative moves, clicks use the Mac's last cursor report, and zoom never leaves the phone.
  */
-export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconnecting }: DesktopPhoneLayerProps): React.ReactElement {
+export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconnecting, onSelectSurface }: DesktopPhoneLayerProps): React.ReactElement {
   const canControl = rights?.control === true
   const paused = locked || reconnecting
   const live = useRef({ canControl, paused })
@@ -420,7 +422,8 @@ export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconn
             onKey={sendKey}
             armed={armed}
             onToggleArm={toggleArm}
-            sendChord={(codes) => input.current?.chord(codes)}
+            sendChord={(codes) => { if (sendable()) input.current?.chord(codes) }}
+            onSelectSurface={onSelectSurface}
             surfaceName={surface?.name ?? null}
             surface={surface}
             canControl={canControl}
