@@ -1,0 +1,4 @@
+after Cmd+Q: office TextEdit processes=0
+       AXRadioButton Title=Desktop · OFFICE Value=1 DOMIdentifier=tab-desktop:TAILNET-NAME DOMClassList=(     
+      AXStaticText Value=Controlling OFFICE DOMClassList=( ) @1008,39 181x17
+42209 

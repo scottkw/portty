@@ -1,0 +1,6 @@
+window title=[Fonts] @300,200 470x250 minimized=false
+       AXRadioButton Title=Desktop · OFFICE Value=1 DOMIdentifier=tab-desktop:TAILNET-NAME DOMClassList=(     
+      AXStaticText Value=Controlling OFFICE DOMClassList=( ) @1008,39 181x17
+         AXRadioButton Title=View Only Value=0 DOMClassList=(     "share-seg" ) @994,88 71x24
+         AXRadioButton Title=Control Value=1 DOMClassList=(     "share-seg",     "is-active" ) @1064,88 71x24
+42209 
