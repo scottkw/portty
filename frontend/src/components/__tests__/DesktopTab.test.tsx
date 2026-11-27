@@ -546,7 +546,7 @@ describe('control mode (21-09): a click captures the keyboard and every way out 
       expect(keys()).toHaveLength(2)
     })
 
-    it('leaving control mode while the paste is in flight sends no key', async () => {
+    it('leaving control mode while the paste is in flight sends no text and no key', async () => {
       await controlling()
       let resolve!: (v: { outcome: string; text: string }) => void
       h.readHome.mockReturnValue(new Promise((r) => { resolve = r }))
@@ -554,6 +554,7 @@ describe('control mode (21-09): a click captures the keyboard and every way out 
       await paste()
       act(() => { window.dispatchEvent(new Event('blur')) })
       await act(async () => { resolve({ outcome: 'ok', text: 'hello' }) })
+      expect(client().pasteToMac).not.toHaveBeenCalled()
       expect(keys()).toHaveLength(0)
     })
 

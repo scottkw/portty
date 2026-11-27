@@ -128,6 +128,7 @@ export function DesktopTab({ tab, active, onDesktopState, onLabel, controlRef }:
       }
       const d = pasteDecision(read, lastSent.current)
       if (d.notice) return notice(d.notice)
+      if (!controlling.current) return // control ended while the read was in flight: nothing goes to the Mac
       if (d.send !== null) {
         let outcome: string | undefined
         try {
