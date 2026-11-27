@@ -121,6 +121,7 @@ static OSStatus pcSet(VTCompressionSessionRef s, CFStringRef key, CFTypeRef valu
 	VTCompressionSessionRef _session;
 	CVPixelBufferRef _cached;
 	int _w, _h, _fps, _bitrate;
+	BOOL _limited; // a live bitrate change has set DataRateLimits; a rebuilt session keeps them
 	double _keySecs;
 	CMTime _lastPts;
 	BOOL _forceNext;
@@ -131,6 +132,8 @@ static OSStatus pcSet(VTCompressionSessionRef s, CFStringRef key, CFTypeRef valu
 - (OSStatus)encode:(CVPixelBufferRef)pb pts:(CMTime)pts;
 - (OSStatus)forceKeyframe;
 - (OSStatus)rebuildWidth:(int)w height:(int)h;
+- (OSStatus)setBitrate:(int)bps;
+- (OSStatus)setFrameRate:(int)fps;
 - (int)hardware;
 - (void)stop;
 @end
@@ -163,6 +166,13 @@ static OSStatus pcSet(VTCompressionSessionRef s, CFStringRef key, CFTypeRef valu
 	}
 }
 
+// DataRateLimits for an average of bps: bytes per second at 1.5 times the average,
+// over a 1 s window, so a burst is bounded (the congestion controller uses a no-op
+// pacer and relies on this).
+static NSArray *pcRateLimits(int bps) {
+	return @[ @((int64_t)bps * 3 / 16), @1 ];
+}
+
 // Constrained Baseline, realtime, no reordering, average bitrate, a keyframe at
 // least every _keySecs, hardware preferred (not required). Lock held.
 - (OSStatus)createSessionLocked {
@@ -182,6 +192,9 @@ static OSStatus pcSet(VTCompressionSessionRef s, CFStringRef key, CFTypeRef valu
 	PC_SET(kVTCompressionPropertyKey_AllowFrameReordering, kCFBooleanFalse)
 	PC_SET(kVTCompressionPropertyKey_ProfileLevel, kVTProfileLevel_H264_ConstrainedBaseline_AutoLevel)
 	PC_SET(kVTCompressionPropertyKey_AverageBitRate, (__bridge CFTypeRef)@(_bitrate))
+	if (_limited) {
+		PC_SET(kVTCompressionPropertyKey_DataRateLimits, (__bridge CFTypeRef)pcRateLimits(_bitrate))
+	}
 	PC_SET(kVTCompressionPropertyKey_ExpectedFrameRate, (__bridge CFTypeRef)@(_fps))
 	PC_SET(kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration, (__bridge CFTypeRef)@(_keySecs))
 	PC_SET(kVTCompressionPropertyKey_ColorPrimaries, kCVImageBufferColorPrimaries_ITU_R_709_2)
@@ -295,6 +308,42 @@ static OSStatus pcSet(VTCompressionSessionRef s, CFStringRef key, CFTypeRef valu
 	}
 }
 
+// Changes the running session's average bitrate and its burst bound. The session
+// is never recreated, so no keyframe is forced and the viewers see no break.
+- (OSStatus)setBitrate:(int)bps {
+	[_lock lock];
+	@try {
+		if (_session == NULL) return kVTInvalidSessionErr;
+		OSStatus st = pcSet(_session, kVTCompressionPropertyKey_AverageBitRate, (__bridge CFTypeRef)@(bps));
+		if (st != noErr) return st;
+		st = pcSet(_session, kVTCompressionPropertyKey_DataRateLimits, (__bridge CFTypeRef)pcRateLimits(bps));
+		if (st != noErr) return st;
+		_bitrate = bps; // a later rebuild keeps the rate
+		_limited = YES;
+		return noErr;
+	} @catch (NSException *e) {
+		return kPCExceptionErr;
+	} @finally {
+		[_lock unlock];
+	}
+}
+
+// Tells the running session the capture's new frame rate (its rate control paces
+// bits per frame by it). Not a session change.
+- (OSStatus)setFrameRate:(int)fps {
+	[_lock lock];
+	@try {
+		if (_session == NULL) return kVTInvalidSessionErr;
+		OSStatus st = pcSet(_session, kVTCompressionPropertyKey_ExpectedFrameRate, (__bridge CFTypeRef)@(fps));
+		if (st == noErr) _fps = fps;
+		return st;
+	} @catch (NSException *e) {
+		return kPCExceptionErr;
+	} @finally {
+		[_lock unlock];
+	}
+}
+
 - (int)hardware {
 	[_lock lock];
 	int hw = _hardware;
@@ -367,6 +416,74 @@ int pc_encode_synthetic(uintptr_t handle, int frames, int w, int h, int force, i
 			CVPixelBufferRelease(pb);
 			if (st != noErr) break;
 			usleep(2000);
+		}
+		[enc stop];
+		return (int)st;
+	} @catch (NSException *e) {
+		return kPCExceptionErr;
+	}
+}
+
+// A gradient with noise (a xorshift of the frame number) on an IOSurface-backed
+// NV12 buffer: busy enough that the encoder uses whatever rate it is given, so
+// the produced rate shows the rate control.
+static CVPixelBufferRef pcMakeNoisyNV12(int w, int h, int frame) {
+	NSDictionary *attrs = pcDict1((__bridge id)kCVPixelBufferIOSurfacePropertiesKey, @{});
+	if (attrs == nil) return NULL;
+	CVPixelBufferRef pb = NULL;
+	if (CVPixelBufferCreate(NULL, w, h, kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, (__bridge CFDictionaryRef)attrs,
+	                        &pb) != kCVReturnSuccess) {
+		return NULL;
+	}
+	CVPixelBufferLockBaseAddress(pb, 0);
+	uint32_t x = 2463534242u ^ ((uint32_t)frame * 2654435761u);
+	// Full-range white noise is past what the hardware rate control can hold down
+	// (it produces about 50 Mbps at a 1 Mbps target), so the noise rides a gradient
+	// at a strength that still demands more than 8 Mbps at 1280x720.
+	const uint32_t amp = 40;
+	for (int plane = 0; plane < 2; plane++) {
+		uint8_t *p = CVPixelBufferGetBaseAddressOfPlane(pb, plane);
+		size_t stride = CVPixelBufferGetBytesPerRowOfPlane(pb, plane);
+		size_t rows = CVPixelBufferGetHeightOfPlane(pb, plane);
+		for (size_t r = 0; r < rows; r++) {
+			for (size_t c = 0; c < stride; c++) {
+				x ^= x << 13;
+				x ^= x >> 17;
+				x ^= x << 5;
+				p[r * stride + c] = (uint8_t)(16 + (plane == 0 ? (c * 150 / stride) : 0) + x % amp);
+			}
+		}
+	}
+	CVPixelBufferUnlockBaseAddress(pb, 0);
+	return pb;
+}
+
+// Feeds `frames` noisy NV12 frames at fps through a real encoder started at
+// startBps and, at frame index changeAt, changes the running session to newBps
+// through setBitrate and, at rebuildAt, rebuilds the encoder at the same size (a
+// negative index disables either), sleeping paceUs microseconds after each frame.
+// Returns 0 or an OSStatus. Not capture: no TCC is involved.
+int pc_encode_synthetic_rate(uintptr_t handle, int frames, int w, int h, int fps, int changeAt, int startBps, int newBps,
+                             int rebuildAt, int paceUs, int *hardware) {
+	@try {
+		PCEncoder *enc = [[PCEncoder alloc] init];
+		enc.handle = handle;
+		OSStatus st = [enc startWidth:w height:h fps:fps bitrate:startBps keySecs:4.0];
+		if (st != noErr) return (int)st;
+		*hardware = [enc hardware];
+		for (int i = 0; i < frames; i++) {
+			if (i == changeAt && (st = [enc setBitrate:newBps]) != noErr) break;
+			// A rebuild at the same size, as a quality step makes: it must keep the new rate.
+			if (i == rebuildAt && (st = [enc rebuildWidth:w height:h]) != noErr) break;
+			CVPixelBufferRef pb = pcMakeNoisyNV12(w, h, i);
+			if (pb == NULL) {
+				st = kPCNilErr;
+				break;
+			}
+			st = [enc encode:pb pts:CMTimeMake(i, fps)];
+			CVPixelBufferRelease(pb);
+			if (st != noErr) break;
+			if (paceUs > 0) usleep((useconds_t)paceUs);
 		}
 		[enc stop];
 		return (int)st;
@@ -657,6 +774,38 @@ int pc_encoder_force_keyframe(void) {
 		return gEnc == nil ? (int)kVTInvalidSessionErr : (int)[gEnc forceKeyframe];
 	} @catch (NSException *e) {
 		return kPCExceptionErr;
+	}
+}
+
+// Live bitrate change on the running encoder (see PCEncoder setBitrate).
+int pc_encoder_set_bitrate(int bps) {
+	@try {
+		return gEnc == nil ? (int)kVTInvalidSessionErr : (int)[gEnc setBitrate:bps];
+	} @catch (NSException *e) {
+		return kPCExceptionErr;
+	}
+}
+
+// Live frame-rate change: the stream's minimum frame interval through
+// updateConfiguration (bounded at 1 s), then the encoder's expected frame rate.
+int pc_stream_set_fps(int fps) {
+	@autoreleasepool {
+		@try {
+			if (gEnc == nil || gStream == nil || gConfig == nil || fps < 1) return (int)kVTInvalidSessionErr;
+			gConfig.minimumFrameInterval = CMTimeMake(1, fps);
+			__block NSError *updErr = nil;
+			dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+			[gStream updateConfiguration:gConfig
+			           completionHandler:^(NSError *e) {
+				           updErr = e;
+				           dispatch_semaphore_signal(sem);
+			           }];
+			if (dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 1 * NSEC_PER_SEC)) != 0) return kPCTimeoutErr;
+			if (updErr != nil) return updErr.code != 0 ? (int)updErr.code : kPCNilErr;
+			return (int)[gEnc setFrameRate:fps];
+		} @catch (NSException *e) {
+			return kPCExceptionErr;
+		}
 	}
 }
 

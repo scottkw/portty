@@ -15,6 +15,7 @@ package screencap
 #include <stdlib.h>
 
 int pc_encode_synthetic(uintptr_t handle, int frames, int width, int height, int force, int rebuildAt, int rebuildW, int rebuildH, int *hardware);
+int pc_encode_synthetic_rate(uintptr_t handle, int frames, int width, int height, int fps, int changeAt, int startBps, int newBps, int rebuildAt, int paceUs, int *hardware);
 
 // Capture. Each returns 0 or an error code (SCK codes pass through, else OSStatus);
 // the char buffer receives a message. One stream per process: nativeMu serialises.
@@ -24,6 +25,8 @@ int pc_list_surfaces(char **json, int *n, char *errbuf, int errlen);
 void pc_stream_stop(void);
 int pc_encoder_force_keyframe(void);
 int pc_encoder_rebuild(int w, int h);
+int pc_encoder_set_bitrate(int bps);
+int pc_stream_set_fps(int fps);
 int pc_encoder_hardware(void);
 int pc_still_capture(int maxLong, uint8_t **out, int *n, char *errbuf, int errlen);
 uint32_t pc_main_display_id(void);
@@ -160,6 +163,28 @@ func encodeSyntheticForTest(frames, width, height int, force, rebuildAt int, reb
 	return units, errors.Join(errs...)
 }
 
+// encodeSyntheticRateForTest feeds noisy NV12 frames at fps through a real
+// encoder started at startBps and changes the running session to newBps at frame
+// changeAt and rebuilds it at the same size at rebuildAt (a negative index
+// disables either), sleeping pace after each frame (zero feeds as fast as the
+// encoder takes them). Test-only, like encodeSyntheticForTest: no capture, no TCC.
+func encodeSyntheticRateForTest(frames, width, height, fps, changeAt, startBps, newBps, rebuildAt int, pace time.Duration) ([]AccessUnit, error) {
+	var units []AccessUnit
+	var errs []error
+	h := cgo.NewHandle(&sink{
+		au:  func(au AccessUnit) { units = append(units, au) },
+		err: func(err error) { errs = append(errs, err) },
+	})
+	defer h.Delete()
+	var hw C.int = -1
+	rc := C.pc_encode_synthetic_rate(C.uintptr_t(h), C.int(frames), C.int(width), C.int(height), C.int(fps), C.int(changeAt), C.int(startBps), C.int(newBps), C.int(rebuildAt), C.int(pace.Microseconds()), &hw)
+	syntheticHardware.Store(int32(hw))
+	if rc != 0 {
+		return nil, mapSCKError(int(rc), "synthetic rate encode failed")
+	}
+	return units, errors.Join(errs...)
+}
+
 // errBufLen is the size of the message buffer the C side fills on failure.
 const errBufLen = 256
 
@@ -193,8 +218,9 @@ type DisplaySource struct {
 }
 
 var (
-	_ Source      = (*DisplaySource)(nil)
-	_ AudioSource = (*DisplaySource)(nil)
+	_ Source        = (*DisplaySource)(nil)
+	_ AudioSource   = (*DisplaySource)(nil)
+	_ QualitySource = (*DisplaySource)(nil)
 )
 
 // NewDisplaySource returns a Source that captures the main display until told otherwise.
@@ -381,6 +407,42 @@ func (d *DisplaySource) Rebuild(width, height int) error {
 		return mapSCKError(int(rc), "rebuilding the encoder failed")
 	}
 	d.noteEncoder()
+	return nil
+}
+
+// SetBitrate changes the running encoder's average bitrate (and its burst bound)
+// without creating a new session: no keyframe, no break in the picture.
+func (d *DisplaySource) SetBitrate(bps int) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if !d.running {
+		return ErrNotRunning
+	}
+	nativeMu.Lock()
+	defer nativeMu.Unlock()
+	if rc := C.pc_encoder_set_bitrate(C.int(bps)); rc != 0 {
+		return mapSCKError(int(rc), "changing the bitrate failed")
+	}
+	return nil
+}
+
+// SetFPS changes the running capture's frame rate (the stream's minimum frame
+// interval, then the encoder's expected rate). It touches the live stream, so a
+// test binary never reaches it; the VM rows prove it on a real capture.
+func (d *DisplaySource) SetFPS(fps int) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if !d.running {
+		return ErrNotRunning
+	}
+	if testing.Testing() {
+		return ErrRefusedInTest
+	}
+	nativeMu.Lock()
+	defer nativeMu.Unlock()
+	if rc := C.pc_stream_set_fps(C.int(fps)); rc != 0 {
+		return mapSCKError(int(rc), "changing the frame rate failed")
+	}
 	return nil
 }
 
