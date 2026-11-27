@@ -1,0 +1,204 @@
+trusted: true
+AXWindow [AXStandardWindow] Title=Privacy & Security @270,46 740x625
+ AXGroup [AXHostingView] @270,46 740x625
+  AXSplitGroup @270,46 740x625
+   AXGroup [AXHostingView] @270,46 232x625
+    AXScrollArea @270,144 232x527
+     AXOutline Description=Sidebar @270,144 232x527
+      AXRow [AXOutlineRow] @270,143 215x0
+       AXCell @280,143 195x0
+        AXGroup [AXHostingView] @284,143 199x0
+      AXRow [AXOutlineRow] @270,143 215x46
+       AXCell @280,143 195x46
+        AXButton Description=Sign in, Apple Account @286,147 123x38
+      AXRow [AXOutlineRow] @270,202 215x0
+       AXCell @280,202 195x0
+        AXGroup [AXHostingView] @284,202 199x0
+      AXRow [AXOutlineRow] @270,202 215x45
+       AXCell @280,202 195x45
+        AXButton Description=Software Update Available Value=1 @286,206 183x37
+      AXRow [AXOutlineRow] @270,261 215x0
+       AXCell @280,261 195x0
+        AXGroup [AXHostingView] @284,261 199x0
+      AXRow [AXOutlineRow] @270,261 215x32
+       AXCell @280,261 195x32
+        AXButton Description=Wi-Fi @287,265 61x24
+      AXRow [AXOutlineRow] @270,293 215x32
+       AXCell @280,293 195x32
+        AXButton Description=Bluetooth @287,297 88x24
+      AXRow [AXOutlineRow] @270,325 215x32
+       AXCell @280,325 195x32
+        AXButton Description=Network @287,329 80x24
+      AXRow [AXOutlineRow] @270,357 215x32
+       AXCell @280,357 195x32
+        AXButton Description=VPN @287,361 55x24
+      AXRow [AXOutlineRow] @270,389 215x32
+       AXCell @280,389 195x32
+        AXButton Description=Energy @287,393 71x24
+      AXRow [AXOutlineRow] @270,434 215x0
+       AXCell @280,434 195x0
+        AXGroup [AXHostingView] @284,434 199x0
+      AXRow [AXOutlineRow] @270,434 215x32
+       AXCell @280,434 195x32
+        AXButton Description=General @287,438 76x24
+      AXRow [AXOutlineRow] @270,466 215x32
+       AXCell @280,466 195x32
+        AXButton Description=Accessibility @287,470 105x24
+      AXRow [AXOutlineRow] @270,498 215x32
+       AXCell @280,498 195x32
+        AXButton Description=Appearance @287,502 102x24
+      AXRow [AXOutlineRow] @270,530 215x32
+       AXCell @280,530 195x32
+        AXButton Description=Desktop & Dock @287,534 127x24
+      AXRow [AXOutlineRow] @270,562 215x32
+       AXCell @280,562 195x32
+        AXButton Description=Displays @287,566 80x24
+      AXRow [AXOutlineRow] @270,594 215x32
+       AXCell @280,594 195x32
+        AXButton Description=Menu Bar @287,598 87x24
+      AXRow [AXOutlineRow] @270,626 215x32
+       AXCell @280,626 195x32
+        AXButton Description=Siri @287,630 48x24
+      AXRow [AXOutlineRow] @270,658 215x32
+       AXCell @280,658 195x32
+        AXButton Description=Spotlight @287,662 84x24
+      AXRow [AXOutlineRow] @270,690 215x32
+       AXCell @280,690 195x32
+        AXButton Description=Wallpaper @0,720 0x0
+      AXRow [AXOutlineRow] @270,735 215x0
+       AXCell @280,735 195x0
+        AXGroup [AXHostingView] @284,735 199x0
+      AXRow [AXOutlineRow] @270,735 215x32
+       AXCell @280,735 195x32
+        AXButton Description=Notifications @0,720 0x0
+      AXRow [AXOutlineRow] @270,767 215x32
+       AXCell @280,786 195x32
+        AXButton Description=Sound @0,720 0x0
+      AXRow [AXOutlineRow] @270,818 215x32
+       AXCell @280,818 195x32
+        AXButton Description=Focus @0,720 0x0
+      AXRow [AXOutlineRow] @270,850 215x32
+       AXCell @280,850 195x32
+        AXButton Description=Screen Time @0,720 0x0
+      AXRow [AXOutlineRow] @270,895 215x19
+       AXCell @280,895 195x19
+        AXGroup [AXHostingView] @284,895 199x0
+      AXRow [AXOutlineRow] @270,895 215x32
+       AXCell @280,914 195x32
+        AXButton Description=Lock Screen @0,720 0x0
+      AXRow [AXOutlineRow] @270,946 215x32
+       AXCell @280,946 195x32
+        AXButton Description=Privacy & Security @0,720 0x0
+      AXRow [AXOutlineRow] @270,978 215x32
+       AXCell @280,978 195x32
+        AXButton Description=Touch ID & Password @0,720 0x0
+      AXRow [AXOutlineRow] @270,1010 215x32
+       AXCell @280,1010 195x32
+        AXButton Description=Users & Groups @0,720 0x0
+      AXRow [AXOutlineRow] @270,1055 215x19
+       AXCell @280,1055 195x19
+        AXGroup [AXHostingView] @284,1055 199x0
+      AXRow [AXOutlineRow] @270,1055 215x32
+       AXCell @280,1074 195x32
+        AXButton Description=Game Center @0,720 0x0
+      AXRow [AXOutlineRow] @270,1106 215x32
+       AXCell @280,1106 195x32
+        AXButton Description=iCloud @0,720 0x0
+      AXRow [AXOutlineRow] @270,1138 215x32
+       AXCell @280,1138 195x32
+        AXButton Description=Internet Accounts @0,720 0x0
+      AXRow [AXOutlineRow] @270,1170 215x32
+       AXCell @280,1170 195x32
+        AXButton Description=Wallet & Apple Pay @0,720 0x0
+      AXRow [AXOutlineRow] @270,1215 215x19
+       AXCell @280,1215 195x19
+        AXGroup [AXHostingView] @284,1234 199x0
+      AXRow [AXOutlineRow] @270,1234 215x32
+       AXCell @280,1234 195x32
+        AXButton Description=Keyboard @0,720 0x0
+      AXRow [AXOutlineRow] @270,1266 215x32
+       AXCell @280,1266 195x32
+        AXButton Description=Mouse @0,720 0x0
+      AXRow [AXOutlineRow] @270,1298 215x32
+       AXCell @280,1298 195x32
+        AXButton Description=Printers & Scanners @0,720 0x0
+      AXColumn @280,143 195x1196
+     AXScrollBar Value=0.0007468259895444362 @484,143 19x529
+      AXValueIndicator Value=0.0007468259895444362 @488,147 11x251
+      AXButton [AXIncrementArrow] @485,144 0x0
+      AXButton [AXDecrementArrow] @485,144 0x0
+      AXButton [AXIncrementPage] @488,399 11x269
+      AXButton [AXDecrementPage] @488,147 11x0
+   AXGroup [AXHostingView] @280,107 212x28
+    AXTextField [AXSearchField] @280,107 212x28
+     AXButton Description=Search @283,107 25x28
+   AXSplitter Value=231.5 @501,98 0x573
+   AXGroup [AXHostingView] @270,46 740x625
+    AXGroup [AXHostingView] @270,46 740x625
+     AXScrollArea @502,98 508x573
+      AXGroup @522,110 468x73
+       AXStaticText Value=Privacy @570,120 44x18
+       AXStaticText Value=Control which apps can access your data, location, camera, and microphone, and manage safety protections. Learn more… @570,140 406x33
+        AXLink Description=Learn more… @738,157 68x15
+      AXGroup @522,193 468x38
+       AXButton Description=Location Services, Off @522,193 468x38
+      AXGroup @522,241 468x498
+       AXButton Description=Calendars, None @522,241 468x54
+       AXButton Description=Contacts, None @522,297 468x54
+       AXButton Description=Files & Folders, 1 app @522,352 468x54
+       AXButton Description=Full Disk Access, 1 full access @522,408 468x54
+       AXButton Description=Home, None @522,463 468x54
+       AXButton Description=Media & Apple Music, None @522,519 468x54
+       AXButton Description=Passkeys Access for Web Browsers, None @522,574 468x54
+       AXButton Description=Photos, None @522,630 468x54
+       AXButton Description=Reminders, None @522,685 468x54
+      AXGroup @522,750 468x552
+       AXButton Description=App Management, 0 @522,750 468x38
+       AXButton Description=Automation, 1 @522,789 468x38
+       AXButton Description=Bluetooth, 0 @522,829 468x38
+       AXButton Description=Camera, 0 @522,868 468x38
+       AXButton Description=Developer Tools, 0 @522,908 468x38
+       AXButton Description=Device Control and Data Access, 2 @522,947 468x38
+       AXButton Description=Focus, 0 @522,987 468x38
+       AXButton Description=Input Monitoring, 0 @522,1026 468x38
+       AXButton Description=Local Network, 1 @522,1066 468x38
+       AXButton Description=Microphone, 0 @522,1105 468x38
+       AXButton Description=Motion & Fitness, 0 @522,1145 468x38
+       AXButton Description=Remote Desktop, 0 @522,1184 468x38
+       AXButton Description=Screen & System Audio Recording, 2 @522,1224 468x38
+       AXButton Description=Speech Recognition, 0 @522,1263 468x38
+      AXGroup @522,1312 468x38
+       AXButton Description=Sensitive Content Warning, Off @522,1312 468x38
+      AXGroup @522,1360 468x38
+       AXButton Description=Blocked Contacts @522,1360 468x38
+      AXGroup @522,1409 468x78
+       AXButton Description=Analytics & Improvements @522,1409 468x38
+       AXButton Description=Apple Advertising @522,1448 468x38
+      AXHeading Description=Security @532,1517 53x18
+      AXGroup @522,1545 468x38
+       AXStaticText Value=Allow applications from @532,1555 141x18
+       AXPopUpButton Value=Anywhere @872,1553 107x24
+      AXGroup @522,1594 468x78
+       AXButton Description=FileVault, Off @522,1594 468x38
+       AXButton Description=Background Security Improvements @522,1633 468x38
+      AXGroup @522,1682 468x38
+       AXButton Description=Lockdown Mode, Off @522,1682 468x38
+      AXStaticText Value=Your Mac can reduce your exposure to digital threats by applying security limits to apps and features. This is intended for people in high-risk situations, such as journalists, activists, and public figures. @532,1730 434x50
+      AXButton Description=Advanced… @861,1800 94x24
+      AXButton Description=Help @966,1800 24x24
+      AXScrollBar Value=0 @992,97 19x575
+       AXValueIndicator Value=0 @996,101 11x197
+       AXButton [AXIncrementArrow] @993,98 0x0
+       AXButton [AXDecrementArrow] @993,98 0x0
+       AXButton [AXIncrementPage] @996,298 11x369
+       AXButton [AXDecrementPage] @996,101 11x0
+ AXToolbar @270,46 740x52
+  AXGroup @506,46 81x52
+   AXGroup @510,54 73x36
+    AXMenuButton [AXSegment] Description=Go Back @510,54 36x36
+    AXMenuButton [AXSegment] Description=Go Forward @546,54 37x36
+ AXButton [AXCloseButton] @288,64 16x16
+ AXButton [AXZoomButton] @334,64 16x16
+  AXGroup @335,65 14x14
+ AXButton [AXMinimizeButton] @311,64 16x16
+ AXStaticText Value=Privacy & Security @587,46 411x52
