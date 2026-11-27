@@ -4,6 +4,7 @@ import {
   ChevronRightIcon,
   DocumentIcon,
   DocumentTextIcon,
+  ComputerDesktopIcon,
   GlobeAltIcon,
   PhotoIcon,
   PlusIcon,
@@ -20,7 +21,7 @@ export interface Tab {
   id: string
   name: string
   sessionId: string
-  type?: 'terminal' | 'web-session' | 'preview'
+  type?: 'terminal' | 'web-session' | 'preview' | 'desktop'
   /** Phase 168-03 (FIX-03) — per-tab remote peer origin for 'web-session' tabs
    *  opened via handleOpenRemoteSession. undefined for the app's own web-share
    *  bootstrap tab (which falls back to the mount-stable webParams). */
@@ -262,7 +263,9 @@ export function TabBar({
                   setMenu({ tab, x: e.clientX, y: e.clientY, invoker: e.currentTarget })
                 }}
               >
-                {peer && <GlobeAltIcon className="tab__remote-icon" aria-hidden="true" />}
+                {peer && (tab.type === 'desktop'
+                  ? <ComputerDesktopIcon className="tab__remote-icon" aria-hidden="true" />
+                  : <GlobeAltIcon className="tab__remote-icon" aria-hidden="true" />)}
                 {isPreview && <PreviewIcon kind={tab.previewKind} />}
                 <span
                   className="tab__name"

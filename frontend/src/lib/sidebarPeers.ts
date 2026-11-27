@@ -11,6 +11,23 @@ export interface PeerGroup {
   peer: RemotePeerSessions
 }
 
+/** The last state a peer's desktop reported that leaves its sidebar row muted (ready and streaming mute nothing). */
+export type DesktopRowState = 'needs_permission' | 'awaiting_approval' | 'display_asleep' | 'locked' | 'capture_paused'
+
+/** UI-SPEC Surface 1 muted lines: the words are the browser viewer's, so the wording matches everywhere. */
+export const DESKTOP_ROW_LINES: Record<DesktopRowState, string> = {
+  needs_permission: 'Needs permission',
+  awaiting_approval: 'Waiting for approval at the Mac',
+  display_asleep: 'Display asleep',
+  locked: 'Locked',
+  capture_paused: 'Desktop paused',
+}
+
+/** The unique key a Desktop tab and the connect binding use: MagicDNS name, else hostname (HostNames can repeat). */
+export function desktopConnectHost(peer: RemotePeerSessions): string {
+  return peer.dnsName || peer.hostname
+}
+
 export type PeerView =
   | { kind: 'off' }
   | { kind: 'loading' }
@@ -48,7 +65,7 @@ export function peerView(
   // reconnecting would drop out; keep it, unreachable, so its row can show amber.
   const listed =
     reconnectingHost && !peers.some((p) => p.hostname === reconnectingHost)
-      ? [...peers, { hostname: reconnectingHost, reachable: false, sessions: [] }]
+      ? [...peers, { hostname: reconnectingHost, reachable: false, desktop: false, sessions: [] }]
       : peers
   const groups = listed
     // Every probed peer is kept: an unreachable one shows the can't-reach line, a reachable one

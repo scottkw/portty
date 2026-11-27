@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { hostlessWebSessionId, nextActiveTabId, peerTabsRemoved, renameInList, tabLabel, webSessionTabId } from '../tabs'
+import { desktopTabId, hostlessWebSessionId, peerTabParts, nextActiveTabId, peerTabsRemoved, renameInList, tabLabel, webSessionTabId } from '../tabs'
 
 const tabs = [{ id: 'a' }, { id: 'b' }, { id: 'c' }]
 
@@ -103,5 +103,26 @@ describe('peerTabsRemoved (INPT-04 Retry cleanup)', () => {
 
   it('returns nothing when every peer tab stays', () => {
     expect(peerTabsRemoved([peerA, peerB], [peerB, peerA])).toEqual([])
+  })
+})
+
+// DVWR-01: one Desktop tab per peer.
+describe('desktop tabs (DVWR-01)', () => {
+  it('desktopTabId is desktop: plus the connect host and never equals a web-session tab id', () => {
+    const host = 'office-air.example.ts.net'
+    expect(desktopTabId(host)).toBe(`desktop:${host}`)
+    for (const id of [webSessionTabId('s1', host), webSessionTabId(host), webSessionTabId('desktop')]) {
+      expect(desktopTabId(host)).not.toBe(id)
+    }
+    expect(desktopTabId('a.example.ts.net')).not.toBe(desktopTabId('b.example.ts.net'))
+  })
+
+  it('peerTabParts splits a desktop tab name like a peer terminal tab', () => {
+    expect(peerTabParts({ type: 'desktop', name: 'office-air › Desktop', peerHost: 'office-air.example' })).toEqual({ host: 'office-air', session: 'Desktop' })
+  })
+
+  it('peerTabsRemoved ignores desktop tabs', () => {
+    const desk = { id: 'desktop:a.example.ts.net', type: 'desktop', peerHost: 'a.example.ts.net' }
+    expect(peerTabsRemoved([desk], [])).toEqual([])
   })
 })

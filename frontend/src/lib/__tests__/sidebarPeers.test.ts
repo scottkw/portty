@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { PEER_COLOR_COUNT, peerColorIndex, peerView, shortHost } from '../sidebarPeers'
+import { DESKTOP_ROW_LINES, PEER_COLOR_COUNT, desktopConnectHost, peerColorIndex, peerView, shortHost } from '../sidebarPeers'
 import type { RemotePeerSessions } from '../remoteSession'
 
 const peer = (hostname: string, reachable: boolean, ids: string[] = []): RemotePeerSessions => ({
@@ -108,5 +108,26 @@ describe('peerView: a reconnecting Mac stays listed (UI polish)', () => {
     expect(groupsOf(peerView(false, true, listed, 'office-air.tail1234.ts.net'))[0].reachable).toBe(true)
     expect(peerView(false, true, [], null)).toEqual({ kind: 'none' })
     expect(peerView(true, true, [], 'office-air.tail1234.ts.net')).toEqual({ kind: 'off' })
+  })
+})
+
+describe('desktop row helpers (DVWR-01)', () => {
+  it('has the five UI-SPEC lines', () => {
+    expect(DESKTOP_ROW_LINES).toEqual({
+      needs_permission: 'Needs permission',
+      awaiting_approval: 'Waiting for approval at the Mac',
+      display_asleep: 'Display asleep',
+      locked: 'Locked',
+      capture_paused: 'Desktop paused',
+    })
+  })
+
+  it('desktopConnectHost prefers the MagicDNS name, else the hostname', () => {
+    expect(desktopConnectHost({ ...peer('office-air', true), dnsName: 'office-air.example.ts.net' })).toBe('office-air.example.ts.net')
+    expect(desktopConnectHost(peer('office-air', true))).toBe('office-air')
+  })
+
+  it('the synthetic reconnecting peer has no desktop', () => {
+    expect(groupsOf(peerView(false, true, [], 'office-air.example.ts.net'))[0].peer.desktop).toBe(false)
   })
 })
