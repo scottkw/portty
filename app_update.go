@@ -257,11 +257,13 @@ func (a *App) showWindow() {
 // brings Portty forward and asks the UI to show the update banner even if it was dismissed. It must
 // never start the update: the user presses the banner's button for that (CONTEXT decision 2026-11-22).
 func (a *App) handleNotificationClick(id string) {
-	if id != updateNotificationID {
-		return
+	switch id {
+	case desktopAdmitNotificationID, desktopJoinNotificationID, desktopLeaveNotificationID:
+		a.shareNotificationClicked() // a click only brings Portty forward; it never admits or denies
+	case updateNotificationID:
+		a.showWindow()
+		a.emitEvent("update:show", nil)
 	}
-	a.showWindow()
-	a.emitEvent("update:show", nil)
 }
 
 // setTrayUpdate sets the tray's update item title ("" hides it).

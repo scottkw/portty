@@ -19,6 +19,7 @@ void setTrayUpdateItem(const char *title);
 void setTrayDesktopTitle(const char *title);
 void setTrayShareState(int active, const char *title);
 void setDockVisible(int visible);
+int isAppActiveAndVisible(void);
 */
 import "C"
 
@@ -171,6 +172,12 @@ func (a *App) setTrayDesktopLine(line string) {
 	cl := C.CString(line)
 	C.setTrayDesktopTitle(cl)
 	C.free(unsafe.Pointer(cl))
+}
+
+// isAppActiveAndVisible reports whether Portty is the active app with a visible,
+// key or main window: the one case where an Admit request needs no banner.
+func isAppActiveAndVisible() bool {
+	return C.isAppActiveAndVisible() != 0
 }
 
 // setDockVisible shows or hides the macOS Dock icon by toggling the application

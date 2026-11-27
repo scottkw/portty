@@ -119,6 +119,14 @@ export const OpenDesktopPermissionPane = (kind)             => Call('main.App.Op
 export const GetDesktopStatus         = ()                   => Call('main.App.GetDesktopStatus', [])
 export const SetDesktopAlwaysAvailable = (on)                => Call('main.App.SetDesktopAlwaysAvailable', [on])
 export const GetDesktopLink           = ()                   => Call('main.App.GetDesktopLink', [])
+// Portty 22-09: the click-to-share sheets' actions. None rejects; failures are errorCode results.
+export const StartDesktopShare        = ()                   => Call('main.App.StartDesktopShare', [])
+export const GetDesktopShare          = ()                   => Call('main.App.GetDesktopShare', [])
+export const StopDesktopShare         = ()                   => Call('main.App.StopDesktopShare', [])
+export const AdmitDesktopGuest        = (id)                 => Call('main.App.AdmitDesktopGuest', [id])
+export const DenyDesktopGuest         = (id)                 => Call('main.App.DenyDesktopGuest', [id])
+export const SetDesktopViewerRights   = (id, control, clipboard) => Call('main.App.SetDesktopViewerRights', [id, control, clipboard])
+export const DisconnectDesktopViewer  = (id)                 => Call('main.App.DisconnectDesktopViewer', [id])
 
 // Phase 87 capability bound methods (SEC-01..SEC-05)
 export const RegenerateSigningKey    = ()                => Call('main.App.RegenerateSigningKey', [])
