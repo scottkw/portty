@@ -169,7 +169,7 @@ func (m *Manager) ServeGuestViewer(ctx context.Context, c *websocket.Conn, admit
 	}
 	v := &viewer{
 		Viewer: Viewer{ID: ViewerID(vid), Rights: rights, JoinedAt: m.d.Now(), Mode: ModeGuest, Identity: id},
-		ws:     c, inputCap: in.Caps["input"], in: &viewerInput{}, gs: gs,
+		ws:     c, inputCap: in.Caps["input"], audioCap: in.Caps["audio"], in: &viewerInput{}, gs: gs,
 	}
 	v.setRightsBits(rights)
 	m.serveAdmitted(ctx, c, v, admit, pend)
