@@ -398,6 +398,7 @@ Recent decisions affecting current work:
 - [Phase 20]: planned 2026-11-26 while Phase 19 executes: 11 plans in 7 waves (UI-SPEC approved); 20-09 gated on 19-12 and 19-15, 20-10 on 19-13 and 19-14, 20-11 on 19-16 (SUMMARY.md preconditions); M-NN numbers computed at execution after Phase 19's
 - [Phase 21]: planned 2026-11-26 while Phase 20 is unbuilt: 13 plans in 8 waves (UI-SPEC approved); 21-01..21-07 ungated, 21-08..21-13 gated on Phase 20 SUMMARY.md preconditions (20-01/02/05/06/07/08/09/11); M-NN numbers computed at execution
 - [Phase 22]: planned 2026-11-26 while Phases 20 and 21 execute: 13 plans in 10 waves (UI-SPEC approved); 22-01..22-03 runnable now, 22-04..22-13 gated on 20-/21- SUMMARY.md preconditions (20-04/05/07..11, 21-07..13); arbiter fails closed on an unhealthy tap; M-NN numbers computed at execution
+- [Phase 23]: planned 2026-11-26 while Phases 20 to 22 are in flight: 16 plans in 13 waves (UI-SPEC approved). Every plan hard-gated by `test -f` on upstream 20-/21-/22- SUMMARY.md files. User checkpoints: VM permission clicks (23-09), rc.1/rc.2 tag pushes (23-13), owner real-Mac session incl. M-177 rc.1 to rc.2 upgrade before publish (23-14, conditional libopus decision), publish decision and v2.0.0 tag (23-15), post-publish owner rows (23-16). Checker passed on iteration 2 (0 blockers, 0 warnings)
 
 ### Pending Todos
 
