@@ -8,7 +8,7 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { act } from 'react'
 import { ShareDesktopSheet } from '../ShareDesktopSheet'
-import { NO_SHARE, type ShareState } from '../../lib/desktopShare'
+import { NO_SHARE, type ShareState, type ShareViewer } from '../../lib/desktopShare'
 import * as copy from '../../lib/shareDesktopCopy'
 import { type TailscaleHealth } from '../../lib/tailscale'
 import * as App from '../../wailsjs/go/main/App'
@@ -74,6 +74,11 @@ async function mount(opts: MountOpts = {}): Promise<void> {
   await tick(0)
 }
 
+async function rerender(opts: MountOpts): Promise<void> {
+  await act(async () => { root.render(view(opts)) })
+  await tick(0)
+}
+
 async function tick(ms: number): Promise<void> {
   await act(async () => { await vi.advanceTimersByTimeAsync(ms) })
 }
@@ -86,6 +91,11 @@ async function click(el: Element): Promise<void> {
 const button = (name: string): HTMLButtonElement | undefined =>
   Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent?.trim() === name)
 const text = (): string => container.textContent ?? ''
+
+const guest = (over: Partial<ShareViewer> = {}): ShareViewer => ({
+  id: 'v1', mode: 'guest', displayName: 'Pat Colleague', loginName: 'colleague@example.com', nodeName: 'pat-laptop',
+  control: false, clipboard: false, since: '2026-11-27T10:00:00Z', ...over,
+})
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -163,6 +173,15 @@ describe('ShareDesktopSheet: start and copy (tracer)', () => {
     await click(button(copy.COPY_LINK)!)
     expect(container.querySelector('[role="alert"]')!.textContent).toBe(copy.COPY_LINK_FAILED)
     expect(button(copy.COPIED)).toBeUndefined()
+  })
+
+  it('the Watching list shows who is connected, from the latest state, in the Sharing view only', async () => {
+    await mount()
+    expect(container.querySelectorAll('[role="group"]')).toHaveLength(0)
+    await rerender({ state: { ...NO_SHARE, active: true, viewers: [guest()] } })
+    expect(container.querySelectorAll('[role="group"]')).toHaveLength(1)
+    expect(text()).toContain('colleague@example.com')
+    expect(text()).not.toContain(copy.WATCHING_EMPTY)
   })
 
   it('reopening while a share runs shows Sharing with the same link and starts nothing', async () => {

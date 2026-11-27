@@ -12,6 +12,7 @@ import { type TailscaleHealth } from '../lib/tailscale'
 import { cleanDetail, type ShareState } from '../lib/desktopShare'
 import * as copy from '../lib/shareDesktopCopy'
 import { Row } from './SettingsRow'
+import { ViewerList } from './ViewerList'
 
 interface ShareDesktopSheetProps {
   open: boolean
@@ -43,7 +44,7 @@ export function ShareDesktopSheet(props: ShareDesktopSheetProps): React.ReactEle
   return <ShareDesktopSheetContent {...props} />
 }
 
-function ShareDesktopSheetContent({ onClose, tailscaleHealth, returnFocusTo }: ShareDesktopSheetProps): React.ReactElement {
+function ShareDesktopSheetContent({ onClose, tailscaleHealth, state, returnFocusTo }: ShareDesktopSheetProps): React.ReactElement {
   const [phase, setPhase] = useState<Phase>('checking')
   // null: not read yet.
   const [acknowledged, setAcknowledged] = useState<boolean | null>(null)
@@ -192,12 +193,7 @@ function ShareDesktopSheetContent({ onClose, tailscaleHealth, returnFocusTo }: S
                   </button>
                 </Row>
               </div>
-              <div className="share-desktop__watching">
-                <div className="share-desktop__watching-header">{copy.WATCHING_HEADER}</div>
-                <div className="settings-group">
-                  <div className="settings-row"><p className="settings-row__description">{copy.WATCHING_EMPTY}</p></div>
-                </div>
-              </div>
+              <ViewerList viewers={state.viewers} />
               <p className="settings-sheet__footnote">{copy.SHARE_FOOTNOTE}</p>
               {actionError && <p className="settings-sheet__error" role="alert">{actionError}</p>}
             </>
