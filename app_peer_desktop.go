@@ -14,10 +14,10 @@ import (
 // daemon holds the peer's desktop token in memory; the web view only ever sees a
 // token-free loopback URL, and the browser link is opened from Go.
 
-// paneLocalNetwork is System Settings > Privacy & Security > Local Network.
-// ASSUMPTION: the pane's anchor name is recorded from the known Privacy_* family
-// and is confirmed on a real macOS in the 21-11 VM row.
-const paneLocalNetwork = "x-apple.systempreferences:com.apple.preference.security?Privacy_LocalNetwork"
+// paneLocalNetwork is System Settings > Privacy & Security. The 21-11 VM row (macOS 27.2) showed the
+// Privacy_LocalNetwork anchor is ignored: with or without it the window opens on the top Privacy &
+// Security page, where Local Network is one row, so the plain pane is used.
+const paneLocalNetwork = "x-apple.systempreferences:com.apple.preference.security"
 
 // PeerDesktopResult is what ConnectPeerDesktop returns. It never throws and has
 // no token field: URL is the loopback proxy URL (ws://127.0.0.1:<relay port>/...),
