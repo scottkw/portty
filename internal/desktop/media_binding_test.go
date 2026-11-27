@@ -108,6 +108,42 @@ func TestMediaBinding_LookupErrorFailsClosed(t *testing.T) {
 	wantRetryableCut(ctx, t, e, c)
 }
 
+// TestMediaBinding_OwnSignallingAddressNeedsNoLookup (O-22-06): a selected pair
+// whose remote IP is the address the guest's signalling socket came from (WhoIs
+// already named that address as the admitted user and node when the guest
+// connected) is the admitted node. A tailscaled that is slow or failing at that
+// moment, as under heavy load when an ICE stall re-fires the Connected check,
+// must not cut the legitimate guest. Another address still goes to WhoIs
+// (TestMediaBinding_PairChangeToAnotherNodeCutsTheGuest, _AnotherUserIsCut,
+// _LookupErrorFailsClosed).
+func TestMediaBinding_OwnSignallingAddressNeedsNoLookup(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+	defer cancel()
+	e := newGuestEnv(t, nil)
+	c, id := connectedGuest(ctx, t, e)
+	eventually(t, 10*time.Second, "the first check to settle", func() bool { return e.mgr.Viewers() == 1 })
+	var calls atomic.Int32
+	e.setPeer(func(string) (int64, string, error) {
+		calls.Add(1)
+		return 0, "", errors.New("whois: context deadline exceeded")
+	})
+	// guestIdent's signalling address is 100.64.0.2.
+	e.mgr.CheckMediaIdentityForTest(id, true, "100.64.0.2", 4000)
+	e.mgr.CheckMediaIdentityForTest(id, true, "100.64.0.2", 4001) // a pair change on the same address
+	if n := calls.Load(); n != 0 {
+		t.Errorf("%d WhoIs lookups for the already-verified signalling address, want 0", n)
+	}
+	// The socket is still up: a ping is answered, not a close.
+	writeJSON(ctx, t, c, map[string]any{"type": "ping", "n": 1})
+	readType(ctx, t, c, "pong")
+	if n := e.mgr.Viewers(); n != 1 {
+		t.Errorf("Viewers() = %d, want the legitimate guest still joined", n)
+	}
+	if got := e.eventsOf("revoked"); len(got) != 0 {
+		t.Errorf("revoked events %+v for the guest's own address", got)
+	}
+}
+
 func TestMediaBinding_NoSelectedPairFailsClosed(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 	defer cancel()

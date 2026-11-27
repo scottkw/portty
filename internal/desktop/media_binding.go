@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net"
+	"net/netip"
 	"strconv"
 	"time"
 
@@ -25,8 +26,10 @@ var ErrPeerLookupStopped = errors.New("desktop: peer lookup stopped with the sha
 // signalling socket proves who knocked, but the media runs over UDP to the
 // address in the guest's own offer, so the ICE pair pion selects is checked
 // against the admitted identity whenever it changes, and once more when the
-// PeerConnection connects (checkSelectedPair). The check is by node identity
-// (WhoIs), not by comparing address strings (CONTEXT After research).
+// PeerConnection connects (checkSelectedPair). The check is by node identity:
+// the guest's own signalling address was already named by WhoIs at connect, so
+// it passes without a second lookup; any other address goes to WhoIs and must
+// be the admitted user's admitted node (CONTEXT After research, O-22-06).
 func (m *Manager) bindGuestMedia(v *viewer, pc *webrtc.PeerConnection) {
 	pc.SCTP().Transport().ICETransport().OnSelectedCandidatePairChange(func(p *webrtc.ICECandidatePair) {
 		go func() {
@@ -83,6 +86,14 @@ func (m *Manager) mediaMismatch(v *viewer, pair *webrtc.ICECandidatePair) string
 	if pair == nil || pair.Remote == nil {
 		return "no_pair"
 	}
+	if sameTailnetIP(pair.Remote.Address, v.Identity.TailnetIP) {
+		// The guest's own signalling address: WhoIs named it as exactly this
+		// user and node when the socket connected (tailnetPeerStatus), and a
+		// tailnet IP belongs to one node. Asking again only adds a way for a
+		// slow or busy tailscaled to cut a legitimate guest (O-22-06). Any
+		// other address is still looked up and must be the admitted node.
+		return ""
+	}
 	addr := net.JoinHostPort(pair.Remote.Address, strconv.Itoa(int(pair.Remote.Port)))
 	ctx, cancel := context.WithTimeout(context.Background(), identityLookupTimeout)
 	defer cancel()
@@ -98,4 +109,12 @@ func (m *Manager) mediaMismatch(v *viewer, pair *webrtc.ICECandidatePair) string
 		return "wrong_node"
 	}
 	return ""
+}
+
+// sameTailnetIP reports whether a and b parse as the same IP address. An empty
+// or unparsable b (no verified signalling address) never matches.
+func sameTailnetIP(a, b string) bool {
+	pa, errA := netip.ParseAddr(a)
+	pb, errB := netip.ParseAddr(b)
+	return errA == nil && errB == nil && pa.Unmap() == pb.Unmap()
 }
