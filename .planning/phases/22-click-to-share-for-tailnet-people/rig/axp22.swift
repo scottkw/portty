@@ -48,9 +48,16 @@ func hit(_ e: AXUIElement, _ w: String) -> Bool {
 }
 let pressable: Set<String> = ["AXButton", "AXCheckBox", "AXSwitch", "AXRadioButton", "AXMenuItem", "AXPopUpButton"]
 
-guard let run = NSRunningApplication.runningApplications(withBundleIdentifier: a[2]).first else {
+// Portty's GUI and its daemon share one bundle id; the process that owns windows or a status item is the one to read.
+let candidates = NSRunningApplication.runningApplications(withBundleIdentifier: a[2])
+guard let first = candidates.first else {
   print("app not running"); exit(1)
 }
+let run = candidates.first { c in
+  let e = AXUIElementCreateApplication(c.processIdentifier)
+  AXUIElementSetMessagingTimeout(e, 2)
+  return attr(e, "AXExtrasMenuBar") != nil || !((attr(e, kAXWindowsAttribute) as? [AXUIElement]) ?? []).isEmpty
+} ?? first
 let app = AXUIElementCreateApplication(run.processIdentifier)
 AXUIElementSetMessagingTimeout(app, 3)
 

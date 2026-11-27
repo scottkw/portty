@@ -1,0 +1,28 @@
+G-03 revoke while the guest holds a key
+office=portty-test guest=portty-test-2; build 22.12.0 of HEAD dfa1a208 (tags wailsassets vmdesktop, Developer ID); times are the office VM's epoch seconds
+--- pre: a new share with one admitted guest holding control [office 1795809164.574]
+keystate before: keystate held=none
+key-state poller: keylog-start: poller running, 13 line(s) so far
+--- 1: the guest holds A for 100 s (WebDriver key down, pause, key up), started in the background [office 1795809326.278]
+document while held: a chars=1 utf8=1 
+poller transitions so far (epoch keystate):
+1795809315.32 keystate held=none
+1795809331.76 keystate held=KeyA
+--- 2: Disconnect pressed on the guest's row (AX), timed inside the office [office 1795809364.841]
+press: role=AXButton title=[Disconnect DISPLAY-NAME] rc=0 press-timed: AXPress started at epoch 1795809378.43 and returned at 1795809378.75 
+poller transitions (epoch to 10 ms, held-key set changes):
+1795809315.32 keystate held=none
+1795809331.76 keystate held=KeyA
+1795809378.57 keystate held=none
+guest page: seen after 2s
+guest-text: ere disconnected The person at that Mac ended your connection. You can't rejoin while this share is on.
+share-status: {"active":true,"viewers":0,"pending":0}
+keystate now (the guest's own key up has not run yet): keystate held=none
+audit (last 6 lines, ts event mode reason): 
+2026-11-27T19:53:34Z admit_request guest  32 HOME
+2026-11-27T19:53:40Z admitted guest  32 HOME
+2026-11-27T19:53:42Z join guest  32 HOME
+2026-11-27T19:53:48Z control_granted guest  32 HOME
+2026-11-27T19:56:18Z revoked guest revoked 32 HOME
+2026-11-27T19:56:18Z leave guest revoked 32 HOME
+--- done [office 1795809554.562]

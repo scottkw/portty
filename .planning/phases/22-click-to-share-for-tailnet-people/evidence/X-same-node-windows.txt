@@ -1,0 +1,24 @@
+X-1 two Safari windows of the same device (one tailnet node) open on one share. An observation, not a numbered row: it was the first attempt at G-07 and is kept because of what the daemon did.
+Setup: guest window 1 admitted and streaming; window 2 opened on the same link in the same Safari session (safaridriver). Times are the office VM's clock.
+
+Daemon log (viewer ids are random, 8 hex digits). From 19:09:30 to 19:10:08 a join and a leave every 1 to 3 s, never more than one viewer on the books at once:
+2026/11/27 19:09:28.669545 INFO desktop: viewer left viewer=2b84e7f7 viewers=0
+2026/11/27 19:09:30.073722 INFO desktop: viewer joined viewer=e08cae93 viewers=1
+2026/11/27 19:09:30.454085 INFO desktop: viewer left viewer=e08cae93 viewers=0
+2026/11/27 19:09:31.512532 INFO desktop: viewer joined viewer=a1d82773 viewers=1
+2026/11/27 19:09:32.161887 INFO desktop: viewer left viewer=a1d82773 viewers=0
+2026/11/27 19:09:32.684359 INFO desktop: viewer joined viewer=17c98b6b viewers=1
+2026/11/27 19:09:34.008380 INFO desktop: viewer left viewer=17c98b6b viewers=0
+2026/11/27 19:09:35.748473 INFO desktop: viewer joined viewer=a957147f viewers=1
+2026/11/27 19:09:36.146055 INFO desktop: viewer left viewer=a957147f viewers=0
+2026/11/27 19:09:37.267266 INFO desktop: viewer joined viewer=b99cca7a viewers=1
+2026/11/27 19:09:39.118734 INFO desktop: viewer left viewer=b99cca7a viewers=0
+(the same pattern repeats 10 more times until 19:10:05; 19:10:08 the last join, which stays until window 2 is closed at 19:12:18)
+
+The audit file records the leaves of those connections with reason viewer_closed (the page closed its own connection), not replaced.
+Notification records written in the same minute (login name redacted): the join and leave notifications arrived coalesced:
+rec=59 delivered_utc=2026-11-27 19:10:08 id=[portty.desktop-join] title=[Portty] body=[10 viewers joined your desktop.]
+rec=60 delivered_utc=2026-11-27 19:10:05 id=[portty.desktop-leave] title=[Portty] body=[16 viewers left your desktop.]
+Page state in that attempt: window 1 read framesDecoded 0 and 0 two seconds later while window 2 was open; after window 2 was closed window 1 read 137 then 220 (streaming again).
+
+Reading: two windows of one browser each redial on their own, so one device cannot hold two guest viewers steadily; a second guest needs a second device. G-04 and G-07 therefore use the office VM itself (its own tailnet node, a different node from the guest VM) as the second guest. Not claimed: why the pages closed their connections (a hidden-window rule in the page is the likely cause; not investigated).

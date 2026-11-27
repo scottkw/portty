@@ -54,13 +54,32 @@ ensure_admitted() {
   r press Admit >/dev/null
   wait_guest_has 'View only' 60 >/dev/null
 }
+# ensure_two_guests: the guest VM admitted, plus the office's own Safari admitted as a second guest (the
+# office is its own tailnet node, a different node from the guest VM; two windows of one device cannot hold
+# two steady viewers, see evidence/X-same-node-windows.txt).
+ensure_two_guests() {
+  ensure_admitted
+  if [ "$(r share-status | jq -r '.viewers | length')" -ge 2 ]; then return 0; fi
+  r self-guest-close >/dev/null 2>&1
+  r self-guest-open >/dev/null
+  local i st
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    st=$(r share-status)
+    [ "$(jq -r '.viewers | length' <<<"$st")" -ge 2 ] && return 0
+    # a node admitted earlier in this share is re-admitted without a knock; a new one waits at Admit
+    if [ "$(jq -r '.pending | length' <<<"$st")" -gt 0 ]; then sleep 1.5; r press Admit >/dev/null; fi
+    sleep 2
+  done
+  return 1
+}
 # open_share_sheet: the Share Desktop sheet through the tray line, when it is not open already.
 open_share_sheet() {
   if [ "$(r ax-has 'Allow clipboard')" != yes ]; then r tray press "Desktop shared with" >/dev/null; sleep 2; fi
 }
 # ensure_control: the admitted guest holds control (the Allow control switch pressed in the sheet).
 ensure_control() {
-  if guest_has 'You have control'; then return 0; fi
+  # The daemon's own answer decides (the switch is a toggle: pressing it with control already on would revoke it).
+  if [ "$(r share-status | jq -r '[.viewers[] | select(.mode == "guest")][0].control')" = true ]; then return 0; fi
   open_share_sheet
   r press 'Allow control' >/dev/null
   wait_guest_has 'You have control' 20 >/dev/null

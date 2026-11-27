@@ -1,0 +1,27 @@
+G-02 grant control, then a guest click and typing post
+office=portty-test guest=portty-test-2; build 22.12.0 of HEAD dfa1a208 (tags wailsassets vmdesktop, Developer ID); times are the office VM's epoch seconds
+--- pre: a share from the GUI with one admitted guest (view only) [office 1795801845.193]
+share-status: {"type":"state","active":true,"viewers":[{"id":"b0f68d82e1b33905","mode":"guest","displayName":"DISPLAY-NAME","loginName":"LOGIN@REDACTED","nodeName":"HOME","control":false,"clipboard":false,"since":"2026-11-27T17:49:53Z"}],"pending":[],"secureInput":false,"anyController":false}
+guest-text: {"title":"Portty Desktop (debug fd=43 fw=2560 csp=0 st=streaming)","text":"While this has focus, your keyboard and pointer control the Mac. To give the keyboard back, press Control, Option, Command and Return together. View only. Ask the person at the Mac to allow control.","stats":{"status":"streaming","state":"streaming","viewers":1,"framesDecoded":43,"frameWidth":2560,"frameHeight":1440,"bytesReceived":686026,"cspViolations":0}}
+--- 1: view only: empty TextEdit frontmost, guest clicks the text area and types zz [office 1795801858.032]
+counters before: {"counters":{},"pseudo_counters":{}}
+counters after: {"counters":{},"pseudo_counters":{}}
+document after the view-only click and typing:  chars=0 utf8=0 
+guest-text: {"title":"Portty Desktop (debug fd=607 fw=2560 csp=0 st=streaming)","text":"While this has focus, your keyboard and pointer control the Mac. To give the keyboard back, press Control, Option, Command and Return together. View only. Ask the person at the Mac to allow control.","stats":{"status":"streaming","state":"streaming","viewers":1,"framesDecoded":607,"frameWidth":2560,"frameHeight":1440,"bytesReceived":2229810,"cspViolations":0}}
+--- 2: Allow control pressed on the guest's row in the Share Desktop sheet (AX) [office 1795801929.571]
+viewer row in the sheet:
+        AXStaticText Value=View only DOMClassList=( ) @812,262 57x16
+        AXStaticText Value=Allow control DOMClassList=( ) @402,318 79x16
+        AXCheckBox [AXSwitch] Title=Allow control DISPLAY-NAME Description=Allow control DISPLAY-NAME Value=0 DOMClassList=(     switch ) @488,315 39x22
+        AXStaticText Value=Allow clipboard DOMClassList=( ) @542,318 94x16
+        AXCheckBox [AXSwitch] Title=Allow clipboard DISPLAY-NAME Description=Allow clipboard DISPLAY-NAME Value=0 DOMClassList=(     switch ) @643,315 39x22
+        AXButton Title=Disconnect DISPLAY-NAME Description=Disconnect DISPLAY-NAME DOMClassList=(     button,     "button--secondary",     "viewer-row__disconnect" ) @783,314 96x24
+press: press: role=AXCheckBox title=[Allow control DISPLAY-NAME] rc=0
+guest shows You have control: seen after 0s
+share-status viewers: [{"mode":"guest","control":true,"clipboard":false}]
+guest-text: {"title":"Portty Desktop (debug fd=785 fw=2560 csp=0 st=streaming)","text":"While this has focus, your keyboard and pointer control the Mac. To give the keyboard back, press Control, Option, Command and Return together. You have control View Only Control","stats":{"status":"streaming","state":"streaming","viewers":1,"framesDecoded":785,"frameWidth":2560,"frameHeight":1440,"bytesReceived":2980115,"cspViolations":0}}
+--- 3: control granted: empty TextEdit frontmost, guest clicks the text area and types Portty 22 [office 1795801965.553]
+counters before: {"counters":{},"pseudo_counters":{}}
+counters after: {"counters":{"btn":2,"key":20,"move":1},"pseudo_counters":{}}
+document: Portty 22 chars=9 utf8=9 
+--- done [office 1795802033.988]

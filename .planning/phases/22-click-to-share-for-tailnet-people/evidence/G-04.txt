@@ -1,0 +1,60 @@
+G-04 Stop Sharing with two guests mid-frame
+office=portty-test guest=portty-test-2; build 22.12.0 of HEAD dfa1a208 (tags wailsassets vmdesktop, Developer ID); times are the office VM's epoch seconds
+--- pre: a share with two admitted guests streaming [office 1795808147.515]
+viewers: [{"nodeName":"HOME","control":false},{"nodeName":"OFFICE","control":false}]
+guest VM framesDecoded: 3078 then 3078
+office guest: {"title":"Portty Desktop (debug fd=105 fw=2560 csp=0 st=streaming)","viewers":2,"fd":105}
+office guest 2 s later: {"fd":138}
+--- 1: Stop Sharing pressed in the tray [office 1795808248.254]
+tray press: status items: 1
+tray-press: Stop Sharing rc=0
+press began at office epoch 1795808263.729 (UTC 19:37:43) and returned at 1795808286.030 (UTC 19:38:06)
+daemon log lines for the two leaves (ms): 
+2026/11/27 19:34:32.159936 INFO desktop: viewer left viewer=60f099c0 viewers=1
+2026/11/27 19:36:43.609420 INFO desktop: viewer joined viewer=85254c12 viewers=2
+2026/11/27 19:37:48.513120 INFO desktop: viewer left viewer=85254c12 viewers=1
+2026/11/27 19:37:55.430098 INFO desktop: viewer left viewer=40d8ba60 viewers=0
+guest VM page: ng has ended The share has ended, so this link no longer works. Ask the person at that Mac for a new link.
+office guest page: ng has ended The share has ended, so this link no longer works. Ask the person at that Mac for a new link.
+share-status: {"type":"state","active":false,"viewers":[],"pending":[],"secureInput":false,"anyController":false}
+audit (last 8 lines, ts event mode reason):
+2026-11-27T19:32:43Z admit_request guest  32 OFFICE
+2026-11-27T19:33:40Z admitted guest  32 OFFICE
+2026-11-27T19:33:43Z join guest  32 OFFICE
+2026-11-27T19:34:32Z leave guest viewer_closed 32 OFFICE
+2026-11-27T19:36:43Z join guest  32 OFFICE
+2026-11-27T19:37:48Z share_stop guest share_stopped 32 
+2026-11-27T19:37:48Z leave guest share_stopped 32 OFFICE
+2026-11-27T19:37:55Z leave guest share_stopped 32 HOME
+--- 2: the old link after the stop (both pages reloaded) [office 1795808334.135]
+guest VM after reload: Portty This link no longer works The share has ended, or the link is incomplete. Ask the person who shared it for a new link.
+--- done [office 1795808367.879]
+--- repeat 1: a new share with two admitted guests streaming, then Stop through DELETE /desktop/share (timed in the office) [office 1795808436.137]
+viewers: [{"nodeName":"HOME"},{"nodeName":"OFFICE"}]
+guest VM framesDecoded: 234 then 313; office guest: 226
+stop-timed: DELETE sent at epoch 1795808582.342 (UTC 19:43:02), answered after 0.25 s
+stop-timed: daemon log, viewer-left lines after the DELETE:
+2026/11/27 19:37:55.430098 INFO desktop: viewer left viewer=40d8ba60 viewers=0
+2026/11/27 19:43:02.502242 INFO desktop: viewer left viewer=c503e2fa viewers=1
+2026/11/27 19:43:03.852769 INFO desktop: viewer left viewer=4f6a6463 viewers=0
+stop-timed: audit share_stop and leave lines:
+2026-11-27T19:43:02Z share_stop share_stopped 
+2026-11-27T19:43:02Z leave share_stopped portty-vm-office
+2026-11-27T19:43:03Z leave share_stopped portty-vm-home
+guest VM page: ng has ended The share has ended, so this link no longer works. Ask the person at that Mac for a new link.
+office guest page: ng has ended The share has ended, so this link no longer works. Ask the person at that Mac for a new link.
+--- repeat 2: a new share with two admitted guests streaming, then Stop through DELETE /desktop/share (timed in the office) [office 1795808606.534]
+viewers: [{"nodeName":"HOME"},{"nodeName":"OFFICE"}]
+guest VM framesDecoded: 264 then 417; office guest: 416
+stop-timed: DELETE sent at epoch 1795808746.218 (UTC 19:45:46), answered after 0.24 s
+stop-timed: daemon log, viewer-left lines after the DELETE:
+2026/11/27 19:44:51.509044 INFO desktop: viewer left viewer=72064ee1 viewers=0
+2026/11/27 19:45:46.430011 INFO desktop: viewer left viewer=0ce00202 viewers=1
+2026/11/27 19:45:47.209094 INFO desktop: viewer left viewer=ca9e2f60 viewers=0
+stop-timed: audit share_stop and leave lines:
+2026-11-27T19:45:46Z share_stop share_stopped 
+2026-11-27T19:45:46Z leave share_stopped portty-vm-office
+2026-11-27T19:45:47Z leave share_stopped portty-vm-home
+guest VM page: ng has ended The share has ended, so this link no longer works. Ask the person at that Mac for a new link.
+office guest page: ng has ended The share has ended, so this link no longer works. Ask the person at that Mac for a new link.
+--- repeat done [office 1795808767.619]

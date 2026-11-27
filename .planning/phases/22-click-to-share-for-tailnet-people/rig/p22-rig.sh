@@ -175,13 +175,13 @@ cmd_share_link() {
 cmd_audit_dump() {
   require_vms
   local out
-  out=$(vmsh <<'EOF'
+  out=$(vmsh "${1:-60}" <<'EOF'
 F="$HOME/Library/Application Support/portty/desktop-audit.jsonl"
 [ -f "$F" ] || { echo "audit: no file"; exit 3; }
 echo "audit: mode=$(stat -f %Lp "$F") bytes=$(wc -c < "$F" | tr -d ' ') lines=$(wc -l < "$F" | tr -d ' ')"
 echo "audit: events: $(jq -r '.event' "$F" | sort | uniq -c | awk '{printf "%s=%s ", $2, $1}')"
 echo "audit: leave/stop reasons: $(jq -r 'select(.event=="leave" or .event=="share_stop" or .event=="revoked") | .event+":"+(.reason//"")' "$F" | sort | uniq -c | awk '{printf "%s x%s  ", $2, $1}')"
-if grep -qE 'cap=|[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|[A-Za-z0-9_-]{40,}' "$F"; then echo "audit: SECRET-SHAPED STRING PRESENT"; else echo "audit: no cap= and no token-shaped string"; fi
+if grep -qE 'cap=|[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|[A-Za-z0-9_-]{40,}' "$F"; then echo "audit: SECRET-SHAPED STRING PRESENT"; else echo "audit: no capability parameter and no token-shaped string in any line"; fi
 echo "audit: lines follow (ts event mode reason share_id-length viewer)"
 jq -r '[.ts, .event, .mode, (.reason//""), ((.share_id//"")|length|tostring), (.node_name//"")] | join(" ")' "$F" | tail -${1:-60}
 exit 0
@@ -194,10 +194,9 @@ EOF
 
 cmd_stand_in_input() {
   [ $# -eq 2 ] || die "usage: stand-in-input X Y"
-  require_vms
-  vm "~/ptest/click $1 $2"
+  vm "~/ptest/click click $1 $2"
 }
-cmd_local_key() { require_vms; vm "~/p22/key key $*"; }
+cmd_local_key() { vm "~/p22/key key $*"; }
 cmd_keystate() { require_vms; vm '~/p21/keystate'; }
 
 cmd_secure_input() {
@@ -219,10 +218,145 @@ exit 0
 EOF
 }
 
+# secure-input-timed on|off: toggle Secure Keyboard Entry through the Terminal menu, then poll Portty's AX tree
+# every 0.25 s inside the office until the banner text matches (present for on, absent for off), printing the
+# elapsed seconds from the toggle (up to 12 s). Terminal must be frontmost (secure-input does that).
+cmd_secure_input_timed() {
+  require_vms
+  case "${1:-}" in on | off) ;; *) die "usage: secure-input-timed on|off" ;; esac
+  vmsh "$1" <<'EOF'
+want=$1
+si() { ioreg -l -w 0 2>/dev/null | grep -c kCGSSessionSecureInputPID; }
+on=off; [ "$(si)" -gt 0 ] && on=on
+[ "$on" = "$want" ] && { echo "secure-input-timed: already $want"; exit 0; }
+t0=$(perl -MTime::HiRes=time -e 'printf q(%.3f), time')
+~/ptest/axmenu com.apple.Terminal Terminal "Secure Keyboard Entry" >/dev/null 2>&1
+t1=$(perl -MTime::HiRes=time -e 'printf q(%.3f), time')
+for i in $(seq 1 48); do
+  has=$(~/p22/axp22 has app.portty.Portty "Typing at this Mac" | tail -1)
+  tn=$(perl -MTime::HiRes=time -e 'printf q(%.3f), time')
+  if { [ "$want" = on ] && [ "$has" = yes ]; } || { [ "$want" = off ] && [ "$has" = no ]; }; then
+    echo "secure-input-timed: $want: menu press done after $(perl -e "printf q(%.2f), $t1 - $t0") s; banner $([ $want = on ] && echo seen || echo gone) $(perl -e "printf q(%.2f), $tn - $t0") s after the toggle started (poll $i)"
+    exit 0
+  fi
+  sleep 0.2
+done
+echo "secure-input-timed: $want: banner did not change within 12 s"
+exit 0
+EOF
+}
+
+# keylog-start: a background poller inside the office writing "epoch keystate" every 0.1 s for 150 s to
+# ~/p22/keys.log; keylog-transitions prints the lines where the held-key set changes (epoch to 10 ms).
+cmd_keylog_start() {
+  require_vms
+  vmsh <<'EOF'
+mkdir -p ~/p22
+pkill -f keylog.sh 2>/dev/null
+cat > ~/p22/keylog.sh <<'KEYLOG'
+end=$((SECONDS+150))
+while [ $SECONDS -lt $end ]; do
+  echo "$(perl -MTime::HiRes=time -e 'printf q(%.2f), time') $(~/p21/keystate)"
+  sleep 0.1
+done
+KEYLOG
+nohup bash ~/p22/keylog.sh > ~/p22/keys.log 2>&1 &
+sleep 2
+echo "keylog-start: poller running, $(wc -l < ~/p22/keys.log | tr -d ' ') line(s) so far"
+EOF
+}
+cmd_keylog_transitions() {
+  require_vms
+  vm "awk '{h=\$0; sub(/^[0-9.]+ /, \"\", h); if (h != prev) {print; prev = h}}' ~/p22/keys.log"
+}
+# press-timed WORDS: AXPress inside the office with the epoch (ms) taken just before and just after.
+cmd_press_timed() {
+  require_vms
+  vmsh "$*" <<'EOF' | scrub
+now() { perl -MTime::HiRes=time -e 'printf q(%.2f), time'; }
+t0=$(now)
+~/p22/axp22 press app.portty.Portty "$*"
+t1=$(now)
+echo "press-timed: AXPress started at epoch $t0 and returned at $t1"
+EOF
+}
+
+# gui-quit-timed: SIGTERM to the Portty GUI process only (the daemon stays), timed inside the office: polls the
+# daemon's share state every 0.2 s until the share is gone and prints the elapsed time, then the daemon's pid
+# state and the audit's last share_stop and leave lines.
+cmd_gui_quit_timed() {
+  require_vms
+  vmsh <<'EOF'
+SOCK="$HOME/Library/Application Support/portty/daemon.sock"
+now() { perl -MTime::HiRes=time -e 'printf q(%.3f), time'; }
+gui=$(ps -axww -o pid=,args= | awk '$2 ~ /\/Portty\.app\/Contents\/MacOS\/Portty$/ && NF == 2 {print $1}')
+dpid=$(ps -axww -o pid=,args= | awk '$2 ~ /\/Portty\.app\/Contents\/MacOS\/Portty$/ && $3 == "daemon" {print $1}')
+t0=$(now)
+kill -TERM $gui
+echo "gui-quit-timed: SIGTERM to the GUI at epoch $t0 (UTC $(date -u -r "${t0%.*}" +%H:%M:%S)); GUI pid existed: $([ -n "$gui" ] && echo yes || echo no)"
+for i in $(seq 1 100); do
+  act=$(curl -s -m 2 --unix-socket "$SOCK" http://localhost/desktop/share | jq -r '.active')
+  tn=$(now)
+  if [ "$act" = false ]; then echo "gui-quit-timed: the daemon reports no active share $(perl -e "printf q(%.2f), $tn - $t0") s after the SIGTERM (poll $i)"; break; fi
+  sleep 0.2
+done
+sleep 2
+echo "gui-quit-timed: daemon still running: $(kill -0 $dpid 2>/dev/null && echo yes || echo no); GUI still running: $(ps -axww -o pid=,args= | awk '$2 ~ /\/Portty\.app\/Contents\/MacOS\/Portty$/ && NF == 2 {n++} END {print n+0}') process(es)"
+echo "gui-quit-timed: audit share_stop and leave lines:"
+jq -r 'select(.event=="share_stop" or .event=="leave") | [.ts, .event, (.reason//""), (.node_name//"")] | join(" ")' "$HOME/Library/Application Support/portty/desktop-audit.jsonl" | tail -3
+EOF
+}
+
+# stop-timed: the Stop Sharing route the tray uses (DELETE /desktop/share on the daemon socket) timed inside the
+# office to the millisecond, then the daemon log's viewer-left lines (ms) next to the start time. Used by G-04's
+# repeat to take the AX menu's own latency out of the measurement.
+cmd_stop_timed() {
+  require_vms
+  vmsh <<'EOF'
+SOCK="$HOME/Library/Application Support/portty/daemon.sock"
+now() { perl -MTime::HiRes=time -e 'printf q(%.3f), time'; }
+t0=$(now)
+curl -s -m 20 -X DELETE --unix-socket "$SOCK" http://localhost/desktop/share >/dev/null
+t1=$(now)
+echo "stop-timed: DELETE sent at epoch $t0 (UTC $(date -u -r "${t0%.*}" +%H:%M:%S)), answered after $(perl -e "printf q(%.2f), $t1 - $t0") s"
+sleep 3
+echo "stop-timed: daemon log, viewer-left lines after the DELETE:"
+grep -E "viewer left" "$HOME/Library/Application Support/portty/daemon.log" | tail -3 | cut -c1-90
+echo "stop-timed: audit share_stop and leave lines:"
+jq -r 'select(.event=="share_stop" or .event=="leave") | [.ts, .event, (.reason//""), (.node_name//"")] | join(" ")' "$HOME/Library/Application Support/portty/desktop-audit.jsonl" | tail -3
+EOF
+}
+
 # notif: Portty's notification records (p19 notif-list) and Notification Center's banners by AX.
 cmd_notif() {
-  bash "$P19" notif-list | tail -"${1:-6}"
-  vm "~/ptest/axdump2 com.apple.notificationcenterui 2>&1 | grep -E 'AXStaticText|AXButton' | sed -E 's/ DOMClassList=.*//' | head -12" | scrub
+  # login names in a notification body are e-mail shaped: scrubbed here (the p19 helper scrubs only paths and addresses)
+  bash "$P19" notif-list | tail -"${1:-6}" | scrub
+  vm "~/ptest/axdump2 com.apple.notificationcenterui 2>&1 | grep -E 'AXStaticText|AXButton' | grep -i -E 'portty|desktop|wants|joined|left' | sed -E 's/ DOMClassList=.*//' | head -12" | scrub
+}
+
+# self-guest-open: a second guest from the office itself (its own tailnet node, a different node from the
+# guest VM): the link is read from the daemon inside the office into ~/p19/link.txt there (never printed) and
+# opened in the office's own Safari through safaridriver (p19 safari-stats with P19_SAFARI_ON=office).
+cmd_self_guest_open() {
+  require_vms
+  vmsh <<'EOF'
+mkdir -p ~/p19; chmod 700 ~/p19
+curl -s -m 10 --unix-socket "$HOME/Library/Application Support/portty/daemon.sock" http://localhost/desktop/share | jq -r '.url // empty' > ~/p19/link.txt
+chmod 600 ~/p19/link.txt
+echo "self-guest-open: link_bytes_office=$(wc -c < ~/p19/link.txt | tr -d ' ')"
+EOF
+  P19_SAFARI_ON=office bash "$P19" safari-stats 3 keep | tail -1 | scrub
+}
+
+# self-guest-js BODY / self-guest-close: the same helpers for the office's own Safari session.
+cmd_self_guest_text() {
+  vmsh <<'EOF' | scrub
+D=http://127.0.0.1:4444; SID=$(cat ~/p19/safari.sid)
+curl -s -m 30 -X POST $D/session/$SID/execute/sync -d '{"script":"return JSON.stringify({title: document.title, text: document.body.innerText.replace(/\\s+/g, \" \").slice(0, 400), stats: window.__desktopStats || null})","args":[]}' | jq -r '.value|tostring'
+EOF
+}
+cmd_self_guest_close() {
+  vm 'D=http://127.0.0.1:4444; [ -f ~/p19/safari.sid ] && curl -s -m 10 -X DELETE $D/session/$(cat ~/p19/safari.sid) >/dev/null; pkill -x safaridriver; pkill -x Safari; rm -f ~/p19/safari.sid ~/p19/link.txt; echo self-guest-close: done'
 }
 
 cmd_gui_quit() { bash "$P19" quit-gui; }
@@ -318,6 +452,16 @@ case "$sub" in
   secure-input) cmd_secure_input "$@" ;;
   gui-quit) cmd_gui_quit ;;
   notif) cmd_notif "$@" ;;
+  kill-app) vm "pkill -x $1; true" ;;
+  stop-timed) cmd_stop_timed ;;
+  gui-quit-timed) cmd_gui_quit_timed ;;
+  keylog-start) cmd_keylog_start ;;
+  keylog-transitions) cmd_keylog_transitions ;;
+  press-timed) cmd_press_timed "$@" ;;
+  self-guest-open) cmd_self_guest_open ;;
+  self-guest-text) cmd_self_guest_text ;;
+  self-guest-close) cmd_self_guest_close ;;
+  secure-input-timed) cmd_secure_input_timed "$@" ;;
   clock) cmd_clock ;;
   dlog) cmd_dlog "$@" ;;
   menubar-shot) cmd_menubar_shot "$@" ;;

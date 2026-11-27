@@ -1,0 +1,39 @@
+G-08 tray line and icon variant while someone watches
+office=portty-test guest=portty-test-2; build 22.12.0 of HEAD dfa1a208 (tags wailsassets vmdesktop, Developer ID); times are the office VM's epoch seconds
+--- pre: no share, Share Desktop sheet closed [office 1795801723.148]
+--- 1: not sharing: tray menu and the menu-bar icon [office 1795801739.899]
+tray: status items: 1
+tray-item: Open Portty enabled=yes
+tray-item: Share Desktop… enabled=yes
+tray-item: Desktop: Ready enabled=no
+tray-item: Quit Portty enabled=yes
+status item: status items: 1
+status-item title=[] desc=[] help=[Portty — no sessions] id=[] @947,3 36x24
+menubar-shot normal: menubar-shot: 7194 bytes
+--- 2: sharing, nobody connected yet [office 1795801753.950]
+start from the tray, sheet shows Copy Link: seen after 0s
+tray: status items: 1
+tray-item: Open Portty enabled=yes
+tray-item: Desktop shared with nobody yet enabled=yes
+tray-item: Stop Sharing enabled=yes
+tray-item: Desktop: Ready enabled=no
+tray-item: Quit Portty enabled=yes
+menubar-shot nobody: menubar-shot: 7194 bytes
+--- 3: one guest connected (admitted) [office 1795801775.159]
+Admit sheet: seen after 0s
+press Admit: press: role=AXButton title=[Admit] rc=0
+guest shows View only: seen after 0s
+tray (one watching): status items: 1
+tray-item: Open Portty enabled=yes
+tray-item: Desktop shared with 1 person enabled=yes
+tray-item: Stop Sharing enabled=yes
+tray-item: Desktop: Streaming to 1 viewer enabled=no
+tray-item: Quit Portty enabled=yes
+status item: status items: 1
+status-item title=[] desc=[] help=[Portty — no sessions] id=[] @947,3 36x24
+menubar-shot sharing: menubar-shot: 9483 bytes
+--- 4: pixel comparison of the three crops (cmp: identical or differ) [office 1795801826.391]
+cmp normal vs nobody: identical
+cmp normal vs sharing: differ
+cmp nobody vs sharing: differ
+--- done [office 1795801838.069]
