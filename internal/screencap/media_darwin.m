@@ -22,6 +22,14 @@
 extern void goScreencapAccessUnit(uintptr_t handle, void *avcc, int avccLen, void *sps, int spsLen,
                                   void *pps, int ppsLen, int keyframe, int width, int height);
 extern void goScreencapStreamError(uintptr_t handle, int code, char *msg);
+extern void goScreencapAudioError(uintptr_t handle, int code, char *msg);
+
+// audio_darwin.m: the Opus encoder behind the stream's audio output. Audio is
+// optional: a failure is reported through goScreencapAudioError and the picture
+// keeps streaming (DCTL-07).
+int pc_audio_begin(uintptr_t handle);
+void pc_audio_handle(CMSampleBufferRef sb);
+void pc_audio_end(void);
 
 enum { kPCFPS = 30, kPCQueueDepth = 5, kPCDisplayKind = 0, kPCWindowKind = 1 };
 
@@ -456,6 +464,7 @@ static SCContentFilter *gFilter;
 static PCStreamHandler *gHandler;
 static PCEncoder *gEnc;
 static dispatch_queue_t gQueue;
+static dispatch_queue_t gAudioQueue; // nil when this run has no audio
 // Set from a surface switch's encoder rebuild until its new filter is in place:
 // a frame in that window shows the old surface (scaled), so it is dropped.
 static _Atomic int gSwitching;
@@ -471,6 +480,10 @@ static _Atomic uint64_t gEncoded;
 @implementation PCStreamHandler
 - (void)stream:(SCStream *)stream didOutputSampleBuffer:(CMSampleBufferRef)sb ofType:(SCStreamOutputType)type {
 	@try {
+		if (sb != NULL && type == SCStreamOutputTypeAudio) {
+			pc_audio_handle(sb); // never throws, never touches the picture
+			return;
+		}
 		if (sb == NULL || type != SCStreamOutputTypeScreen) return;
 		CFArrayRef atts = CMSampleBufferGetSampleAttachmentsArray(sb, false);
 		NSDictionary *info = (atts != NULL && CFArrayGetCount(atts) > 0)
@@ -535,16 +548,43 @@ int pc_stream_start(uintptr_t handle, int kind, uint32_t sid, int fps, int maxLo
 			cfg.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
 			cfg.colorMatrix = kCGDisplayStreamYCbCrMatrix_ITU_R_709_2;
 
+			// System audio rides this same stream: the Mac's output only, under the
+			// Screen Recording grant already held, never a microphone. When the Opus
+			// encoder cannot be made the stream runs without audio; the picture
+			// never waits on it.
+			BOOL audio = NO;
+			int audioRc = pc_audio_begin(handle);
+			if (audioRc != 0) {
+				goScreencapAudioError(handle, audioRc, "starting the Opus encoder failed");
+			} else {
+				audio = YES;
+				cfg.capturesAudio = YES;
+				cfg.sampleRate = 48000;
+				cfg.channelCount = 2;
+				cfg.excludesCurrentProcessAudio = YES;
+			}
+
 			PCStreamHandler *hnd = [[PCStreamHandler alloc] init];
 			hnd.handle = handle;
 			hnd.enc = enc;
 			dispatch_queue_t q = dispatch_queue_create("portty.screencap", DISPATCH_QUEUE_SERIAL);
+			dispatch_queue_t aq = audio ? dispatch_queue_create("portty.screencap.audio", DISPATCH_QUEUE_SERIAL) : nil;
 			SCStream *s = [[SCStream alloc] initWithFilter:filter configuration:cfg delegate:hnd];
 			NSError *err = nil;
 			if (s == nil || ![s addStreamOutput:hnd type:SCStreamOutputTypeScreen sampleHandlerQueue:q error:&err]) {
 				[enc stop];
+				pc_audio_end();
 				pcSetErr(errbuf, errlen, err.localizedDescription ?: @"adding the stream output failed");
 				return err != nil && err.code != 0 ? (int)err.code : kPCNilErr;
+			}
+			if (audio) {
+				NSError *aerr = nil;
+				if (![s addStreamOutput:hnd type:SCStreamOutputTypeAudio sampleHandlerQueue:aq error:&aerr]) {
+					// No audio output means no audio samples; the stream starts anyway.
+					goScreencapAudioError(handle, aerr != nil && aerr.code != 0 ? (int)aerr.code : kPCNilErr, "adding the audio output failed");
+					pc_audio_end();
+					aq = nil;
+				}
 			}
 			__block NSError *startErr = nil;
 			dispatch_semaphore_t sem = dispatch_semaphore_create(0);
@@ -556,11 +596,13 @@ int pc_stream_start(uintptr_t handle, int kind, uint32_t sid, int fps, int maxLo
 				[s stopCaptureWithCompletionHandler:^(NSError *e) {
 				}];
 				[enc stop];
+				pc_audio_end();
 				pcSetErr(errbuf, errlen, @"starting capture timed out");
 				return kPCTimeoutErr;
 			}
 			if (startErr != nil) {
 				[enc stop];
+				pc_audio_end();
 				pcSetErr(errbuf, errlen, startErr.localizedDescription ?: @"starting capture failed");
 				return startErr.code != 0 ? (int)startErr.code : kPCNilErr;
 			}
@@ -570,8 +612,10 @@ int pc_stream_start(uintptr_t handle, int kind, uint32_t sid, int fps, int maxLo
 			gHandler = hnd;
 			gEnc = enc;
 			gQueue = q;
+			gAudioQueue = aq;
 			return 0;
 		} @catch (NSException *e) {
+			pc_audio_end();
 			pcSetErr(errbuf, errlen, @"exception starting capture");
 			return kPCExceptionErr;
 		}
@@ -592,15 +636,19 @@ void pc_stream_stop(void) {
 				dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC));
 			}
 			if (gQueue != nil) dispatch_sync(gQueue, ^{});
+			// The audio queue is drained the same way before its encoder goes.
+			if (gAudioQueue != nil) dispatch_sync(gAudioQueue, ^{});
 			[gEnc stop];
 		} @catch (NSException *e) {
 		}
+		pc_audio_end();
 		gStream = nil;
 		gConfig = nil;
 		gFilter = nil;
 		gHandler = nil;
 		gEnc = nil;
 		gQueue = nil;
+		gAudioQueue = nil;
 	}
 }
 
