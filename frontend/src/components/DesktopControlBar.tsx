@@ -13,6 +13,7 @@ import {
 import type { DesktopSurfacesMsg, SurfaceKind } from '../lib/desktopClient'
 import { ContextMenu, type ContextMenuEntry } from './ContextMenu'
 import { DesktopSendKeysMenu } from './DesktopSendKeysMenu'
+import { DesktopSoundButton, type DesktopSoundButtonProps } from './DesktopSoundButton'
 
 /** The label returns to the previous surface, with a notice, when no surface message answers a pick. */
 export const SWITCH_TIMEOUT_MS = 5000
@@ -140,6 +141,11 @@ export interface DesktopControlBarProps {
   releaseChord?: string
   /** A guest page (22-07): no display picker and no Lock Screen… in Send Keys. */
   guest?: boolean
+  /**
+   * Sound was negotiated (23-06): the Sound item sits before Full Screen in the last group. For a viewer
+   * with no control right every other item is hidden, so the bar is the sound-only bar.
+   */
+  sound?: Pick<DesktopSoundButtonProps, 'video' | 'failed' | 'onNotice' | 'onChange'>
 }
 
 type PickerList = { state: 'loading' } | { state: 'failed' } | { state: 'ready'; list: DesktopSurfacesMsg }
@@ -293,7 +299,7 @@ function BarButton({ label, avail, children, onActivate, ref, className, extra }
  */
 export function DesktopControlBar({
   state, surface, requestSurfaces, onSelectSurface, sendChord, onMenuOpenChange, onSendKeysDone,
-  swapOn, onSwapChange, onModeChange, fullscreen, onFullscreen, controlRef, onCopy, onPaste, clipBusy, clipboardRef, popoverOpen, releaseChord = DEFAULT_RELEASE_CHORD, guest = false,
+  swapOn, onSwapChange, onModeChange, fullscreen, onFullscreen, controlRef, onCopy, onPaste, clipBusy, clipboardRef, popoverOpen, releaseChord = DEFAULT_RELEASE_CHORD, guest = false, sound,
 }: DesktopControlBarProps): React.ReactElement {
   const barRef = useRef<HTMLDivElement>(null)
   const sendKeysBtn = useRef<HTMLButtonElement>(null)
@@ -514,8 +520,13 @@ export function DesktopControlBar({
       </div>
     </React.Fragment>,
   )
+  // The last group: Sound, then Full Screen. Sound only changes this viewer, so it is live while locked or reconnecting.
+  const viewGroup: React.ReactNode[] = []
+  if (sound) {
+    viewGroup.push(<DesktopSoundButton key="sound" {...sound} phone={false} compact={false} />)
+  }
   if (!avail.fullscreen.hidden) {
-    groups.push(
+    viewGroup.push(
       <BarButton
         key="fullscreen"
         label={fullscreen ? 'Exit Full Screen' : 'Full Screen'}
@@ -531,6 +542,7 @@ export function DesktopControlBar({
       </BarButton>,
     )
   }
+  if (viewGroup.length > 0) groups.push(<React.Fragment key="view">{viewGroup}</React.Fragment>)
 
   // The reasons for greyed items as real text, linked by aria-describedby; a tooltip alone is not enough.
   const reasons: [string, string][] = []

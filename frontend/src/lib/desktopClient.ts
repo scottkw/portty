@@ -74,6 +74,14 @@ export interface DesktopStateMsg {
   state: DesktopState
   viewers: number
   locked: boolean
+  /** The daemon's audio capture or encoder failed; the picture is unaffected. Absent when audio is fine. */
+  audio?: 'failed'
+}
+
+/** What the server hello offers this viewer: sound from the Mac, and the unlock panel (own-account viewers only). */
+export interface DesktopCaps {
+  audio: boolean
+  unlock: boolean
 }
 
 export interface DesktopSizeMsg {
@@ -157,6 +165,8 @@ export interface DesktopEvents {
   status: ClientStatus
   wake: WakeReason
   rights: DesktopRights
+  /** The server hello's capabilities, once per connection. */
+  caps: DesktopCaps
   /** The input data channel opened or closed. */
   input: { open: boolean }
   surface: DesktopSurfaceMsg
@@ -291,6 +301,24 @@ export function defaultGuestWsUrl(loc: Location = window.location): string {
   return `wss://${loc.host}/desktop/guest/ws?cap=${encodeURIComponent(capToken ?? '')}`
 }
 
+/**
+ * Asks the Mac for stereo Opus: adds stereo=1 to the Opus fmtp line of the offer (or a new fmtp line when
+ * there is none). Browsers offer mono by default, and the Mac's music would come out as one channel.
+ * Every other line is left untouched.
+ */
+export function withOpusStereo(sdp: string): string {
+  const pt = /^a=rtpmap:(\d+) opus\/48000\/2\r?$/m.exec(sdp)?.[1]
+  if (!pt) return sdp
+  const fmtp = new RegExp(`^(a=fmtp:${pt} )(.*?)(\\r?)$`, 'm')
+  if (fmtp.test(sdp)) {
+    return sdp.replace(fmtp, (_, head: string, params: string, cr: string) => {
+      const kept = params.split(';').filter((p) => p !== '' && !p.startsWith('stereo='))
+      return `${head}${[...kept, 'stereo=1'].join(';')}${cr}`
+    })
+  }
+  return sdp.replace(new RegExp(`^(a=rtpmap:${pt} opus/48000/2)(\\r?)$`, 'm'), (_, line: string, cr: string) => `${line}${cr}\na=fmtp:${pt} stereo=1${cr}`)
+}
+
 export function webSocketTransport(url: string): SignalTransport {
   const ws = new WebSocket(url)
   return {
@@ -355,7 +383,7 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
 
   const listeners: { [K in keyof DesktopEvents]: Set<(v: DesktopEvents[K]) => void> } = {
     track: new Set(), state: new Set(), size: new Set(), status: new Set(), wake: new Set(),
-    rights: new Set(), input: new Set(), surface: new Set(), surfaces: new Set(), selectFailed: new Set(),
+    rights: new Set(), caps: new Set(), input: new Set(), surface: new Set(), surfaces: new Set(), selectFailed: new Set(),
     control: new Set(), cursor: new Set(), admission: new Set(), lease: new Set(),
   }
   function emit<K extends keyof DesktopEvents>(event: K, v: DesktopEvents[K]) {
@@ -384,6 +412,8 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
   // Per peer connection: a picture needs both the track and ICE connected. ontrack fires
   // on setRemoteDescription, long before (or without) any media path.
   let gotTrack = false
+  // The one stream this connection's tracks play from (video and audio share it).
+  let stream: MediaStream | null = null
   let iceUp = false
   let inputChannel: RTCDataChannel | null = null
   let epoch: number | null = null
@@ -577,7 +607,7 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
     }
     transport = t
     t.onOpen(() => {
-      if (g === gen) t.send({ type: 'hello', v: 1, caps: { video: 1, input: 1 } })
+      if (g === gen) t.send({ type: 'hello', v: 1, caps: { video: 1, audio: 1, input: 1 } })
     })
     t.onMessage((m) => {
       if (g === gen) void handle(g, m)
@@ -639,8 +669,16 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
   }
 
   function onTrack(e: RTCTrackEvent) {
+    // Audio and video share one stream id, so the browser hands both the same stream and one <video> plays both.
+    // A peer that sent no stream id gets one stream built here instead.
+    const given = e.streams[0]
+    const s = given ?? stream ?? new MediaStream()
+    if (!given) s.addTrack(e.track)
+    stream = s
+    // The picture waits for the video track; audio alone is never a picture.
+    if (e.track.kind === 'audio') return
     gotTrack = true
-    emit('track', e.streams[0] ?? new MediaStream([e.track]))
+    emit('track', s)
     maybePicture()
   }
 
@@ -709,6 +747,7 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
   /** The peer connection and the offer: from the hello, or, for a guest, from admission. */
   async function beginOffer(g: number) {
     offered = true
+    stream = null
     const conn = makePC()
     pc = conn
     conn.ontrack = (e) => {
@@ -718,7 +757,9 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
     // Before addTransceiver and createOffer, so the offer carries an application m-line.
     if (helloInput) openInputChannel(g, conn)
     conn.addTransceiver('video', { direction: 'recvonly' })
-    await conn.setLocalDescription(await conn.createOffer())
+    conn.addTransceiver('audio', { direction: 'recvonly' })
+    const offer = await conn.createOffer()
+    await conn.setLocalDescription({ type: 'offer', sdp: withOpusStereo(offer.sdp ?? '') })
     await gathered(conn)
     if (g !== gen) return
     transport?.send({ type: 'offer', sdp: conn.localDescription?.sdp ?? '' })
@@ -734,7 +775,9 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
           hadHello = true
           helloTimer = cancel(helloTimer)
           emit('rights', parseRights(m.rights))
-          helloInput = (m.caps as Record<string, unknown> | undefined)?.input === 1
+          const caps = m.caps as Record<string, unknown> | undefined
+          helloInput = caps?.input === 1
+          emit('caps', { audio: caps?.audio === 1, unlock: caps?.unlock === 1 })
           // A guest sends no offer until the share server says admitted.
           if (!guest) await beginOffer(g)
           break
@@ -769,7 +812,12 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
           if (typeof m.state === 'string' && STATES.has(m.state)) {
             lastState = m.state
             lastViewers = Number.isInteger(m.viewers) ? (m.viewers as number) : 0
-            emit('state', { state: m.state as DesktopState, viewers: lastViewers, locked: m.locked === true })
+            emit('state', {
+              state: m.state as DesktopState,
+              viewers: lastViewers,
+              locked: m.locked === true,
+              ...(m.audio === 'failed' ? { audio: 'failed' as const } : {}),
+            })
           }
           break
         case 'surface': {

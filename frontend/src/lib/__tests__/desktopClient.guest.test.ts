@@ -179,7 +179,7 @@ describe('guest waits then offers (tracer)', () => {
   it('sends hello, takes the hello with all rights false and admission waiting, sends no offer, then exactly one offer on admitted', async () => {
     const e = setup()
     await hello(e)
-    expect(lastT(e).sent[0]).toEqual({ type: 'hello', v: 1, caps: { video: 1, input: 1 } })
+    expect(lastT(e).sent[0]).toEqual({ type: 'hello', v: 1, caps: { video: 1, audio: 1, input: 1 } })
     lastT(e).recv({ type: 'admission', state: 'waiting' })
     await settle()
     expect(lastT(e).types()).toEqual(['hello'])
@@ -193,7 +193,7 @@ describe('guest waits then offers (tracer)', () => {
     expect(lastT(e).types()).toEqual(['hello', 'offer'])
     expect(lastT(e).sent[1]).toEqual({ type: 'offer', sdp: 'fake-offer-sdp' })
     // The input channel is opened before createOffer, as for an own-account viewer.
-    expect(lastPC(e).calls).toEqual(['createDataChannel', 'addTransceiver', 'createOffer'])
+    expect(lastPC(e).calls).toEqual(['createDataChannel', 'addTransceiver', 'addTransceiver', 'createOffer'])
     lastT(e).recv({ type: 'admission', state: 'admitted' })
     await settle()
     expect(lastT(e).types()).toEqual(['hello', 'offer'])
