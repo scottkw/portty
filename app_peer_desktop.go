@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/scottkw/portty/internal/daemon"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // Phase 21-07: the Wails side of a peer's always-available desktop. The viewing
@@ -70,4 +71,51 @@ func (a *App) ConnectPeerDesktop(host string) PeerDesktopResult {
 		res.ErrorCode = daemon.PeerErrUnreachable
 	}
 	return res
+}
+
+// openPeerDesktopLink passes link to the browser seam. The link carries the
+// token, so it goes nowhere else: not returned, not logged.
+func (a *App) openPeerDesktopLink(link string) {
+	openURL := a.openURLFunc
+	if openURL == nil {
+		openURL = func(u string) {
+			if a.ctx != nil {
+				runtime.BrowserOpenURL(a.ctx, u)
+			}
+		}
+	}
+	openURL(link)
+}
+
+// OpenPeerDesktopInBrowser opens host's desktop link in the default browser from
+// the token the daemon holds, fetching it first when none is held. It returns ""
+// or an error code and never hands the link to the web view. Call it only from a
+// user's click.
+func (a *App) OpenPeerDesktopInBrowser(host string) string {
+	if a.client == nil {
+		return daemon.PeerErrUnreachable
+	}
+	key := desktopHostKey(host)
+	link, err := a.client.PeerDesktopLink(key)
+	if err != nil {
+		// Nothing held yet (a 404), or the daemon is gone: one connect, one retry.
+		resp, cerr := a.client.ConnectPeerDesktop(host)
+		if cerr != nil {
+			return peerDesktopCode(cerr)
+		}
+		if resp.Host != "" {
+			key = desktopHostKey(resp.Host)
+		}
+		if link, err = a.client.PeerDesktopLink(key); err != nil {
+			return daemon.PeerErrUnreachable
+		}
+	}
+	a.openPeerDesktopLink(link)
+	return ""
+}
+
+// OpenLocalNetworkSettings opens System Settings at Privacy & Security, Local
+// Network (the Desktop tab's permission card).
+func (a *App) OpenLocalNetworkSettings() error {
+	return openSystemURL(paneLocalNetwork)
 }

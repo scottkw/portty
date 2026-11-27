@@ -100,6 +100,10 @@ export const ConnectPeerSession      = (host, sessionID)    => Call('main.App.Co
 // Portty 21-07: returns PeerDesktopResult (token-free loopback url) and never throws.
 export const ConnectPeerDesktop      = (host)               => Call('main.App.ConnectPeerDesktop', [host])
 
+// Portty 21-07: resolves '' or an error code; the link never leaves Go.
+export const OpenPeerDesktopInBrowser = (host)              => Call('main.App.OpenPeerDesktopInBrowser', [host])
+export const OpenLocalNetworkSettings = ()                  => Call('main.App.OpenLocalNetworkSettings', [])
+
 // Portty 13-05: returns RemotePortResult and never throws.
 export const OpenRemotePort          = (sessionID, rawURL, consent) => Call('main.App.OpenRemotePort', [sessionID, rawURL, consent])
 
