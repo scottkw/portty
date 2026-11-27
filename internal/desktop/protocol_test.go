@@ -215,3 +215,56 @@ func TestProtocolGolden_SurfaceDecodes(t *testing.T) {
 		t.Errorf("checked %d viewer and %d server lines, want 3 and 5", seen["viewer"], seen["server"])
 	}
 }
+
+// TestProtocolGolden_ClipDecodes: the viewer's clip_get and clip_put lines
+// decode into inbound with their fields, and the daemon's clip_data and
+// clip_result lines unmarshal into the Go message types and marshal back equal.
+func TestProtocolGolden_ClipDecodes(t *testing.T) {
+	semantically := func(b []byte) any {
+		var v any
+		if err := json.Unmarshal(b, &v); err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	var viewer, server int
+	for _, l := range readGolden(t, "testdata/signal-v1.jsonl") {
+		switch {
+		case l.Dir == "viewer" && (l.Name == "clip-get" || l.Name == "clip-put-0" || l.Name == "clip-put-1"):
+			var in inbound
+			if err := json.Unmarshal(l.Wire, &in); err != nil {
+				t.Errorf("%s: %v", l.Name, err)
+			}
+			want := map[string]inbound{
+				"clip-get":   {Type: typeClipGet, Xid: "c1"},
+				"clip-put-0": {Type: typeClipPut, Xid: "p1", Seq: 0, Total: 2, Len: 7, Text: "hel"},
+				"clip-put-1": {Type: typeClipPut, Xid: "p1", Seq: 1, Total: 2, Len: 7, Text: "lo, "},
+			}[l.Name]
+			if !reflect.DeepEqual(in, want) {
+				t.Errorf("%s decoded as %+v, want %+v", l.Name, in, want)
+			}
+			viewer++
+		case l.Dir == "server" && (l.Name == "clip-data" || l.Name == "clip-result-ok" || l.Name == "clip-result-concealed" || l.Name == "clip-result-waiting"):
+			var msg any = &msgClipResult{}
+			if l.Name == "clip-data" {
+				msg = &msgClipData{}
+			}
+			if err := json.Unmarshal(l.Wire, msg); err != nil {
+				t.Errorf("%s: %v", l.Name, err)
+				continue
+			}
+			back, err := json.Marshal(msg)
+			if err != nil {
+				t.Errorf("%s: %v", l.Name, err)
+				continue
+			}
+			if !reflect.DeepEqual(semantically(back), semantically(l.Wire)) {
+				t.Errorf("%s: marshals back as %s, want %s", l.Name, back, l.Wire)
+			}
+			server++
+		}
+	}
+	if viewer != 3 || server != 4 {
+		t.Errorf("checked %d viewer and %d server lines, want 3 and 4", viewer, server)
+	}
+}
