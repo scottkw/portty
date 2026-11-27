@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -461,7 +463,7 @@ func (a *API) startGuestShare(ctx context.Context) (DesktopShareStart, *ShareErr
 		return DesktopShareStart{URL: link}, nil
 	}
 	var gs *desktop.GuestShare
-	gs, err := desktop.NewGuestShare(nil, func(e desktop.GuestEvent) { a.onGuestEvent(gs, e) })
+	gs, err := desktop.NewGuestShare(a.guestClock, func(e desktop.GuestEvent) { a.onGuestEvent(gs, e) })
 	if err != nil {
 		a.mu.Unlock()
 		return DesktopShareStart{}, &ShareError{ShareErrStartFailed, err.Error()}
@@ -481,6 +483,7 @@ func (a *API) startGuestShare(ctx context.Context) (DesktopShareStart, *ShareErr
 		return DesktopShareStart{}, &ShareError{ShareErrStartFailed, err.Error()}
 	}
 	first := a.recordCTDisclosure()
+	a.record(desktop.AuditShareStart, gs.ID, desktop.AuditModeGuest, desktop.Identity{}, "")
 	a.pokeShare()
 	return DesktopShareStart{URL: link, FirstShare: first}, nil
 }
@@ -522,6 +525,14 @@ func (a *API) answerRequest(w http.ResponseWriter, id string, admit bool) {
 	}
 	var err error
 	if admit {
+		// The line is appended before the admission takes effect, so a crash
+		// cannot leave a guest watching with no record (DSHR-07). An unknown
+		// request writes nothing.
+		for _, p := range gs.Pending() {
+			if p.ID == id {
+				a.record(desktop.AuditAdmitted, gs.ID, desktop.AuditModeGuest, p.Ident, "")
+			}
+		}
 		err = gs.Admit(id)
 	} else {
 		err = gs.Deny(id)
@@ -584,6 +595,22 @@ func (a *API) handleShareRights(w http.ResponseWriter, r *http.Request) {
 		writeShareErr(w, http.StatusConflict, shareErrOwnViewer, "")
 		return
 	}
+	// One line per switch that changes, appended before the change is applied.
+	shareID, _ := a.viewerAudit(v)
+	for _, c := range []struct {
+		was, now      bool
+		granted, gone string
+	}{
+		{v.Rights&desktop.RightsControl != 0, req.Control, desktop.AuditControlGranted, desktop.AuditControlRevoked},
+		{v.Rights&desktop.RightsClipboard != 0, req.Clipboard, desktop.AuditClipboardGranted, desktop.AuditClipboardRevoked},
+	} {
+		switch {
+		case !c.was && c.now:
+			a.record(c.granted, shareID, desktop.AuditModeGuest, v.Identity, "")
+		case c.was && !c.now:
+			a.record(c.gone, shareID, desktop.AuditModeGuest, v.Identity, "")
+		}
+	}
 	if err := mgr.SetRights(v.ID, req.Control, req.Clipboard); err != nil {
 		writeViewerErr(w, err)
 		return
@@ -600,6 +627,9 @@ func (a *API) handleShareDisconnect(w http.ResponseWriter, r *http.Request) {
 		writeShareErr(w, http.StatusNotFound, shareErrNoViewer, "")
 		return
 	}
+	shareID, mode := a.viewerAudit(v)
+	a.record(desktop.AuditRevoked, shareID, mode, v.Identity, desktop.ReasonRevoked)
+	a.setLeaveReason(v.ID, desktop.ReasonRevoked)
 	if err := mgr.CloseViewer(v.ID); err != nil {
 		writeViewerErr(w, err)
 		return
@@ -610,9 +640,10 @@ func (a *API) handleShareDisconnect(w http.ResponseWriter, r *http.Request) {
 
 // closeOwnViewers closes every own-account viewer with code and leaves the
 // guests alone (they belong to the share, not to always-available).
-func (a *API) closeOwnViewers(mgr *desktop.Manager, code websocket.StatusCode, reason string) {
+func (a *API) closeOwnViewers(mgr *desktop.Manager, code websocket.StatusCode, reason, leave string) {
 	for _, v := range mgr.ViewerList() {
 		if v.Mode == desktop.ModeOwn {
+			a.setLeaveReason(v.ID, leave)
 			_ = mgr.CloseViewerWith(v.ID, code, reason)
 		}
 	}
@@ -638,8 +669,14 @@ func (a *API) endGuestShare(reason string) bool {
 	a.guestShare = nil
 	a.mu.Unlock()
 
+	a.record(desktop.AuditShareStop, gs.ID, desktop.AuditModeGuest, desktop.Identity{}, reason)
 	gs.End(reason)
 	if mgr != nil {
+		for _, v := range mgr.ViewerList() {
+			if v.Mode == desktop.ModeGuest {
+				a.setLeaveReason(v.ID, reason)
+			}
+		}
 		mgr.CloseGuests(desktop.CloseShareEnded, "share_ended")
 	}
 
@@ -710,6 +747,145 @@ func (d desktopAdapter) ServeGuestViewer(ctx context.Context, c *websocket.Conn,
 	m.ServeGuestViewer(ctx, c, admit, gs, desktop.NewIdentity(who.UserID, who.LoginName, who.DisplayName, who.NodeName, who.StableID, who.IP))
 }
 
+// ServeDesktopViewerAs is ServeDesktopViewer for the route that knows who the
+// own-account viewer is (WhoIs on the connection), so the audit log can name it.
+func (d desktopAdapter) ServeDesktopViewerAs(ctx context.Context, c *websocket.Conn, admit func() bool, who webserver.PeerIdentity) {
+	m := d.manager()
+	if m == nil {
+		d.ServeDesktopViewer(ctx, c, admit) // the same refusals as without an identity
+		return
+	}
+	m.ServeDesktopViewerAs(ctx, c, admit, desktop.NewIdentity(who.UserID, who.LoginName, who.DisplayName, who.NodeName, who.StableID, who.IP))
+}
+
+// --- audit (DSHR-07) ---------------------------------------------------------
+
+// joinedViewer is a viewer whose join was recorded, kept so its leave can be
+// recorded with the same identity and share ID, once.
+type joinedViewer struct {
+	v       desktop.Viewer
+	shareID string
+}
+
+// shareAudit is the daemon's one audit appender and the bookkeeping that pairs
+// each leave with its join and its reason. The file opens at the first event, so
+// a daemon that never shares writes nothing.
+type shareAudit struct {
+	once sync.Once
+	mu   sync.Mutex
+	log  *desktop.Audit
+	// joined: viewers whose join is recorded. cut: why a viewer is being closed,
+	// set by whoever closes it, read when its leave is recorded.
+	joined map[desktop.ViewerID]joinedViewer
+	cut    map[desktop.ViewerID]string
+}
+
+// record appends one audit line. It never blocks and never fails the caller: a
+// directory that cannot be opened, or a write that fails, is logged (once a
+// minute, by the Audit) and the event dropped, because a full disk must not lock
+// anyone out (DSHR-07).
+func (a *API) record(event, shareID, mode string, id desktop.Identity, reason string) {
+	sa := &a.audit
+	sa.once.Do(func() {
+		dir := a.engine.configDir
+		if dir == "" {
+			return
+		}
+		l, err := desktop.OpenAudit(dir)
+		if err != nil {
+			var pe *fs.PathError
+			if errors.As(err, &pe) {
+				err = pe.Err // the errno, not the path
+			}
+			slog.Warn("desktop audit: not opened, events will not be recorded", "err", err)
+			return
+		}
+		sa.mu.Lock()
+		sa.log = l
+		sa.mu.Unlock()
+	})
+	sa.mu.Lock()
+	l := sa.log
+	sa.mu.Unlock()
+	if l != nil {
+		l.Record(event, shareID, mode, id, reason)
+	}
+}
+
+// closeAudit closes the audit file; later events are dropped.
+func (a *API) closeAudit() {
+	sa := &a.audit
+	sa.once.Do(func() {}) // never open it now
+	sa.mu.Lock()
+	l := sa.log
+	sa.log = nil
+	sa.mu.Unlock()
+	if l != nil {
+		_ = l.Close()
+	}
+}
+
+// setLeaveReason records why viewer id is being closed; the first reason wins.
+func (a *API) setLeaveReason(id desktop.ViewerID, reason string) {
+	sa := &a.audit
+	sa.mu.Lock()
+	defer sa.mu.Unlock()
+	if sa.cut == nil {
+		sa.cut = map[desktop.ViewerID]string{}
+	}
+	if _, ok := sa.cut[id]; !ok {
+		sa.cut[id] = reason
+	}
+}
+
+// markLeaves gives every connected viewer the reason it is about to be closed for.
+func (a *API) markLeaves(mgr *desktop.Manager, reason string) {
+	for _, v := range mgr.ViewerList() {
+		a.setLeaveReason(v.ID, reason)
+	}
+}
+
+// recordLeave appends the leave of viewer id, once, if its join was recorded:
+// with the reason set by whoever closed it, else fallback, else viewer_closed.
+func (a *API) recordLeave(id desktop.ViewerID, fallback string) {
+	sa := &a.audit
+	sa.mu.Lock()
+	j, ok := sa.joined[id]
+	delete(sa.joined, id)
+	reason := sa.cut[id]
+	delete(sa.cut, id)
+	sa.mu.Unlock()
+	if !ok {
+		return
+	}
+	if reason == "" {
+		reason = fallback
+	}
+	if reason == "" {
+		reason = desktop.ReasonViewerClosed
+	}
+	mode := desktop.AuditModeOwn
+	if j.v.Mode == desktop.ModeGuest {
+		mode = desktop.AuditModeGuest
+	}
+	a.record(desktop.AuditLeave, j.shareID, mode, j.v.Identity, reason)
+}
+
+// flushLeaves records a leave for every viewer still on the books, at a graceful
+// exit, where a close handshake may not finish before the process does.
+func (a *API) flushLeaves(fallback string) {
+	sa := &a.audit
+	sa.mu.Lock()
+	ids := make([]desktop.ViewerID, 0, len(sa.joined))
+	for id := range sa.joined {
+		ids = append(ids, id)
+	}
+	sa.mu.Unlock()
+	for _, id := range ids {
+		a.recordLeave(id, fallback)
+	}
+}
+
 // --- Manager hooks -----------------------------------------------------------
 
 // wireGuestDeps hands the Manager what the guest share needs from the daemon:
@@ -718,13 +894,34 @@ func (a *API) wireGuestDeps(d *desktop.Deps) {
 	d.OnViewerJoin, d.OnViewerLeave, d.PeerIdentity = a.onViewerJoin, a.onViewerLeave, a.peerIdentity
 }
 
+// viewerAudit is what the audit log keeps of a viewer: guests carry their
+// share's ID, own-account viewers an empty one.
+func (a *API) viewerAudit(v desktop.Viewer) (shareID, mode string) {
+	if v.Mode != desktop.ModeGuest {
+		return "", desktop.AuditModeOwn
+	}
+	if gs := a.currentGuestShare(); gs != nil {
+		shareID = gs.ID
+	}
+	return shareID, desktop.AuditModeGuest
+}
+
 func (a *API) onViewerJoin(v desktop.Viewer) {
+	shareID, mode := a.viewerAudit(v)
+	a.audit.mu.Lock()
+	if a.audit.joined == nil {
+		a.audit.joined = map[desktop.ViewerID]joinedViewer{}
+	}
+	a.audit.joined[v.ID] = joinedViewer{v: v, shareID: shareID}
+	a.audit.mu.Unlock()
+	a.record(desktop.AuditJoin, shareID, mode, v.Identity, "")
 	view := viewerView(v)
 	a.pushShareEvent(desktop.AuditJoin, &view, "")
 	a.pokeShare()
 }
 
 func (a *API) onViewerLeave(v desktop.Viewer) {
+	a.recordLeave(v.ID, "")
 	view := viewerView(v)
 	a.pushShareEvent(desktop.AuditLeave, &view, "")
 	a.pokeShare()
@@ -732,6 +929,12 @@ func (a *API) onViewerLeave(v desktop.Viewer) {
 
 // onGuestEvent receives every admission event of share gs.
 func (a *API) onGuestEvent(gs *desktop.GuestShare, e desktop.GuestEvent) {
+	switch e.Kind {
+	case desktop.AuditAdmitted:
+		// Already recorded, before the admission took effect (answerRequest).
+	default:
+		a.record(e.Kind, gs.ID, desktop.AuditModeGuest, e.Ident, e.Reason)
+	}
 	if e.Kind == desktop.AuditAdmitRequest {
 		req := desktop.Request{ID: e.RequestID, Ident: e.Ident, Since: time.Now()}
 		for _, p := range gs.Pending() {

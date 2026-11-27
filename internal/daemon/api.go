@@ -74,6 +74,10 @@ type API struct {
 	guestShare *desktop.GuestShare
 	guestIAT   int64
 	guiStream  *shareStream
+	// guestClock is the admission clock (nil: time.Now); a test replaces it.
+	guestClock func() time.Time
+	// audit is the one appender of desktop-audit.jsonl and its leave bookkeeping.
+	audit shareAudit
 
 	// --- Phase 87 capability state (D-04/D-06/D-14/D-15/D-16) -----------
 	// signingKey is the 32-byte HMAC-SHA256 key used to Sign capabilities.
@@ -406,6 +410,7 @@ func (a *API) Stop() error {
 		_ = ws.Stop()
 	}
 	a.stopDesktop()
+	a.closeAudit()
 
 	a.portForwards.CloseAll()
 
@@ -852,8 +857,9 @@ func (a *API) handleRegenerateSigningKey(w http.ResponseWriter, r *http.Request)
 	switch {
 	case mgr == nil:
 	case guestEnded:
-		a.closeOwnViewers(mgr, desktop.CloseTokenRejected, "token rejected")
+		a.closeOwnViewers(mgr, desktop.CloseTokenRejected, "token rejected", desktop.ReasonKeyRegenerated)
 	default:
+		a.markLeaves(mgr, desktop.ReasonKeyRegenerated)
 		mgr.CloseAll(desktop.CloseTokenRejected, "token rejected")
 	}
 	w.WriteHeader(http.StatusOK)

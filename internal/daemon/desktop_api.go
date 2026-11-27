@@ -575,8 +575,9 @@ func (a *API) disableDesktop() error {
 	switch {
 	case mgr == nil:
 	case guest:
-		a.closeOwnViewers(mgr, desktop.CloseDesktopOff, "desktop off")
+		a.closeOwnViewers(mgr, desktop.CloseDesktopOff, "desktop off", desktop.ReasonShareStopped)
 	default:
+		a.markLeaves(mgr, desktop.ReasonShareStopped)
 		mgr.CloseAll(desktop.CloseDesktopOff, "desktop off")
 		_ = mgr.Close()
 	}
@@ -593,8 +594,10 @@ func (a *API) stopDesktop() {
 	a.desktopMgr = nil
 	a.mu.Unlock()
 	if mgr != nil {
+		a.markLeaves(mgr, desktop.ReasonDaemonExit)
 		_ = mgr.Close()
 	}
+	a.flushLeaves(desktop.ReasonDaemonExit)
 }
 
 // startDesktopPoller starts runDesktopPoller once, from Start and from the

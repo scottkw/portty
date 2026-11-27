@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/coder/websocket"
 
@@ -195,6 +197,16 @@ func (ws *WebServer) handleDesktopWS(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "too many viewers", http.StatusTooManyRequests)
 		return
 	}
+	// A backend that can name its own-account viewers is told who this one is.
+	// The same-user gate already passed, so the lookup never refuses: a failure
+	// gives an empty identity and the viewer still joins.
+	as, namesViewers := ws.desktop.(interface {
+		ServeDesktopViewerAs(ctx context.Context, c *websocket.Conn, admit func() bool, who PeerIdentity)
+	})
+	var who PeerIdentity
+	if namesViewers {
+		who = ws.lookupPeerLenient(r)
+	}
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		OriginPatterns: ws.allowedOrigins(),
 	})
@@ -208,5 +220,35 @@ func (ws *WebServer) handleDesktopWS(w http.ResponseWriter, r *http.Request) {
 		_, err := capability.VerifyDesktop(token, ws.currentSigningKey())
 		return err == nil
 	}
+	if namesViewers {
+		as.ServeDesktopViewerAs(r.Context(), conn, admit, who)
+		return
+	}
 	ws.desktop.ServeDesktopViewer(r.Context(), conn, admit)
+}
+
+// lookupPeerLenient is WhoIs on the request's connection as a PeerIdentity, for
+// naming an own-account viewer in the audit log. Unlike the guest gate it
+// accepts whatever tailscaled answers and returns the zero identity on any error.
+func (ws *WebServer) lookupPeerLenient(r *http.Request) PeerIdentity {
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	who, err := ws.whois.WhoIs(ctx, r.RemoteAddr)
+	if err != nil || who == nil || who.Node == nil {
+		return PeerIdentity{}
+	}
+	id := PeerIdentity{
+		UserID:   int64(who.Node.User),
+		NodeName: who.Node.ComputedName,
+		StableID: string(who.Node.StableID),
+	}
+	if who.UserProfile != nil {
+		id.LoginName, id.DisplayName = who.UserProfile.LoginName, who.UserProfile.DisplayName
+	}
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		id.IP = host
+	} else {
+		id.IP = r.RemoteAddr
+	}
+	return id
 }
