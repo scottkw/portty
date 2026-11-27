@@ -397,6 +397,24 @@ func (m *Manager) releaseHeldAll(reason string) {
 	m.flushInput()
 }
 
+// anyButtonHeld reports whether any viewer holds a mouse button.
+func (m *Manager) anyButtonHeld() bool {
+	m.vmu.Lock()
+	vs := make([]*viewer, 0, len(m.viewers))
+	for _, v := range m.viewers {
+		vs = append(vs, v)
+	}
+	m.vmu.Unlock()
+	m.in.mu.Lock()
+	defer m.in.mu.Unlock()
+	for _, v := range vs {
+		if len(v.in.held) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // surfaceLoop checks, once a second while viewers watch a window or a display
 // other than the main one, that the shared surface still exists and still has
 // its size. A panic costs one pass, never the loop or the stream.
@@ -444,7 +462,12 @@ func (m *Manager) surfaceTick(ctx context.Context, failing *bool) {
 	var reason string
 	switch {
 	case found && (math.Abs(cur.W-info.W) >= 1 || math.Abs(cur.H-info.H) >= 1):
-		// Resized: the same surface at its new size.
+		// Resized: the same surface at its new size. Applying it releases held
+		// input, so it waits while a button is held (a drag-resize of the shared
+		// window); a later pass applies it once the button is up (M-03).
+		if m.anyButtonHeld() {
+			return
+		}
 	case found:
 		// A move or a minimize changes only the recorded frame, never the epoch.
 		if cur != info && m.surfaceSel() == sel {

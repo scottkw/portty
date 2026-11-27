@@ -642,6 +642,37 @@ func TestSurface_ResizeBumpsEpoch(t *testing.T) {
 	}
 }
 
+// TestSurface_ResizeWaitsForHeldButton: a size change of the shared surface
+// while a viewer holds a button (a drag-resize of the shared window) does not
+// release the drag or bump the epoch; it is applied once the button is up.
+func TestSurface_ResizeWaitsForHeldButton(t *testing.T) {
+	world := newSurfaceWorld(mainSurface(), secondSurface())
+	fb := &fakeInputBridge{}
+	env := newTracerServer(t, withSurfaces(world, fb))
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	a := env.joinSurf(ctx, t, env.token(t, "g1"))
+	a.ask(ctx, t, map[string]any{"type": "select", "kind": "display", "id": secondID})
+	a.wait(t, "surface", epochIs(2))
+
+	a.input(t, map[string]any{"t": "btn", "b": 0, "d": true, "x": 0.5, "y": 0.5, "e": 2})
+	fb.waitFor(t, 1)
+	resized := secondSurface()
+	resized.W, resized.H = 1280, 720
+	world.setList(mainSurface(), resized)
+	quiet()
+	if m := a.find("surface", epochIs(3)); m != nil {
+		t.Errorf("a resize during a held drag produced %v, want no epoch bump", m)
+	}
+	a.input(t, map[string]any{"t": "move", "x": 0.6, "y": 0.6, "e": 2})
+	a.input(t, map[string]any{"t": "btn", "b": 0, "d": false, "x": 0.6, "y": 0.6, "e": 2})
+	calls := fb.waitFor(t, 3)
+	if calls[1].Kind != screencap.MouseDragged || calls[2].Kind != screencap.MouseUp {
+		t.Errorf("calls = %+v, want the press, a drag, then the viewer's own MouseUp", calls)
+	}
+	requireSurface(t, "A", a.wait(t, "surface", epochIs(3)), 3, "display", secondID, resized.Name, 1280, 720, "")
+}
+
 // TestSurface_ResetOnCaptureStop: the surface lives for one viewing session;
 // the next viewer starts on the main display and the source is started on it.
 func TestSurface_ResetOnCaptureStop(t *testing.T) {
