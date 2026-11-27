@@ -35,7 +35,7 @@ Each fix is one commit, and its regression test is in the same commit. Each test
 | T-20-21 | high (security) | CLOSED | e9dfa052, docs c24f489c | same as M-02 |
 | M-03 | medium | fixed: requires human verification | 87a585e7 | TestSurface_ResizeWaitsForHeldButton (internal/desktop/surface_test.go) |
 | M-04 | medium | fixed: requires human verification | efcc60d2 | TestControl_OffDisplayMovesAreNotMisses (internal/desktop/control_test.go) |
-| M-05 | medium | deferred | none | Recorded follow-up (window-share key gate vs non-activating panels). It needs AX focused-UI-element work plus a VM row; out of scope by orchestrator decision |
+| M-05 | medium | deferred | none | Recorded follow-up (window-share key gate vs non-activating panels). It needs AX focused-UI-element work plus a VM row; out of scope by orchestrator decision. User decision 2026-11-27: accepted as a known limit for Phase 20 (own-account viewers only); must be re-reviewed and fixed or re-accepted before Phase 22 admits guests |
 | M-06 | medium | fixed | 7970be7f | TestPasteboard_ReadComparesChangeCount (internal/screencap/pasteboard_darwin_test.go, source check) |
 | M-07 | medium | fixed | 47317b21 | TestObjC_EntryPointsDrainAutoreleasePool (internal/screencap/screencap_darwin_test.go, source check) |
 | UI-1 | warning (UI review top issue 1) | fixed | 299d842f | two `bar behaviour` cases in frontend/src/components/__tests__/DesktopControlBar.test.tsx |

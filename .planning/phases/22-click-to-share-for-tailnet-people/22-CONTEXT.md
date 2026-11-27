@@ -50,6 +50,9 @@ User delegation (2026-11-25): "I don't need to answer a bunch of questions". Rev
 - [Audit] Q: "How is the audit log written?" → Selected: "One appender in the daemon, opened 0600 O_APPEND, one json.Marshal per line, size-capped rotation copied from daemon_log.go; write failures are logged to daemon.log and never block a join" — implementation behind the accepted format
 - [Testing] Q: "What test approach?" → Selected: "Fake whoIsClient with other-user, tagged and shared-in identities; loopback integration tests with the synthetic frame source for admit, deny, revoke, Stop, reconnect re-admit and lease hand-off; Vitest for the sheet and guest page states; VM rows for physical-input detection; a real two-account tailnet M-NN row for SC1; the security review via gsd-secure-phase; TESTING.md and the traceability map updated per the standing rule" — test layout
 
+### Carried in from Phase 20 (required)
+- **M-05 window-share key gate (user decision 2026-11-27):** Phase 20 accepted that window-share keystrokes are checked only against the frontmost app, so a non-activating panel (Alfred, Raycast) can receive keys the viewer cannot see. Accepted only while viewers are the owner's own devices. Before guests can control a window share, Phase 22 must fix it (drop keys unless the shared window holds keyboard focus) or the user must re-accept it. Source: 20-REVIEW-FIX.md, M-05.
+
 ### Claude's Discretion
 User delegated: 'I don't need to answer a bunch of questions' (2026-11-25). Claude may adjust these during planning:
 - Entry point: a Share Desktop item in the tray menu and a Share Desktop button in the Settings Desktop group, both opening one sheet with Copy Link, the viewer list and Stop Sharing; no new toolbar button. Reason: the toolbar Share is per session and Phase 19 put desktop controls in Settings ▸ Sharing.

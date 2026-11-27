@@ -411,6 +411,7 @@ Recent decisions affecting current work:
 
 ### Blockers/Concerns
 
+- [v2.0 Phase 20 M-05, 2026-11-27]: user accepted the window-share key gate limit (non-activating launcher panels can receive keys) for Phase 20 only; Phase 22 must fix or re-accept it before guests control a window share (recorded in 22-CONTEXT.md)
 - [v2.0 Phase 18, RESOLVED 2026-11-26]: RC-WR04-stall was not a session stall: the portty-test guest clock was stepped forward 17 min by NTP (timed) mid-row, so wall-clock deltas showed a fake gap; ticks ran steadily (0.985/s) and nothing was held. Evidence: phases/18-self-installing-updates/evidence/RC-WR04-clockstep.log, debug/resolved/rc-wr04-stall.md (c06f8b65). Rig lesson: check the timed log or use monotonic/tick counts before calling a VM time gap a hang.
 - [v2.0]: Apple's persistent-content-capture entitlement request: filed, awaiting Apple (filed 2026-11-25, Request ID T558S9Q5B3, App ID app.portty.Portty; reported waits weeks to 2+ months); until it is granted, someone at the office Mac approves Screen Recording about monthly (DPRM-03 surfaces it)
 - [v2.0]: Tart VMs have no hardware encoder or TCC automation; capture, encode, TCC, lock-screen, display and iPhone checks need real-Mac M-NN rows on the user's Macs
