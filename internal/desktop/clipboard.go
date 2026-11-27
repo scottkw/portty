@@ -114,7 +114,7 @@ func (m *Manager) clipResult(ctx context.Context, v *viewer, xid, outcome string
 // lock. It returns the outcome to answer, or "" to go on.
 func (m *Manager) clipGate(v *viewer) string {
 	switch {
-	case v.Rights&RightsClipboard == 0:
+	case m.rightsOf(v)&RightsClipboard == 0:
 		return clipForbidden
 	case m.Locked():
 		return clipFailed

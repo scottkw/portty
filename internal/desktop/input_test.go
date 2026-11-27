@@ -338,7 +338,8 @@ func TestInput_CloseReleasesHeldAfterStartContextCancelled(t *testing.T) {
 func TestInputTracer_KeyHeldReleasedOnClose(t *testing.T) {
 	fb := &fakeInputBridge{}
 	var locked atomic.Bool
-	env := newTracerServer(t, withFakeInput(fb, &locked, newFakeClock()))
+	clk := newFakeClock()
+	env := newTracerServer(t, withFakeInput(fb, &locked, clk))
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -359,6 +360,7 @@ func TestInputTracer_KeyHeldReleasedOnClose(t *testing.T) {
 		t.Errorf("%d input channels open after the viewer's channel closed, want 0", n)
 	}
 
+	clk.Advance(3 * time.Second) // the first viewer's lease (2 s) has run out
 	v2 := env.joinInput(ctx, t, env.token(t, "g1"))
 	v2.send(t, map[string]any{"t": "key", "code": "MetaLeft", "d": true, "m": 8})
 	v2.send(t, map[string]any{"t": "key", "code": "KeyA", "d": true, "m": 8})
@@ -444,7 +446,7 @@ func TestInput_ReleasesBypassGates(t *testing.T) {
 	}{
 		{"locked", func() { setLocked(s.locked, s.clk, true) }, func() { setLocked(s.locked, s.clk, false) }},
 		{"stale_epoch", func() { mgr.BumpEpochForTest(); epoch++ }, func() {}},
-		{"no_right", func() { s.v.Rights = desktop.RightsViewOnly }, func() { s.v.Rights = desktop.RightsOwnAccount }},
+		{"no_right", func() { desktop.SetRightsForTest(s.v, desktop.RightsViewOnly) }, func() { desktop.SetRightsForTest(s.v, desktop.RightsOwnAccount) }},
 		{"no_accessibility", func() { mgr.SetControlInputForTest(desktop.ControlNeedsAccessibility) }, func() { mgr.SetControlInputForTest(desktop.ControlOK) }},
 		{"rate", func() {
 			for range 300 {

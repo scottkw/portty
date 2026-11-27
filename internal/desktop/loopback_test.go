@@ -173,6 +173,8 @@ func newTracerServer(t *testing.T, opts ...tracerOpt) *tracerEnv {
 	deps := desktop.Deps{
 		Bind:      netip.MustParseAddr("127.0.0.1"),
 		MediaPort: env.mediaPort,
+		// A healthy tap that has seen nobody: the arbiter allows remote input.
+		Physical: healthyPhysical,
 		NewSource: func() screencap.Source {
 			s := screencap.NewSyntheticSource(env.srcW, env.srcH)
 			env.mu.Lock()

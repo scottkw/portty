@@ -10,12 +10,13 @@ import (
 func TestWindowBridge_RefusesUnderTest(t *testing.T) {
 	b := NewWindowBridge()
 	_, _, _, _, _, _, focusErr := b.Focus()
+	_, _, _, _, _, _, keyErr := b.KeyFocus()
 	_, _, _, _, _, _, infoErr := b.WindowInfo(1)
 	_, minErr := b.Minimized(1, 0, 0, 100, 100, "t")
 	_, raiseErr := b.Raise(1, 0, 0, 100, 100, "t")
 	_, topErr := b.TopmostAt(10, 10)
 	for name, err := range map[string]error{
-		"Focus": focusErr, "WindowInfo": infoErr, "Minimized": minErr, "Raise": raiseErr, "TopmostAt": topErr,
+		"Focus": focusErr, "KeyFocus": keyErr, "WindowInfo": infoErr, "Minimized": minErr, "Raise": raiseErr, "TopmostAt": topErr,
 	} {
 		if !errors.Is(err, ErrRefusedInTest) {
 			t.Errorf("%s: %v, want ErrRefusedInTest", name, err)

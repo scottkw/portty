@@ -73,6 +73,21 @@ func TestGuestViewer_Golden(t *testing.T) {
 					t.Errorf("%s: rights lacks %q", l.Name, k)
 				}
 			}
+		case head.Type == typeLease:
+			var m msgLease
+			roundTrip(l.Name, l.Wire, &m)
+			switch m.State {
+			case leaseYou, leaseOwner, leasePhysical, leaseFree:
+				if m.Name != "" {
+					t.Errorf("%s: state %q must carry no name", l.Name, m.State)
+				}
+			case leaseOther:
+				if m.Name == "" {
+					t.Errorf("%s: a guest holder's lease line must carry its name", l.Name)
+				}
+			default:
+				t.Errorf("%s: unknown lease state %q", l.Name, m.State)
+			}
 		case head.Type == typeHello:
 			var m msgHello
 			roundTrip(l.Name, l.Wire, &m)
@@ -100,7 +115,8 @@ func TestGuestViewer_Golden(t *testing.T) {
 			t.Errorf("golden file lacks %s", name)
 		}
 	}
-	for _, name := range []string{"admission-waiting", "admission-admitted", "rights-view-only", "rights-control-and-clipboard"} {
+	for _, name := range []string{"admission-waiting", "admission-admitted", "rights-view-only", "rights-control-and-clipboard",
+		"lease-you", "lease-other", "lease-owner", "lease-physical", "lease-free"} {
 		if !seen[name] {
 			t.Errorf("golden file lacks %s", name)
 		}

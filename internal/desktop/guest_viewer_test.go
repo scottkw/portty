@@ -74,6 +74,7 @@ func newGuestEnv(t *testing.T, mod func(*desktop.Deps)) *guestEnv {
 	deps := desktop.Deps{
 		Bind:         netip.MustParseAddr("127.0.0.1"),
 		MediaPort:    freeUDPPort(t),
+		Physical:     healthyPhysical, // a healthy tap that has seen nobody
 		NewSource:    func() screencap.Source { return screencap.NewSyntheticSource(1280, 800) },
 		OnViewerJoin: func(desktop.Viewer) { e.joins.Add(1) },
 		OnViewerLeave: func(desktop.Viewer) {

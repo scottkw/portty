@@ -321,10 +321,19 @@ func (g *GuestShare) Deny(reqID string) error {
 		g.mu.Unlock()
 		return ErrNoRequest
 	}
-	g.denied[r.Ident.UserID] = struct{}{}
+	out := g.denyUserLocked(r.Ident.UserID)
+	g.mu.Unlock()
+	g.fire(out)
+	return nil
+}
+
+// denyUserLocked puts the user on the deny-list and refuses every request they
+// have waiting, oldest first, returning the events to fire.
+func (g *GuestShare) denyUserLocked(userID int64) []GuestEvent {
+	g.denied[userID] = struct{}{}
 	var same []*Request
 	for _, p := range g.pending {
-		if p.Ident.UserID == r.Ident.UserID {
+		if p.Ident.UserID == userID {
 			same = append(same, p)
 		}
 	}
@@ -335,9 +344,23 @@ func (g *GuestShare) Deny(reqID string) error {
 			out = append(out, p.event(AuditDenied, ReasonDenied))
 		}
 	}
+	return out
+}
+
+// RevokeUser is what the sharer's revoke does to a person already admitted: the
+// deny-list now covers them (every device, every later knock), their waiting
+// requests are refused and their stored admissions are forgotten, so a
+// reconnect from any node is turned away.
+func (g *GuestShare) RevokeUser(userID int64) {
+	g.mu.Lock()
+	out := g.denyUserLocked(userID)
+	for k := range g.admitted {
+		if k.UserID == userID {
+			delete(g.admitted, k)
+		}
+	}
 	g.mu.Unlock()
 	g.fire(out)
-	return nil
 }
 
 // Pending lists the waiting requests in arrival order.

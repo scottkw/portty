@@ -13,6 +13,7 @@ package screencap
 #include <stdlib.h>
 
 int pc_ax_focus(int *pid, double *x, double *y, double *w, double *h, int *ok);
+int pc_ax_key_focus(int *pid, double *x, double *y, double *w, double *h, int *ok);
 int pc_window_info(uint32_t id, int *pid, double *x, double *y, double *w, double *h, int *onScreen);
 int pc_window_minimized(int pid, double x, double y, double w, double h, const char *title, int *minimized);
 int pc_window_raise(int pid, double x, double y, double w, double h, const char *title);
@@ -55,6 +56,24 @@ func (*WindowBridge) Focus() (pid int32, x, y, w, h float64, ok bool, err error)
 	var cx, cy, cw, ch C.double
 	if rc := C.pc_ax_focus(&cp, &cx, &cy, &cw, &ch, &cok); rc != 0 {
 		return 0, 0, 0, 0, 0, false, bridgeErr("reading the focused window", rc)
+	}
+	return int32(cp), float64(cx), float64(cy), float64(cw), float64(ch), cok != 0, nil
+}
+
+// KeyFocus reads, live, the owner pid of the element that holds keyboard focus
+// (the system-wide focused UI element) and the frame of that element's window,
+// in global points. It differs from Focus when a non-activating panel
+// (Spotlight, Alfred, Raycast) holds key focus while the focused application is
+// unchanged. ok is false when there is no element or window, which a caller
+// treats as no.
+func (*WindowBridge) KeyFocus() (pid int32, x, y, w, h float64, ok bool, err error) {
+	if testing.Testing() {
+		return 0, 0, 0, 0, 0, false, ErrRefusedInTest
+	}
+	var cp, cok C.int
+	var cx, cy, cw, ch C.double
+	if rc := C.pc_ax_key_focus(&cp, &cx, &cy, &cw, &ch, &cok); rc != 0 {
+		return 0, 0, 0, 0, 0, false, bridgeErr("reading the key focus", rc)
 	}
 	return int32(cp), float64(cx), float64(cy), float64(cw), float64(ch), cok != 0, nil
 }
