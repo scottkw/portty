@@ -89,7 +89,9 @@ var (
 	bidiDetails      = Details{
 		otherUser,
 		"ol\x07ive@example.com",
-		"Ol‮iv⁦e​ Ot\nher\tx",
+		// U+202E, U+2066, U+200B, a newline and a tab, spelled as runes so no
+		// invisible character sits in this source file.
+		"Ol" + string(rune(0x202e)) + "iv" + string(rune(0x2066)) + "e" + string(rune(0x200b)) + " Ot\nher\tx",
 		"olive-bidi",
 		"nOLV3CNTRL",
 	}

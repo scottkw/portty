@@ -108,6 +108,24 @@ func TestTailnetPeer_Refuses(t *testing.T) {
 	}
 }
 
+// TestTailnetPeer_BidiIdentityIsRaw: the gate hands on WhoIs text untouched (the
+// daemon sanitizes it later), so the hostile fixture really carries its
+// characters.
+func TestTailnetPeer_BidiIdentityIsRaw(t *testing.T) {
+	_, got := peerGateRun(t, webservertest.New(webservertest.OtherBidi), false, "192.0.2.9:1")
+	if got == nil {
+		t.Fatal("bidi identity refused")
+	}
+	for _, r := range []rune{0x202e, 0x2066, 0x200b, '\n', '\t'} {
+		if !strings.ContainsRune(got.DisplayName, r) {
+			t.Errorf("display name lost U+%04X", r)
+		}
+	}
+	if !strings.ContainsRune(got.LoginName, 0x07) {
+		t.Error("login name lost its control character")
+	}
+}
+
 // TestTailnetPeer_TwoHosts: one server, two guests at once, each with its own
 // WhoIs answer; an unset host falls back to the current identity.
 func TestTailnetPeer_TwoHosts(t *testing.T) {
