@@ -262,11 +262,35 @@ func (ws *WebServer) requireTailnetPeer(next http.HandlerFunc) http.HandlerFunc 
 	}
 }
 
-// userRefusedPage and serviceRetryPage are the embedded web/user-refused.html
-// and web/service-retry.html.
+// requireTailnetPeerPage is requireTailnetPeer for the guest page routes: the
+// refusal is a fixed static page (403 with the marker and the guest wording, or
+// 503 with the retry page and no marker). It stores no identity: the page and its
+// assets need none. Nothing from the request is rendered into either page.
+func (ws *WebServer) requireTailnetPeerPage(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		status, _ := ws.tailnetPeerStatus(r)
+		if status == 0 {
+			next(w, r)
+			return
+		}
+		page := serviceRetryPage
+		if status == http.StatusForbidden {
+			w.Header().Set(tailnet.MarkerHeader, tailnet.MarkerValue)
+			page = desktopGuestRefusedPage
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.WriteHeader(status)
+		_, _ = w.Write(page)
+	}
+}
+
+// userRefusedPage, serviceRetryPage and desktopGuestRefusedPage are the embedded
+// web/user-refused.html, web/service-retry.html and web/desktop-guest-refused.html.
 var (
-	userRefusedPage  = mustWebFile("user-refused.html")
-	serviceRetryPage = mustWebFile("service-retry.html")
+	userRefusedPage         = mustWebFile("user-refused.html")
+	serviceRetryPage        = mustWebFile("service-retry.html")
+	desktopGuestRefusedPage = mustWebFile("desktop-guest-refused.html")
 )
 
 func mustWebFile(name string) []byte {
