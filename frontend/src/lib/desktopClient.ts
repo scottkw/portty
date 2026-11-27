@@ -1,10 +1,13 @@
 import { readWebModeParams } from './webMode'
+import { MOVE_BUFFER_LIMIT } from './desktopInput'
 
 /**
  * Phase 19-06 — the /desktop/ viewer's connection. One signalling WebSocket
  * (protocol v1, 19-01) plus one RTCPeerConnection that receives the Mac's
- * screen as a video track. View only: no data channel, no input, no key
- * listeners (control is Phase 20).
+ * screen as a video track. Phase 20-06 adds the ordered `input` data channel
+ * (offered only when the server hello carries caps input 1), the rights the
+ * hello grants and the surface epoch that input must carry. The client never
+ * listens to keys or pointers: desktopInput.ts does, over the stage.
  *
  * Pure TypeScript with no React and no Wails imports, so the Phase 21 Wails
  * Desktop tab can reuse it: the transport, the liveness check, the pre-redial
@@ -71,12 +74,37 @@ export interface DesktopSizeMsg {
   h: number
 }
 
+/** What the server hello says this viewer may do (20-01 rights map; a missing field is false). */
+export interface DesktopRights {
+  control: boolean
+  clipboard: boolean
+  surface: boolean
+}
+
+export type SurfaceKind = 'display' | 'window'
+export type SurfaceReason = '' | 'window_closed' | 'display_gone'
+
+/** The shared surface and its epoch (20-03). Input must carry `e` or the daemon drops it. */
+export interface DesktopSurfaceMsg {
+  e: number
+  kind: SurfaceKind
+  id: number
+  name: string
+  w: number
+  h: number
+  reason: SurfaceReason
+}
+
 export interface DesktopEvents {
   track: MediaStream
   state: DesktopStateMsg
   size: DesktopSizeMsg
   status: ClientStatus
   wake: WakeReason
+  rights: DesktopRights
+  /** The input data channel opened or closed. */
+  input: { open: boolean }
+  surface: DesktopSurfaceMsg
 }
 
 export interface DesktopClient {
@@ -84,6 +112,16 @@ export interface DesktopClient {
   stop(): void
   /** Lets a host shell inject its own wake (Phase 21 calls wake('external') from its tab). */
   wake(reason: WakeReason): void
+  /** A signalling message (select, clipboard); input goes through sendInput. */
+  send(msg: object): void
+  /**
+   * One message on the input channel. False when the channel is not open, or, for a droppable
+   * message (a move), when more than MOVE_BUFFER_LIMIT bytes are already queued. Presses,
+   * releases and wheel are never droppable.
+   */
+  sendInput(msg: object, droppable?: boolean): boolean
+  /** The surface epoch last announced by the server, or null until the first surface message. */
+  currentEpoch(): number | null
   on<K extends keyof DesktopEvents>(event: K, cb: (v: DesktopEvents[K]) => void): () => void
 }
 
@@ -141,6 +179,7 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
 
   const listeners: { [K in keyof DesktopEvents]: Set<(v: DesktopEvents[K]) => void> } = {
     track: new Set(), state: new Set(), size: new Set(), status: new Set(), wake: new Set(),
+    rights: new Set(), input: new Set(), surface: new Set(),
   }
   function emit<K extends keyof DesktopEvents>(event: K, v: DesktopEvents[K]) {
     for (const cb of [...listeners[event]]) cb(v)
@@ -166,6 +205,8 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
   // on setRemoteDescription, long before (or without) any media path.
   let gotTrack = false
   let iceUp = false
+  let inputChannel: RTCDataChannel | null = null
+  let epoch: number | null = null
   let attempt = 0
   let pingN = 0
   let pendingPing: number | null = null
@@ -192,6 +233,13 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
     pendingPing = null
     gotTrack = false
     iceUp = false
+    epoch = null
+    // The viewer must release what it holds when its channel goes, so say so now: a closed
+    // peer connection reports its channel only after the generation has moved on.
+    if (inputChannel) {
+      inputChannel = null
+      emit('input', { open: false })
+    }
     const t = transport
     const p = pc
     transport = null
@@ -282,7 +330,7 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
     }
     transport = t
     t.onOpen(() => {
-      if (g === gen) t.send({ type: 'hello', v: 1, caps: { video: 1 } })
+      if (g === gen) t.send({ type: 'hello', v: 1, caps: { video: 1, input: 1 } })
     })
     t.onMessage((m) => {
       if (g === gen) void handle(g, m)
@@ -370,6 +418,20 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
     }
   }
 
+  function openInputChannel(g: number, conn: RTCPeerConnection) {
+    const ch = conn.createDataChannel('input', { ordered: true })
+    ch.onopen = () => {
+      if (g !== gen) return
+      inputChannel = ch
+      emit('input', { open: true })
+    }
+    ch.onclose = () => {
+      if (g !== gen || inputChannel !== ch) return
+      inputChannel = null
+      emit('input', { open: false })
+    }
+  }
+
   async function handle(g: number, raw: unknown) {
     if (typeof raw !== 'object' || raw === null) return
     const m = raw as Record<string, unknown>
@@ -385,6 +447,10 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
             if (g === gen) onTrack(e)
           }
           conn.onconnectionstatechange = () => onIceState(g, conn.connectionState)
+          const rights = (m.rights ?? {}) as Record<string, unknown>
+          emit('rights', { control: rights.control === true, clipboard: rights.clipboard === true, surface: rights.surface === true })
+          // Before addTransceiver and createOffer, so the offer carries an application m-line.
+          if ((m.caps as Record<string, unknown> | undefined)?.input === 1) openInputChannel(g, conn)
           conn.addTransceiver('video', { direction: 'recvonly' })
           await conn.setLocalDescription(await conn.createOffer())
           await gathered(conn)
@@ -403,6 +469,22 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
             emit('state', { state: m.state as DesktopState, viewers: lastViewers, locked: m.locked === true })
           }
           break
+        case 'surface': {
+          const kind = m.kind
+          if (!Number.isInteger(m.e) || (m.e as number) < 1 || (kind !== 'display' && kind !== 'window')) break
+          if (!Number.isInteger(m.id) || !Number.isInteger(m.w) || !Number.isInteger(m.h)) break
+          epoch = m.e as number
+          emit('surface', {
+            e: epoch,
+            kind,
+            id: m.id as number,
+            name: typeof m.name === 'string' ? m.name : '',
+            w: m.w as number,
+            h: m.h as number,
+            reason: m.reason === 'window_closed' || m.reason === 'display_gone' ? m.reason : '',
+          })
+          break
+        }
         case 'size':
           if (Number.isInteger(m.w) && Number.isInteger(m.h)) emit('size', { w: m.w as number, h: m.h as number })
           break
@@ -512,6 +594,17 @@ export function createDesktopClient(opts: DesktopClientOptions = {}): DesktopCli
     },
     stop: shutdown,
     wake: onWake,
+    send(msg) {
+      transport?.send(msg)
+    },
+    sendInput(msg, droppable = false) {
+      const ch = inputChannel
+      if (!ch || ch.readyState !== 'open') return false
+      if (droppable && ch.bufferedAmount > MOVE_BUFFER_LIMIT) return false
+      ch.send(JSON.stringify(msg))
+      return true
+    },
+    currentEpoch: () => epoch,
     on(event, cb) {
       const set = listeners[event] as Set<typeof cb>
       set.add(cb)

@@ -10,6 +10,8 @@ import {
   SignalSlashIcon,
 } from '@heroicons/react/24/outline'
 import { createDesktopClient, type ClientStatus, type DesktopStateMsg } from '../lib/desktopClient'
+import { createDesktopInput, type DesktopInput } from '../lib/desktopInput'
+import { isPhone } from '../lib/phoneQuery'
 import { UserRefused } from './UserRefused'
 
 const TITLE = 'Portty Desktop'
@@ -111,11 +113,16 @@ export interface DesktopViewProps {
 
 /**
  * Phase 19-06 — the /desktop/ viewer root. Owns one DesktopClient and one
- * <video> for the life of the page; no Wails imports, and view only: no
- * pointer, key or context-menu handling.
+ * <video> for the life of the page; no Wails imports. Phase 20-06 wraps the
+ * video in the stage, which owns every pointer and key listener of a viewer
+ * that may control the Mac; a phone, and a viewer without the control right,
+ * stays the view-only page.
  */
 export function DesktopView({ onVideoRect, onReload }: DesktopViewProps = {}): React.ReactElement {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const stageRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const inputCtl = useRef<DesktopInput | null>(null)
   const rectCb = useRef(onVideoRect)
   rectCb.current = onVideoRect
 
@@ -167,7 +174,23 @@ export function DesktopView({ onVideoRect, onReload }: DesktopViewProps = {}): R
 
   useEffect(() => {
     const client = createDesktopClient()
+    const phone = isPhone()
     const offs = [
+      client.on('rights', (r) => {
+        const stage = stageRef.current
+        const input = inputRef.current
+        if (!r.control || phone || inputCtl.current || !stage || !input) return
+        const ctl = createDesktopInput(stage, input, {
+          send: (msg, droppable = false) => client.sendInput(msg, droppable),
+          getEpoch: () => client.currentEpoch(),
+          getRect: () => {
+            const v = videoRef.current
+            return v ? videoContentRect(v.clientWidth, v.clientHeight, v.videoWidth, v.videoHeight) : { x: 0, y: 0, width: 0, height: 0 }
+          },
+        })
+        ctl.setControl(true)
+        inputCtl.current = ctl
+      }),
       client.on('track', (stream) => {
         const v = videoRef.current
         if (!v) return
@@ -188,6 +211,8 @@ export function DesktopView({ onVideoRect, onReload }: DesktopViewProps = {}): R
     client.start()
     return () => {
       for (const off of offs) off()
+      inputCtl.current?.destroy()
+      inputCtl.current = null
       client.stop()
     }
   }, [startPlay, updateRect])
@@ -238,7 +263,19 @@ export function DesktopView({ onVideoRect, onReload }: DesktopViewProps = {}): R
 
   return (
     <div className="desktop-view">
-      {video}
+      <div className="desktop-stage" ref={stageRef}>
+        {video}
+        <textarea
+          ref={inputRef}
+          className="desktop-stage__input"
+          aria-label="Mac desktop"
+          autoCapitalize="off"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          tabIndex={-1}
+        />
+      </div>
       {scrim && <div className="desktop-scrim" onClick={needsTap ? startPlay : undefined} />}
       <div className="desktop-status">
         {/* The wrapper and the live region stay mounted, so every change is announced.

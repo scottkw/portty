@@ -14,6 +14,9 @@ interface MockClient {
   start: ReturnType<typeof vi.fn>
   stop: ReturnType<typeof vi.fn>
   wake: ReturnType<typeof vi.fn>
+  send: ReturnType<typeof vi.fn>
+  sendInput: ReturnType<typeof vi.fn>
+  currentEpoch: ReturnType<typeof vi.fn>
   on: (ev: string, cb: Listener) => () => void
   emit: <K extends keyof DesktopEvents>(ev: K, v: DesktopEvents[K]) => void
 }
@@ -27,6 +30,9 @@ vi.mock('../../lib/desktopClient', () => ({
       start: vi.fn(),
       stop: vi.fn(),
       wake: vi.fn(),
+      send: vi.fn(),
+      sendInput: vi.fn(() => true),
+      currentEpoch: vi.fn(() => 1),
       on: (ev: string, cb: Listener) => {
         if (!ls.has(ev)) ls.set(ev, new Set())
         ls.get(ev)!.add(cb)
@@ -321,6 +327,51 @@ describe('layout and scope', () => {
     const c = client()
     act(() => root.render(null))
     expect(c.stop).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('control on the stage (Phase 20-06 Task 1)', () => {
+  function size(el: HTMLElement, w: number, hgt: number) {
+    Object.defineProperty(el, 'clientWidth', { configurable: true, value: w })
+    Object.defineProperty(el, 'clientHeight', { configurable: true, value: hgt })
+  }
+  function pointerdown(el: Element, x: number, y: number) {
+    act(() => {
+      el.dispatchEvent(new PointerEvent('pointerdown', { clientX: x, clientY: y, bubbles: true, button: 0, pointerId: 1 }))
+    })
+  }
+  const stage = () => container.querySelector('.desktop-stage') as HTMLElement
+  function ownAccount() {
+    size(video(), 1000, 500)
+    Object.defineProperty(video(), 'videoWidth', { configurable: true, value: 1600 })
+    Object.defineProperty(video(), 'videoHeight', { configurable: true, value: 1000 })
+    act(() => client().emit('rights', { control: true, clipboard: true, surface: true }))
+  }
+
+  it('wraps the one video in the stage, with the hidden input beside it', () => {
+    render()
+    expect(video().parentElement).toBe(stage())
+    expect(stage().querySelector('textarea.desktop-stage__input')).not.toBeNull()
+  })
+
+  it('forwards a click on the picture to the client as a btn on the input channel, and not one in the bar', () => {
+    render()
+    ownAccount()
+    pointerdown(stage(), 50, 250)
+    expect(client().sendInput).not.toHaveBeenCalled()
+    pointerdown(stage(), 500, 250)
+    expect(client().sendInput).toHaveBeenCalledWith(expect.objectContaining({ t: 'btn', b: 0, d: true, x: 0.5, y: 0.5, e: 1 }), false)
+  })
+
+  it('creates no controller when the hello does not grant control', () => {
+    render()
+    ownAccount()
+    act(() => root.render(null))
+    render()
+    size(video(), 1000, 500)
+    act(() => client().emit('rights', { control: false, clipboard: false, surface: false }))
+    pointerdown(stage(), 500, 250)
+    expect(client().sendInput).not.toHaveBeenCalled()
   })
 })
 
