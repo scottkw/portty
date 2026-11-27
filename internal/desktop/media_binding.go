@@ -2,6 +2,7 @@ package desktop
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net"
 	"strconv"
@@ -12,6 +13,12 @@ import (
 
 // identityLookupTimeout bounds the WhoIs call a media check makes.
 const identityLookupTimeout = 3 * time.Second
+
+// ErrPeerLookupStopped is what Deps.PeerIdentity returns when it cannot look
+// anything up because the share server has stopped (the share is ending). It is
+// no verdict, not a mismatch: Stop is already cutting the guests. Every other
+// lookup error still fails closed.
+var ErrPeerLookupStopped = errors.New("desktop: peer lookup stopped with the share server")
 
 // bindGuestMedia ties a guest's media path to the node it was admitted as. The
 // signalling socket proves who knocked, but the media runs over UDP to the
@@ -43,17 +50,21 @@ func (m *Manager) checkSelectedPair(v *viewer) {
 
 // checkMediaIdentity cuts a guest whose selected pair's remote address does not
 // belong to the admitted user's admitted node. A missing pair, a missing
-// Deps.PeerIdentity and a failed lookup all cut too (fail closed). The log line
-// carries the viewer ID prefix and the kind, never an address.
+// Deps.PeerIdentity and a failed lookup all cut too (fail closed). A check that
+// ends after the viewer was cut or its PeerConnection closed (it left, was
+// revoked, or Stop cut it during the lookup) is no verdict. The cut is the
+// ordered one (cutViewer: rights, input, media, then the socket under the
+// close ceiling). The log line carries the viewer ID prefix and the kind,
+// never an address.
 func (m *Manager) checkMediaIdentity(v *viewer, pair *webrtc.ICECandidatePair) {
 	kind := m.mediaMismatch(v, pair)
-	if kind == "" || !v.mediaCut.CompareAndSwap(false, true) {
+	if kind == "" || v.cut.Load() || (v.pc != nil && v.pc.ConnectionState() == webrtc.PeerConnectionStateClosed) ||
+		!v.mediaCut.CompareAndSwap(false, true) {
 		return
 	}
 	slog.Warn("desktop: guest media identity", "viewer", string(v.ID)[:8], "kind", kind)
 	v.gs.emit(GuestEvent{Kind: AuditRevoked, Reason: ReasonMediaIdentityMismatch, Ident: v.Identity})
-	// A close handshake can take seconds; the caller must not wait for it.
-	go func() { _ = v.ws.Close(CloseGuestRevoked, guestReasonRevoked) }()
+	m.cutViewer(v, CloseGuestRevoked, guestReasonRevoked, false)
 }
 
 // mediaMismatch returns why the pair is not the admitted node's, or "" when it is.
@@ -69,6 +80,8 @@ func (m *Manager) mediaMismatch(v *viewer, pair *webrtc.ICECandidatePair) string
 	defer cancel()
 	user, node, err := m.d.PeerIdentity(ctx, addr)
 	switch {
+	case errors.Is(err, ErrPeerLookupStopped):
+		return "" // no verdict: the share is ending and Stop cuts the guests
 	case err != nil:
 		return "lookup_failed"
 	case user != v.Identity.UserID:

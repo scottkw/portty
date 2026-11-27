@@ -983,7 +983,7 @@ func (a *API) peerIdentity(ctx context.Context, addr string) (int64, string, err
 	ws := a.webServer
 	a.mu.RUnlock()
 	if ws == nil {
-		return 0, "", errors.New("the share server is not running")
+		return 0, "", desktop.ErrPeerLookupStopped // no verdict, not a mismatch (the share is ending)
 	}
 	return ws.LookupPeer(ctx, addr)
 }
