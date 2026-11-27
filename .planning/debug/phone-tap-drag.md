@@ -48,6 +48,8 @@ files_changed:
 
 ## Re-check on the real iPhone (Safari)
 
+Build to test: v23.8.2 from 6ea4e35e (p22-rig build22, tags "wailsassets vmdesktop", Developer ID), deployed to portty-test 2026-11-27 with a fresh always-available link; TextEdit frontmost with ~/p21/scroll-test.txt.
+
 1. Move the pointer onto TextEdit's title bar with one finger and lift. Tap once, then within about a quarter second touch again and drag: the window follows the finger and drops on lift. Watch for the small ring at the drag start (it marks the press).
 2. Same, but after the second touch rest the finger for a full second before moving: the ring shows at about half a second and the window then follows (no context menu).
 3. Do 1 three times with quick and slow approaches to the title bar.

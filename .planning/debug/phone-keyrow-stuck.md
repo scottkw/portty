@@ -31,6 +31,8 @@ files_changed:
 
 ## Re-check on the real iPhone (Safari, then Chrome for iOS)
 
+Build to test: v23.8.2 from 6ea4e35e (p22-rig build22, tags "wailsassets vmdesktop", Developer ID), deployed to portty-test 2026-11-27 with a fresh always-available link; TextEdit frontmost with ~/p21/scroll-test.txt.
+
 1. Show Keyboard, then tap Esc in the key row. Note whether the keyboard closes. If it does: within about half a second the bottom bar with Show Keyboard comes back; tap it and the keyboard and key row return.
 2. Repeat with Tab (second key) and the Right arrow (far right). If only Esc closes the keyboard, note it (left screen edge); if all do, note it.
 3. Arm Cmd, then let the keyboard close by any means: the bottom bar returns and Cmd is no longer armed when the keyboard is reopened.
