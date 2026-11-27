@@ -222,6 +222,19 @@ describe('menus open upward', () => {
     expect(p.sendChord).toHaveBeenCalledWith(['MetaLeft', 'Space'])
   })
 
+  it('a guest phone gets no Lock Screen… in Send Keys; an own-account phone does', () => {
+    rects(300)
+    render(props({ guest: true }))
+    press(btn('Send Keys'))
+    expect(menuItem('Cmd+Tab')).toBeDefined()
+    expect(menuItem('Lock Screen')).toBeUndefined()
+    act(() => root.unmount())
+    root = createRoot(container)
+    render(props())
+    press(btn('Send Keys'))
+    expect(menuItem('Lock Screen')).toBeDefined()
+  })
+
   it('in a window share the Send Keys items are inert', () => {
     rects(300)
     const p = props({ surface: { kind: 'window', id: 7 } })

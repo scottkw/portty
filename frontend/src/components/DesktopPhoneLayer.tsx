@@ -26,6 +26,8 @@ export interface DesktopPhoneLayerProps {
   locked: boolean
   reconnecting: boolean
   onSelectSurface(pick: SurfacePick): void
+  /** A guest page (22-07): passed to the bars so Send Keys offers no Lock Screen…. */
+  guest?: boolean
 }
 
 /** A tap before the Mac's first cursor report waits this long for it, then is dropped. */
@@ -60,7 +62,7 @@ function keyFor(ch: string): { code: string; shift: boolean } | null {
  * (never window or document for touches) and sends Phase 20 messages. The pointer lives on the Mac:
  * drags are relative moves, clicks use the Mac's last cursor report, and zoom never leaves the phone.
  */
-export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconnecting, onSelectSurface }: DesktopPhoneLayerProps): React.ReactElement {
+export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconnecting, onSelectSurface, guest = false }: DesktopPhoneLayerProps): React.ReactElement {
   const canControl = rights?.control === true
   const paused = locked || reconnecting
   const live = useRef({ canControl, paused })
@@ -430,6 +432,7 @@ export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconn
             canPickSurface={rights?.surface === true}
             disabledReason={locked ? 'Locked' : reconnecting ? 'Reconnecting' : null}
             client={client}
+            guest={guest}
           />,
           slot,
         )}

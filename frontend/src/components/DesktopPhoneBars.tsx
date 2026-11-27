@@ -35,6 +35,8 @@ export interface DesktopPhoneBarsProps {
   client: DesktopClient
   /** The view's pick handler: it tracks the switch and reports a refusal. */
   onSelectSurface(pick: SurfacePick): void
+  /** A guest page (22-07): Send Keys offers no Lock Screen…. */
+  guest?: boolean
 }
 
 const CAPTION_ID = 'desktop-phone-picker-caption'
@@ -50,7 +52,7 @@ const noop = () => {}
  */
 export function DesktopPhoneBars({
   keyboardUp, zoom, onFit, onShowKeyboard, onKey, armed, onToggleArm, sendChord,
-  surfaceName, surface, canControl, canPickSurface, disabledReason, client, onSelectSurface,
+  surfaceName, surface, canControl, canPickSurface, disabledReason, client, onSelectSurface, guest = false,
 }: DesktopPhoneBarsProps): React.ReactElement {
   const [down, setDown] = useState<string | null>(null)
   const [sendKeys, setSendKeys] = useState<{ x: number; y: number } | null>(null)
@@ -210,6 +212,7 @@ export function DesktopPhoneBars({
           windowShare={surface?.kind === 'window'}
           disabledReason={disabledReason ?? undefined}
           above
+          guest={guest}
         />
       )}
       {picker && (

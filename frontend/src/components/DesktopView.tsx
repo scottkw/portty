@@ -1094,6 +1094,7 @@ export function DesktopView({
             locked={locked}
             reconnecting={hostPaused || status.kind === 'reconnecting' || status.kind === 'unreachable'}
             onSelectSurface={pickSurface}
+            guest={guest}
           />
         )}
         <span id={HINT_ID} className="visually-hidden">
