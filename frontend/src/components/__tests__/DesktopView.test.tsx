@@ -1960,3 +1960,85 @@ describe('app tab cards, host card and pause (Phase 21-08 Task 2)', () => {
     expect(rule).not.toMatch(/white-space:\s*nowrap|text-overflow/)
   })
 })
+
+describe('control seams for the app tab (Phase 21-08 Task 3)', () => {
+  const stage = () => container.querySelector('.desktop-stage') as HTMLElement
+  const input = () => container.querySelector('textarea') as HTMLTextAreaElement
+  const notice = () => container.querySelector('.desktop-chip--notice')
+  function ownAccount() {
+    for (const [a, b] of [['clientWidth', 1000], ['clientHeight', 500], ['videoWidth', 1600], ['videoHeight', 1000]] as const) {
+      Object.defineProperty(video(), a, { configurable: true, value: b })
+    }
+    act(() => client().emit('rights', { control: true, clipboard: true, surface: true }))
+  }
+  const click = () =>
+    act(() => {
+      stage().dispatchEvent(new PointerEvent('pointerdown', { clientX: 500, clientY: 250, bubbles: true, button: 0, pointerId: 1 }))
+    })
+  const sentTypes = () => client().sendInput.mock.calls.map((c) => (c[0] as { t: string }).t)
+
+  beforeEach(() => window.localStorage.clear())
+
+  it('onCaptureChange follows the keyboard: true when a click gives the stage the keyboard, false when it goes', () => {
+    const calls: boolean[] = []
+    render({ onCaptureChange: (c) => calls.push(c) })
+    ownAccount()
+    click()
+    expect(calls[calls.length - 1]).toBe(true)
+    act(() => input().blur())
+    expect(calls[calls.length - 1]).toBe(false)
+  })
+
+  it('controlRef.releaseAll sends release with no Held keys notice; releaseKeyboard gives the keyboard back; notify shows a notice', () => {
+    const ref = { current: null as import('../DesktopView').DesktopControlHandle | null }
+    const calls: boolean[] = []
+    render({ controlRef: ref, onCaptureChange: (c) => calls.push(c), hideCaptureNotices: true })
+    ownAccount()
+    click()
+    act(() => input().dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyA', key: 'a', bubbles: true, cancelable: true })))
+    client().sendInput.mockClear()
+    act(() => ref.current!.releaseAll())
+    expect(sentTypes()).toContain('release')
+    expect(notice()).toBeNull()
+    act(() => ref.current!.releaseKeyboard())
+    expect(calls[calls.length - 1]).toBe(false)
+    act(() => ref.current!.notify('Nothing to paste', 'alert'))
+    expect(notice()?.textContent).toBe('Nothing to paste')
+    expect(notice()?.getAttribute('role')).toBe('alert')
+  })
+
+  it('hideCaptureNotices keeps both capture notices away and still shows Held keys were released', () => {
+    render({ hideCaptureNotices: true })
+    ownAccount()
+    click()
+    expect(notice()).toBeNull()
+    act(() => input().dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyA', key: 'a', bubbles: true, cancelable: true })))
+    status({ kind: 'reconnecting' })
+    expect(notice()?.textContent).toBe('Held keys were released')
+  })
+
+  it('without hideCaptureNotices a capture still says Typing goes to the Mac', () => {
+    render()
+    ownAccount()
+    click()
+    expect(notice()?.textContent).toContain('Typing goes to the Mac')
+  })
+
+  it('onModeChange reports the bar\'s View Only and Control choice', () => {
+    const modes: string[] = []
+    render({ onModeChange: (m) => modes.push(m) })
+    expect(modes).toEqual(['control'])
+    render({ onModeChange: (m) => modes.push(m), controlMode: 'view' })
+    expect(modes).toEqual(['control', 'view'])
+  })
+
+  it('embedded never offers Full Screen, even where the web view reports it available', async () => {
+    Object.defineProperty(document, 'fullscreenEnabled', { configurable: true, value: true })
+    render({ embedded: true })
+    ownAccount()
+    await firstFrame()
+    expect(container.querySelector('button[aria-label="Full Screen"], [aria-label="Full Screen"]')).toBeNull()
+    expect(container.textContent).not.toContain('Full Screen')
+    delete (document as unknown as { fullscreenEnabled?: unknown }).fullscreenEnabled
+  })
+})

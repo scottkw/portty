@@ -289,3 +289,44 @@ describe('closing the tab', () => {
     expect(c.stop).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('the toolbar label feed (Task 3)', () => {
+  const last = () => onLabel.mock.calls[onLabel.mock.calls.length - 1][0] as
+    | { line1: string; line2: string; controlling: boolean; tooltip: string }
+    | null
+  const ownAccount = () => emit('rights', { control: true, clipboard: true, surface: true })
+  async function picture() {
+    emit('status', { kind: 'streaming' })
+    emit('track', {} as MediaStream)
+    await act(async () => { container.querySelector('video')!.dispatchEvent(new Event('playing')) })
+  }
+
+  it('says Not connected before a picture, then Click the picture to control once one shows and control is allowed', async () => {
+    render()
+    expect(last()).toMatchObject({ line1: 'On office-air', line2: 'Not connected', controlling: false })
+    ownAccount()
+    await picture()
+    expect(last()).toMatchObject({ line1: 'On office-air', line2: 'Click the picture to control', controlling: false })
+    expect(last()?.tooltip).toContain('While you control office-air, every key goes to that Mac')
+  })
+
+  it('says Controlling while the stage has the keyboard, and Locked when the Mac is locked and the keyboard is not captured', async () => {
+    render()
+    ownAccount()
+    await picture()
+    act(() => container.querySelector('.desktop-stage')!.dispatchEvent(new PointerEvent('pointerdown', { clientX: 5, clientY: 5, bubbles: true, button: 0, pointerId: 1 })))
+    expect(last()).toMatchObject({ line1: 'Controlling office-air', controlling: true })
+    act(() => (container.querySelector('textarea') as HTMLTextAreaElement).blur())
+    emit('state', { state: 'locked', viewers: 1, locked: true })
+    expect(last()).toMatchObject({ line2: 'Locked', controlling: false })
+  })
+
+  it('says View only without the control right, and reports null while the tab is not active', async () => {
+    render()
+    emit('rights', { control: false, clipboard: false, surface: false })
+    await picture()
+    expect(last()).toMatchObject({ line2: 'View only' })
+    render({ active: false })
+    expect(last()).toBeNull()
+  })
+})
