@@ -2263,6 +2263,142 @@ Rig: the user's office Mac and personal MacBook Air (the viewer) on the user's t
   - _Why not automatable:_ visual judgement of real WebKit and AppKit rendering, which the VM cannot screenshot and the host may not run; structure is covered by `SettingsSheet.desktop.test.tsx`, `DesktopSetupSheet.test.tsx`, `DesktopView.test.tsx` and `TestDesktopTrayLine`.
   - _Source:_ 19-13-SUMMARY.md gap G8, 19-14-SUMMARY.md (tray line not observed), 19-VM-CHECKS.md findings (Background service row below the fold; setup sheet wording not exercised), UI-SPEC "UI Considerations" (appearance backstop).
 
+### Category BK — Remote Control (Phase 20)
+
+Rig: the user's office Mac and personal MacBook Air (the viewer) on the user's tailnet, the user's iPhone with Tailscale on, and an external display; Portty installed from a Developer ID build or the first v2.0 release candidate. Nothing here runs without the owner at the Mac, and no token, link or address is written down: links go from the office Mac to the other devices through a private channel and are deleted afterwards. The VM rows these items extend are in `.planning/phases/20-remote-control/20-VM-CHECKS.md` (each item names its rows as _Source_); only what a VM cannot show is here. Every item that needs Control starts with the viewer's Control segment on and, where a window or display is named, on the office Mac. Items that say "recorded" are observations to write down, not pass or fail, because the plan could not settle them in a VM. Phase 21 numbers its items after M-193.
+
+- **M-180** Pointer accuracy on the real Retina display and an external display at any viewer window size, and scrolling with a real trackpad (DCTL-01, DCTL-02; Portty 20-06; the owner runs it; human_needed).
+  1. On the office Mac share the main (Retina) display and open the viewer on the home Mac in Chrome and then in Safari. With a text editor open, click the first character, a middle character and the last character of a line, and the close button of a window, once with the viewer window about 600 px wide and once full screen.
+  2. Share the external display (or the second display) and repeat the clicks. Also click in the black letterbox bars around the picture.
+  3. Double-click a word and triple-click a line in the editor.
+  4. Scroll a long document with a two-finger trackpad swipe on the home Mac, with Natural scrolling on and then off in the home Mac's Trackpad settings, and again with the office Mac's own setting flipped.
+  PASS when: every click lands on the character or button under the viewer's pointer, with no offset and no drift near the edges, at both window sizes on both displays; clicks in the letterbox bars do nothing on the office Mac; double and triple click select the word and the line at the Mac's normal double-click pace; the document scrolls the same way the viewer's own page does for the same gesture, whichever way the office Mac's own scroll setting is (VM row S1 saw the setting not re-invert posted scrolls). Record any combination that differs.
+  - _Last run:_ not yet run.
+  - _Why not automatable:_ the real Retina and external displays and a physical trackpad; the VM has one virtual 2560 x 1440 display and posts scrolls from a script. Normalization and the rect math are unit-tested (`desktopInput.test.ts`, `TestInputMap_Point`).
+  - _Source:_ 20-VM-CHECKS.md rows E2 and S1, 20-UI-SPEC.md "UI Considerations" (pointer accuracy backstop), 20-06-PLAN.md.
+
+- **M-181** Input methods, emoji picker, dictation and dead keys arrive once, and a non-US viewer layout is recorded (DCTL-02; Portty 20-06; the owner runs it; human_needed).
+  1. In Chrome and then Safari on the home Mac, open the viewer with Control on and click into a text field on the office Mac.
+  2. Turn on a Japanese or Chinese input method, compose a phrase, choose a candidate and commit it. Note where the candidate window appears.
+  3. Open the emoji picker (Ctrl+Cmd+Space) and insert an emoji; start dictation and say a sentence; type Option+E then E for an accented letter.
+  4. Switch the home Mac to a non-US layout (for example German or French) and type letters, punctuation and symbols.
+  PASS when: the composed phrase, the emoji, the dictated sentence and the accented letter each arrive on the office Mac exactly once, with no raw letters ahead of a composition; the candidate window sits where the hidden input is, near the picture. Recorded for step 4: for each key that types a different character on the office Mac than on the viewer, the viewer layout, the key and both characters (printable keys go by physical key code, so this list is the input to a layout fallback decision).
+  - _Last run:_ not yet run.
+  - _Why not automatable:_ real input methods, the emoji picker, macOS dictation and physical keyboard layouts in real browsers; jsdom sends synthetic events only.
+  - _Source:_ 20-UI-SPEC.md "UI Considerations" (input-method and emoji backstop), 20-06-SUMMARY.md backstop truths, 20-02-SUMMARY.md (layout fallback observation), 20-06-PLAN.md.
+
+- **M-182** Nothing stays held after a Cmd chord, a closed tab, a sleeping home Mac or a dropped network (DCTL-02; Portty 20-06; the owner runs it; human_needed; extends VM row H1).
+  1. With Control on and a text editor focused on the office Mac, press Cmd+C and then type letters, in Chrome, Safari and Firefox.
+  2. Hold Shift in the viewer and close the viewer tab with Shift still down; at the office Mac type a letter on its own keyboard.
+  3. Hold a letter key in the viewer and close the home Mac's lid for 30 s; open it and look at the office Mac's editor.
+  4. Hold a letter key in the viewer and turn the home Mac's Wi-Fi off for 15 s, then on.
+  PASS when: after each case the editor shows no repeating key, a letter typed at the office Mac's own keyboard comes out in lowercase and Cmd is not held (typing letters types letters, not shortcuts), and the viewer after it reconnects works with a new first key.
+  - _Last run:_ not yet run.
+  - _Why not automatable:_ a physical keyboard, a sleeping laptop and a real network drop; the VM row H1 closed one Safari session only.
+  - _Source:_ 20-VM-CHECKS.md row H1, 20-06-SUMMARY.md backstop truths (Cmd chord in three browsers), 20-06-PLAN.md.
+
+- **M-183** Send Keys (Cmd+Tab, Cmd+Space, Lock Screen) and the Ctrl and Cmd swap from a non-Mac keyboard (DCTL-03; Portty 20-06 and 20-07; the owner runs it; human_needed; extends VM rows C1 and C2).
+  1. With Control on, open Send Keys and choose Cmd+Tab, then Cmd+Space, then press Esc.
+  2. Choose Lock Screen…, read the dialog (Don't Lock has focus) and choose Lock Screen. With the Mac locked, type letters in the viewer. Unlock the office Mac at its keyboard.
+  3. On a non-Mac keyboard (a PC keyboard on the home Mac) turn Swap Ctrl and Cmd on: copy and paste in an office app with Ctrl+C and Ctrl+V and switch apps with Ctrl+Tab. Turn it off and press Ctrl+C in a terminal.
+  4. Press Ctrl+Option+Cmd+Return in the viewer.
+  PASS when: Cmd+Tab switches the office Mac's app and Cmd+Space opens search with nothing left held; Lock Screen only locks after the confirm, the viewer shows Locked, nothing typed while locked reaches the login window's password field, and the viewer returns to streaming after the unlock; with Swap on, Ctrl+C and Ctrl+V act as Cmd+C and Cmd+V and Ctrl+Tab as Cmd+Tab, with Swap off Ctrl+C reaches the terminal as Ctrl+C; the release chord lets go of every key and puts focus on the Control segment, and no part of it reaches the Mac.
+  - _Last run:_ not yet run.
+  - _Why not automatable:_ the real lock screen with its secure password field, and a physical non-Mac keyboard; the VM guest screen reads blank and has no second keyboard.
+  - _Source:_ 20-VM-CHECKS.md rows C1 and C2, 20-07-PLAN.md, 20-06-PLAN.md.
+
+- **M-184** A window share on the office Mac: raise, confinement, a banner over the window, chords and a hung app (DCTL-05; Portty 20-04 and 20-07; the owner runs it; human_needed; extends VM rows W1 and W2).
+  1. Open TextEdit and Notes on the office Mac with TextEdit behind Notes. In the viewer's picker choose the TextEdit window and click inside it; click inside it again.
+  2. Minimize TextEdit and click inside the picture.
+  3. Put something over the shared window (a notification banner, or the Fonts panel moved over it) and click on the viewer at the covered spot.
+  4. From the viewer press Cmd+Tab, Cmd+Space and Ctrl+Cmd+Q while the window is shared.
+  5. Share a display from a second viewer, then in Terminal on the office Mac run `kill -STOP` on the TextEdit process, click in the first viewer's picture, and move the pointer in the second viewer. Run `kill -CONT` afterwards.
+  PASS when: the first click brings TextEdit forward and the second lands in it; the minimized window is restored by the click; the click on a covered spot does nothing in either window; the three chords do nothing to the office Mac while a window is shared; with TextEdit stopped the first viewer shows the raise-failed chip (its text names the window) and the second viewer's input is not delayed.
+  - _Last run:_ not yet run.
+  - _Why not automatable:_ a real window server with another app's banner, the corporate Mac's own window behaviour and a real hung app; the VM rows W1 and W2 used a probe route for the raise and covering.
+  - _Source:_ 20-VM-CHECKS.md rows W1 and W2, 20-04-SUMMARY.md (raise ladder, hung-app timeout), 20-04-PLAN.md.
+
+- **M-185** What a window share shows of a sheet, an Open and Save panel and a pop-up menu (DESK-05; Portty 20-04; recorded, not pass or fail; the owner runs it; human_needed; closes VM row W3).
+  1. Share the TextEdit window. On the office Mac press Cmd+S so the Save sheet drops from the window; look at the viewer. Cancel it.
+  2. Press Cmd+O for the Open panel; look at the viewer. Cancel it.
+  3. Open a pop-up menu in the window (the Typeface pop-up in the Fonts panel, or the format pop-up in the Save sheet) and look at the viewer.
+  Recorded: for each of the three, whether the viewer's picture shows it. If the picture lacks them (Apple's note for single-window capture is that it excludes such windows, 20-RESEARCH R10), say whether a window share is still usable for the owner's work or should offer a display share for those cases.
+  - _Last run:_ not yet run.
+  - _Why not automatable:_ the decoded frame could not be read in either VM browser (WebKit's `drawImage` of the video throws in the guest); only a person looking at a real viewer settles it.
+  - _Source:_ 20-VM-CHECKS.md row W3 and research assumption A13, 20-09-SUMMARY.md.
+
+- **M-186** A pop-up menu of the shared app can be clicked in a window share, and another app's window still cannot (DCTL-05; Portty 20-04 post-VM fix X1, `TestWindow_SameAppPopupAllowed`; the owner runs it; human_needed; the VM recheck of X1 after the same-app carve-out).
+  1. Share the TextEdit window. Open a pop-up menu of TextEdit that drops outside the window's frame or over it (the Typeface pop-up in the Fonts panel, or the format pop-up in the Save sheet) and, through the viewer, click one of its items.
+  2. Move a Finder window over part of the shared window and click through the viewer at a spot the Finder window covers.
+  PASS when: the menu item is chosen (the typeface or format changes and the menu closes); the click at the spot covered by the Finder window does nothing in either window. If the pop-up click is still dropped, that is a defect to fix (the VM saw it dropped before the fix), not a gap to accept.
+  - _Last run:_ not yet run.
+  - _Why not automatable:_ a real shared app's pop-up menus and another app's windows over it on the real window server; the VM recheck of the fix was not run.
+  - _Source:_ 20-VM-CHECKS.md row X1 and its follow-up note, 20-04-SUMMARY.md "Post-VM fix (X1)".
+
+- **M-187** The Accessibility focus read stays valid on the real Macs (DCTL-05; Portty 20-04; recorded; the owner runs it; human_needed; VM row X3).
+  1. With a window share on and a click landing in the shared window, lock and unlock the office Mac, then click again in the picture.
+  2. Change a scroll preference in System Settings (Natural scrolling), then click again. Quit and reopen the shared app, share its window again and click again.
+  3. If a click is ever dropped (the picture does not react, the raise-failed chip shows), keep clicking every minute for up to 10 minutes and watch whether it recovers on its own.
+  PASS when: after each event the next click inside the shared window lands within about 2 s. Recorded if not: the macOS version, the event that came before, and how long it took to recover. The VM saw the focus read fail with code -25204 for about ten minutes after a lock, a scroll toggle and a typing run, cause unknown, with the window gate failing closed (every press dropped).
+  - _Last run:_ not yet run.
+  - _Why not automatable:_ it depends on the real Macs' session history over minutes; it showed once in a VM and did not repeat.
+  - _Source:_ 20-VM-CHECKS.md row X3 and research assumption A2, 20-04-SUMMARY.md.
+
+- **M-188** Display switching with an external display, an unplugged display, a closed window, and the in-band resolution change on iPhone Safari and in Portty's own window (DESK-05, DESK-06; Portty 20-03 and 20-07; the owner runs it; human_needed; extends VM rows D1 and D2, the Wails and iPhone halves of A11).
+  1. With an external display connected, open the viewer in Safari on the home Mac and open the picker. Switch Main Display, Display 2, a window, and back, each time reading the button (Switching…, then Showing …).
+  2. Unplug the shared external display; read the viewer. Plug it back in.
+  3. Share a window and close it; read the viewer. Share another window and minimize it; open the picker.
+  4. Repeat the display to window switch on the iPhone in Safari and in the Portty window on the home Mac (a desktop peer tab).
+  PASS when: every switch shows Switching… and then Showing …, the picture stays sharp and never goes black, the viewer never shows Reconnecting and never reloads, and the first frame of a still window arrives within about 1 s; unplugging the display and closing the window each show the fallback notice and the picture keeps playing; a minimized window leaves the picker but the share does not drop to the main display; the picture changes size in place on the iPhone and in the Portty window.
+  - _Last run:_ not yet run.
+  - _Why not automatable:_ a physical display to unplug and a physical iPhone; the VM rows D1 and D2 covered Safari and Chrome only and its displays are virtual.
+  - _Source:_ 20-VM-CHECKS.md rows D1 and D2 and research assumptions A11 and A12, 20-03-SUMMARY.md (switch and fallback rows), 20-07-PLAN.md.
+
+- **M-189** Clipboard both ways in Chrome and Safari, a password manager item that never copies, and a 1 MB text (DCTL-06; Portty 20-05 and 20-08; the owner runs it; human_needed; extends VM rows P1 and P2).
+  1. In Safari: copy text on the office Mac, choose Clipboard, Copy from Mac, then paste into a field on the home Mac. Copy different text on the home Mac and choose Paste to Mac; answer Safari's Paste prompt or use the Paste popover; press Cmd+V in an app on the office Mac.
+  2. In Chrome: choose Paste to Mac for the first time and allow the clipboard permission; then reset the permission to Block and choose it again.
+  3. Copy a password from a real password manager on the office Mac (its own copy action, which marks the item concealed) and choose Copy from Mac.
+  4. Copy a text of exactly 1 MB (1048576 bytes) on each side and send it each way; then a text one byte longer.
+  PASS when: in Safari the copy lands from the click itself or the Copy popover opens when Safari refuses and its text copies; Paste to Mac sets the office Mac's clipboard and nothing is typed into the focused app, and Cmd+V pastes the text; in Chrome the first Paste to Mac asks, Allow sends it and Block opens the Paste popover; the password manager item gives the hidden-item notice, nothing reaches the home Mac's clipboard and the password never appears on the page; the 1 MB text round trips both ways and one byte more is refused with the too-large notice.
+  - _Last run:_ not yet run.
+  - _Why not automatable:_ real browsers' clipboard gesture and permission rules, Safari's Paste prompt and a real password manager; the VM rows P1 and P2 could not give Safari a real user activation and used a script for the concealed item.
+  - _Source:_ 20-VM-CHECKS.md rows P1 and P2, 20-UI-SPEC.md "UI Considerations" (Safari clipboard backstop), 20-08-PLAN.md, 20-05-PLAN.md.
+
+- **M-190** Paste from Other Apps on the corporate Mac: does macOS ask before the daemon reads the clipboard (DCTL-06; Portty 20-05 and 20-10; recorded; the owner runs it; human_needed; VM row P1, research assumption A10 and R14).
+  1. On the corporate office Mac, with the Portty window closed and Always-available desktop on, copy text in another app. In the viewer choose Clipboard, Copy from Mac.
+  2. Watch the office Mac's screen for any alert about pasting from other apps, and search System Settings, Privacy & Security for any paste setting for Portty.
+  3. If an alert shows, leave it unanswered and click Copy from Mac again; then answer it and try again.
+  PASS when: either no alert appears and the copy completes, or the alert path behaves as follows: with the alert unanswered the viewer shows "Waiting for approval at the Mac. macOS is asking before Portty reads its clipboard." within about 2 s and the desktop keeps streaming, and after the alert is answered the copy completes. Recorded: whether an alert showed, its wording, and the setting's path if there is one. An alert on this Mac means 20-10's `PASTE_ROW: none` decision was wrong for it: raise it, because the setup sheet then needs a Paste from Other Apps row.
+  - _Last run:_ not yet run.
+  - _Why not automatable:_ the corporate Mac's managed privacy settings; the VM's daemon read and wrote the clipboard with `accessBehavior` set to always allow and never showed an alert.
+  - _Source:_ 20-VM-CHECKS.md rows P1 and P3 and research assumption A10, 20-09-SUMMARY.md (decision `PASTE_ROW: none`), 20-10-SUMMARY.md.
+
+- **M-191** Chrome Keyboard Lock, the full-screen notice in Safari and Firefox, and the control bar, menus, popovers and chips in light and dark (DCTL-02, DCTL-03, DCTL-06; Portty 20-07 and 20-08; the owner runs it; human_needed).
+  1. In Chrome on the home Mac choose Full Screen from the bar, allow Keyboard Lock if asked, and press Cmd+Tab and Cmd+Space with Control on. Hold Esc for 2 s to leave.
+  2. In full screen open the Send Keys menu, the Lock This Mac dialog, the picker and both Clipboard popovers.
+  3. Repeat Full Screen in Safari and in Firefox and read the notice.
+  4. In light and then dark appearance on the home Mac look at the bar, its menus, both popovers and the stacked state chips (a window share with the raise-failed chip, and the Control needs Accessibility chip).
+  PASS when: in Chrome Cmd+Tab and Cmd+Space reach the office Mac in full screen (and not the home Mac) and a 2 s Esc hold leaves full screen and lets go of every key; the menus, dialog and popovers are visible inside full screen; Safari and Firefox show "Full screen is on. This browser keeps Cmd shortcuts; use Send Keys for Cmd+Tab and Cmd+Space."; every bar item, menu, popover and chip reads clearly and aligns in both appearances.
+  - _Last run:_ not yet run.
+  - _Why not automatable:_ Chrome's real Keyboard Lock permission and Esc hold, each browser's full-screen rules and a visual judgement in both appearances; the VM's WebKit screenshots are blank.
+  - _Source:_ 20-UI-SPEC.md "UI Considerations" (Chrome Keyboard Lock and light and dark backstops), 20-07-SUMMARY.md and 20-08-SUMMARY.md manual lists, 20-07-PLAN.md.
+
+- **M-192** Typing into a password field and Caps Lock reach the office Mac (DCTL-02; Portty 20-02 and 20-06; recorded; the owner runs it; human_needed; research assumptions A5 and A8, not run in the VM).
+  1. With Control on, focus a password field in an app on the office Mac that is not the lock screen (a login form in Safari, or an app's password sheet) and type a short password through the viewer.
+  2. Turn Caps Lock on at the home Mac's keyboard and type letters into a text editor on the office Mac; turn it off and type again.
+  PASS when: the password field fills with the characters typed (a field that stays empty is a defect: macOS may be dropping posted keys while Secure Event Input is on); with Caps Lock on the editor shows capitals and with it off lowercase. Recorded: the app and macOS version if either fails. Nothing is typed on the lock screen; that is M-183.
+  - _Last run:_ not yet run.
+  - _Why not automatable:_ Secure Event Input and a real keyboard's Caps Lock state on the real Macs; the VM's lock gate stopped all input while locked, so A5 was never measured.
+  - _Source:_ 20-VM-CHECKS.md closure (research assumptions A5 and A8, not run), 20-02-PLAN.md.
+
+- **M-193** A viewer that cannot get a picture says so, and never says Streaming ahead of one (DCTL-01, DESK-06; Portty 20-06; the owner runs it; human_needed; VM row X2).
+  1. On the home Mac open the link in Chrome and then in Safari, each with `#debug` added to the address, and watch the status and the frames decoded from the first second.
+  2. Open the link from a network that cannot carry the media path (a phone hotspot or a guest network that blocks peer traffic) and wait for the page to give up.
+  PASS when: in either browser the status reads Streaming only once the media path is up, so frames decoded start rising within a couple of seconds of it and a stuck connection never reads Streaming (record the gap you see between Streaming and the first frame; the VM saw Safari at 0 frames on its second poll); on the blocked network the viewer shows "Can't reach this Mac" within about 30 s and backs off between tries instead of retrying at once.
+  - _Last run:_ not yet run.
+  - _Why not automatable:_ the VM's media path always connects, so a real connection failure and the real direct path's timing are not reachable, and `connectionState` is not exposed by the debug hook (X2 inferred it).
+  - _Source:_ 20-VM-CHECKS.md row X2, 20-06-SUMMARY.md manual list item (d), 20-06-PLAN.md.
+
 ---
 
 ## 6. Standing Convention
