@@ -1565,6 +1565,199 @@ describe('Paste to Mac and the popovers (Phase 20-08 Task 2)', () => {
   })
 })
 
+describe('state chips (Phase 20-08 Task 3)', () => {
+  const stateChip = () => container.querySelector('.desktop-chip:not(.desktop-chip--notice)')
+  const notice = () => container.querySelector('.desktop-chip--notice')
+  const RAISE = "Couldn't bring the window to the front. Click the picture to try again."
+  const MINIMIZED = 'The shared window is minimized. Click the picture to bring it back.'
+  const ACCESS = 'Control needs Accessibility. On the Mac, allow Portty in Privacy & Security.'
+  const phoneMedia = () =>
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (q: string) => ({ matches: true, media: q, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList,
+    )
+  const control = (c: DesktopEvents['control']) => act(() => client().emit('control', c))
+  const MAIN = { e: 1, kind: 'display', id: 1, name: 'Main Display', w: 1470, h: 956, reason: '' } as const
+  const surface = (over: Partial<DesktopEvents['surface']> = {}) =>
+    act(() => client().emit('surface', { ...MAIN, ...over } as DesktopEvents['surface']))
+
+  function ownAccount() {
+    act(() => client().emit('rights', { control: true, clipboard: true, surface: true }))
+  }
+
+  beforeEach(() => window.localStorage.clear())
+
+  it('a raise failure is a chip with the warning icon, until the daemon reports window ""', async () => {
+    render()
+    ownAccount()
+    await firstFrame()
+    control({ input: 'ok', window: 'raise_failed' })
+    expect(stateChip()?.textContent).toBe(RAISE)
+    expect(stateChip()?.querySelector('svg')).not.toBeNull()
+    advance(60000)
+    expect(stateChip()?.textContent).toBe(RAISE)
+    control({ input: 'ok', window: '' })
+    expect(stateChip()).toBeNull()
+  })
+
+  it('a minimized window is a chip with the window icon, and clears when the window is back', async () => {
+    render()
+    ownAccount()
+    await firstFrame()
+    control({ input: 'ok', window: 'minimized' })
+    expect(stateChip()?.textContent).toBe(MINIMIZED)
+    expect(stateChip()?.querySelector('svg')).not.toBeNull()
+    control({ input: 'ok', window: '' })
+    expect(stateChip()).toBeNull()
+  })
+
+  it('Control needs Accessibility is a chip until input is ok again', async () => {
+    render()
+    ownAccount()
+    await firstFrame()
+    control({ input: 'needs_accessibility', window: '' })
+    expect(stateChip()?.textContent).toBe(ACCESS)
+    expect(stateChip()?.querySelector('svg')).not.toBeNull()
+    advance(60000)
+    expect(stateChip()?.textContent).toBe(ACCESS)
+    control({ input: 'ok', window: '' })
+    expect(stateChip()).toBeNull()
+  })
+
+  it('priority: Reconnecting beats Control needs Accessibility', async () => {
+    render()
+    ownAccount()
+    await firstFrame()
+    control({ input: 'needs_accessibility', window: '' })
+    status({ kind: 'reconnecting' })
+    expect(container.querySelectorAll('.desktop-chip:not(.desktop-chip--notice)')).toHaveLength(1)
+    expect(stateChip()?.textContent).toBe('Reconnecting…')
+  })
+
+  it('priority: Locked beats a window problem and Control needs Accessibility', async () => {
+    render()
+    ownAccount()
+    await firstFrame()
+    control({ input: 'needs_accessibility', window: 'raise_failed' })
+    state({ state: 'locked', viewers: 1, locked: true })
+    expect(container.querySelectorAll('.desktop-chip:not(.desktop-chip--notice)')).toHaveLength(1)
+    expect(stateChip()?.textContent).toBe('Locked')
+    state({ state: 'streaming', viewers: 1, locked: false })
+    expect(stateChip()?.textContent).toBe(RAISE)
+  })
+
+  it('priority: a window problem beats Control needs Accessibility, which beats Streaming to N viewers', async () => {
+    render()
+    ownAccount()
+    state({ state: 'streaming', viewers: 2, locked: false })
+    await firstFrame()
+    expect(stateChip()?.textContent).toBe('Streaming to 2 viewers')
+    control({ input: 'needs_accessibility', window: '' })
+    expect(stateChip()?.textContent).toBe(ACCESS)
+    control({ input: 'needs_accessibility', window: 'minimized' })
+    expect(stateChip()?.textContent).toBe(MINIMIZED)
+    control({ input: 'needs_accessibility', window: '' })
+    expect(stateChip()?.textContent).toBe(ACCESS)
+  })
+
+  it('a state card (Phase 19) still wins over every control chip', async () => {
+    render()
+    ownAccount()
+    await firstFrame()
+    control({ input: 'needs_accessibility', window: 'raise_failed' })
+    state({ state: 'display_asleep', viewers: 1, locked: false })
+    expect(container.querySelector('.desktop-card')).not.toBeNull()
+    expect(stateChip()).toBeNull()
+  })
+
+  it('the notice chip renders below the state chip and both show at once', async () => {
+    render()
+    ownAccount()
+    await firstFrame()
+    control({ input: 'needs_accessibility', window: '' })
+    act(() => { client().emit('surface', { ...MAIN } as DesktopEvents['surface']) })
+    surface({ e: 2, kind: 'window', id: 4242, name: 'Terminal — zsh' })
+    expect(stateChip()?.textContent).toBe(ACCESS)
+    expect(notice()?.textContent).toBe('Showing Terminal — zsh')
+    const slots = Array.from(container.querySelectorAll('.desktop-status [role="status"]'))
+    const chipSlot = slots.find((s) => s.contains(stateChip()))!
+    const noticeSlot = slots.find((s) => s.contains(notice()))!
+    expect(chipSlot.compareDocumentPosition(noticeSlot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('chips are role status regions that never take focus; only a failure notice is role alert', async () => {
+    render()
+    ownAccount()
+    await firstFrame()
+    control({ input: 'ok', window: 'raise_failed' })
+    const chip = stateChip() as HTMLElement
+    expect(chip.closest('[role="status"]')).not.toBeNull()
+    expect(chip.hasAttribute('tabindex')).toBe(false)
+    expect(chip.querySelector('button, a, input, textarea, [tabindex]')).toBeNull()
+    expect(container.querySelector('.desktop-status [role="alert"]')).toBeNull()
+    expect(document.activeElement).not.toBe(chip)
+  })
+
+  it('the notice moves down to clear a state chip that wraps onto more lines', async () => {
+    render()
+    ownAccount()
+    await firstFrame()
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+      configurable: true,
+      get() {
+        return (this as HTMLElement).classList.contains('desktop-chip') && !(this as HTMLElement).classList.contains('desktop-chip--notice') ? 50 : 0
+      },
+    })
+    try {
+      control({ input: 'ok', window: 'raise_failed' })
+      const status = container.querySelector<HTMLElement>('.desktop-status')!
+      expect(status.style.getPropertyValue('--desktop-chip-h')).toBe('50px')
+      control({ input: 'ok', window: '' })
+      expect(status.style.getPropertyValue('--desktop-chip-h')).toBe('')
+    } finally {
+      delete (HTMLElement.prototype as unknown as { offsetHeight?: unknown }).offsetHeight
+    }
+  })
+
+  describe('a phone', () => {
+    it('still shows the Locked chip and a Showing notice, with no bar and no Clipboard button', async () => {
+      phoneMedia()
+      render()
+      ownAccount()
+      await firstFrame()
+      state({ state: 'locked', viewers: 1, locked: true })
+      surface()
+      surface({ e: 2, id: 2, name: 'Display 2' })
+      expect(stateChip()?.textContent).toBe('Locked')
+      expect(notice()?.textContent).toBe('Showing Display 2')
+      expect(container.querySelector('[role="toolbar"]')).toBeNull()
+      expect(container.querySelector('button[aria-label="Clipboard"]')).toBeNull()
+      expect(container.querySelector('.desktop-popover')).toBeNull()
+    })
+
+    it('shows Reconnecting and the Streaming count too', async () => {
+      phoneMedia()
+      render()
+      state({ state: 'streaming', viewers: 1, locked: false })
+      await firstFrame()
+      expect(stateChip()?.textContent).toBe('Streaming to 1 viewer')
+      status({ kind: 'reconnecting' })
+      expect(stateChip()?.textContent).toBe('Reconnecting…')
+    })
+  })
+
+  describe('style.css', () => {
+    const css = readFileSync(resolve(__dirname, '../../style.css'), 'utf8')
+    it('chips wrap at 480 px and never truncate', () => {
+      const rule = css.match(/\n\.desktop-chip\s*\{[^}]*\}/)?.[0] ?? ''
+      expect(rule).toMatch(/max-width:\s*min\(480px,\s*calc\(100% - 48px\)\)/)
+      expect(css).not.toMatch(/\.desktop-chip[^{]*\{[^}]*(text-overflow|white-space:\s*nowrap)/)
+    })
+    it('the notice sits below the state chip by its measured height', () => {
+      expect(css).toMatch(/\.desktop-view--bar \.desktop-chip--notice\s*\{[^}]*var\(--desktop-chip-h/)
+    })
+  })
+})
+
 describe('videoContentRect', () => {
   it('letterboxes a wide video in a wider element', () => {
     expect(videoContentRect(1000, 500, 1600, 1000)).toEqual({ x: 100, y: 0, width: 800, height: 500 })
