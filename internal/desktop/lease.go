@@ -12,8 +12,8 @@ import (
 // after every other drop check, so the lease is taken only by input that would
 // otherwise post. The lease loop tells controlling viewers who holds control and
 // runs the input tap's life cycle: the tap exists only while somebody remote can
-// control, because it needs Accessibility and a listen-only tap on every key the
-// person at the Mac types.
+// control (or the re-lock rule is armed, relock.go), because it needs
+// Accessibility and a listen-only tap on every key the person at the Mac types.
 
 // Lease states a controlling viewer is told (the lease message's state).
 const (
@@ -111,15 +111,15 @@ func (m *Manager) AnyController() bool {
 // the tap runs. While it is, the tap cannot see the person at the Mac's keys.
 func (m *Manager) SecureInput() bool { return m.lease.secure.Load() }
 
-// syncTap starts the tap when a controller exists and it is not running, and
-// stops it when none does. It runs at once when a controller joins, is granted
+// syncTap starts the tap when a controller exists (or re-lock is armed) and it
+// is not running, and stops it when neither does. It runs at once when a controller joins, is granted
 // control or leaves, and every poll (which retries a start that failed, for
 // instance before Accessibility was granted).
 func (m *Manager) syncTap() {
 	c := &m.lease
 	c.tapMu.Lock()
 	defer c.tapMu.Unlock()
-	want := !m.closed.Load() && m.AnyController()
+	want := !m.closed.Load() && (m.AnyController() || m.relockArmed())
 	switch {
 	case want && !c.tapOn:
 		if err := m.d.StartTap(); err != nil {
@@ -241,6 +241,7 @@ func (m *Manager) leasePass(ctx context.Context, poll bool) {
 	defer recoverLog()
 	if poll {
 		m.pollTap()
+		m.relockPoll(m.d.Now()) // after the tap's own poll, so a tap started this pass is read
 	}
 	m.pushLease(ctx)
 }

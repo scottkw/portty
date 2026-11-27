@@ -43,6 +43,12 @@ type runtimeState struct {
 	ApprovalSeenAt int64   `json:"approvalSeenAt"`
 	CaptureActive  bool    `json:"captureActive"`
 	AbnormalExits  []int64 `json:"abnormalExits"`
+
+	// RelockArmed: a Portty unlock left the Mac unlocked and the re-lock rule is
+	// armed (relock.go). Written only while armed, so a file that never armed is
+	// byte for byte what an older build wrote.
+	RelockArmed bool      `json:"relockArmed,omitempty"`
+	RelockSince time.Time `json:"relockSince,omitzero"`
 }
 
 // rtMu serialises read-modify-write of the file inside this process (the
@@ -210,6 +216,7 @@ func (m *Manager) loadRuntimeState() {
 	if rs.ApprovalSeenAt != 0 {
 		m.approvalSeen = time.Unix(rs.ApprovalSeenAt, 0)
 	}
+	m.rl.resume = rs.RelockArmed
 	if m.paused = len(rs.AbnormalExits) >= breakerTrips; m.paused {
 		slog.Error("desktop: capture paused after repeated abnormal exits; a successful Test Capture resumes it", "exits", len(rs.AbnormalExits))
 	}

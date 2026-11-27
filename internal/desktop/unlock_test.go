@@ -154,13 +154,18 @@ func (f *fakeUnlock) bufferZeroed() bool {
 type unlockRig struct {
 	*guestEnv
 	fb     *fakeUnlock
+	fi     *fakeInputBridge
 	clk    *fakeClock
 	locked atomic.Bool
 }
 
-func newUnlockRig(t *testing.T) *unlockRig {
+func newUnlockRig(t *testing.T) *unlockRig { return newUnlockRigWith(t, nil) }
+
+// newUnlockRigWith is newUnlockRig that lets a test adjust the rig's fakes and
+// the Deps last (the Manager is built right after).
+func newUnlockRigWith(t *testing.T, mod func(*unlockRig, *desktop.Deps)) *unlockRig {
 	t.Helper()
-	r := &unlockRig{clk: newFakeClock()}
+	r := &unlockRig{clk: newFakeClock(), fi: &fakeInputBridge{}}
 	r.locked.Store(true)
 	r.fb = &fakeUnlock{clk: r.clk, locked: &r.locked, unlockOnReturn: 1}
 	r.guestEnv = newGuestEnv(t, func(d *desktop.Deps) {
@@ -168,8 +173,11 @@ func newUnlockRig(t *testing.T) *unlockRig {
 		d.Lock = func() (bool, error) { return r.locked.Load(), nil }
 		d.Unlock = r.fb
 		d.UnlockSleep = r.clk.Advance
-		d.Input = &fakeInputBridge{}
+		d.Input = r.fi
 		d.DisplayBounds = testDisplay
+		if mod != nil {
+			mod(r, d)
+		}
 	})
 	return r
 }
@@ -184,13 +192,18 @@ type unlockViewer struct {
 // ownUnlockViewer joins an own-account viewer through a bare route, like
 // guestEnv.ownViewer, and keeps its hello.
 func (e *guestEnv) ownUnlockViewer(ctx context.Context, t *testing.T) *unlockViewer {
+	return e.ownUnlockViewerAs(ctx, t, desktop.Identity{})
+}
+
+// ownUnlockViewerAs is ownUnlockViewer for an own-account viewer with an identity.
+func (e *guestEnv) ownUnlockViewerAs(ctx context.Context, t *testing.T, ident desktop.Identity) *unlockViewer {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, err := websocket.Accept(w, r, nil)
 		if err != nil {
 			return
 		}
-		e.mgr.ServeDesktopViewer(r.Context(), c, func() bool { return true })
+		e.mgr.ServeDesktopViewerAs(r.Context(), c, func() bool { return true }, ident)
 	}))
 	t.Cleanup(srv.Close)
 	c, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http"), nil)
