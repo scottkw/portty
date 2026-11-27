@@ -68,12 +68,18 @@ type fanViewer struct {
 // data channel).
 func (e *tracerEnv) join(ctx context.Context, t *testing.T, tok string, extra ...func(*loopbackClient)) *fanViewer {
 	t.Helper()
+	return e.joinCaps(ctx, t, tok, map[string]int{"video": 1}, extra...)
+}
+
+// joinCaps is join with the capabilities the viewer's hello declares.
+func (e *tracerEnv) joinCaps(ctx context.Context, t *testing.T, tok string, caps map[string]int, extra ...func(*loopbackClient)) *fanViewer {
+	t.Helper()
 	conn, _, err := e.dial(ctx, tok)
 	if err != nil {
 		t.Fatalf("dial /desktop/ws: %v", err)
 	}
 	t.Cleanup(func() { _ = conn.CloseNow() })
-	writeJSON(ctx, t, conn, map[string]any{"type": "hello", "v": 1, "caps": map[string]int{"video": 1}})
+	writeJSON(ctx, t, conn, map[string]any{"type": "hello", "v": 1, "caps": caps})
 	readType(ctx, t, conn, "hello")
 	lc := newLoopbackClient(t)
 	for _, f := range extra {
