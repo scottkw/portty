@@ -100,8 +100,9 @@ const button = (label: string) => buttons().find((b) => b.textContent === label)
 type Props = Partial<Parameters<typeof DesktopTab>[0]>
 const onDesktopState = vi.fn()
 const onLabel = vi.fn()
+const onPlaying = vi.fn()
 function render(over: Props = {}) {
-  act(() => root.render(<DesktopTab tab={tab} active onDesktopState={onDesktopState} onLabel={onLabel} {...over} />))
+  act(() => root.render(<DesktopTab tab={tab} active onDesktopState={onDesktopState} onLabel={onLabel} onPlaying={onPlaying} {...over} />))
 }
 const emit = <K extends keyof DesktopEvents>(ev: K, v: DesktopEvents[K]) => act(() => client().emit(ev, v))
 const setVisibility = (v: DocumentVisibilityState) => {
@@ -142,6 +143,7 @@ beforeEach(() => {
   h.readHome.mockReset()
   onDesktopState.mockReset()
   onLabel.mockReset()
+  onPlaying.mockReset()
   visibility = 'visible'
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility })
   vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
@@ -603,5 +605,62 @@ describe('control mode (21-09): a click captures the keyboard and every way out 
       expect(h.readHome).not.toHaveBeenCalled()
       expect(client().pasteToMac).not.toHaveBeenCalled()
     })
+  })
+})
+
+// Phase 23-08: the tab entry's speaker follows the viewer's sound, for any tab, active or not.
+describe('the playing feed (23-08)', () => {
+  const soundItem = () => container.querySelector('.desktop-sound') as HTMLButtonElement
+  const lastPlaying = () => onPlaying.mock.calls[onPlaying.mock.calls.length - 1]?.[0]
+  const clickSound = async () => { await act(async () => { soundItem().click() }) }
+  async function soundOn(over: Props = {}) {
+    render(over)
+    ownAccount()
+    emit('caps', { audio: true, unlock: false })
+    await picture()
+    await clickSound()
+  }
+
+  it('is false until Unmute, true once sound is on, false again on Mute', async () => {
+    render()
+    ownAccount()
+    emit('caps', { audio: true, unlock: false })
+    await picture()
+    expect(lastPlaying()).toBe(false)
+    await clickSound()
+    expect(lastPlaying()).toBe(true)
+    await clickSound()
+    expect(lastPlaying()).toBe(false)
+  })
+
+  it('goes false when the hidden-window pause disconnects the tab, and true again when the picture returns with sound still on', async () => {
+    await soundOn()
+    expect(lastPlaying()).toBe(true)
+    setVisibility('hidden')
+    await advance(HIDDEN_PAUSE_MS)
+    expect(client().stop).toHaveBeenCalledTimes(1)
+    expect(lastPlaying()).toBe(false)
+    setVisibility('visible')
+    await advance(0)
+    emit('status', { kind: 'streaming' })
+    emit('track', {} as MediaStream)
+    expect(lastPlaying()).toBe(true)
+  })
+
+  it('goes false when the connection is lost', async () => {
+    await soundOn()
+    emit('status', { kind: 'reconnecting' })
+    expect(lastPlaying()).toBe(false)
+  })
+
+  it('goes false when the tab closes', async () => {
+    await soundOn()
+    act(() => root.render(<div />))
+    expect(lastPlaying()).toBe(false)
+  })
+
+  it('is reported for a tab that is not the active one', async () => {
+    await soundOn({ active: false })
+    expect(lastPlaying()).toBe(true)
   })
 })

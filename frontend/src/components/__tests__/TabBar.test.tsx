@@ -785,3 +785,50 @@ describe('TabBar: the Desktop tab toolbar label (Portty 21-08)', () => {
     expect(container.querySelector('.toolbar-chip--desktop')).toBeNull()
   })
 })
+
+// Phase 23-08 (DCTL-07): the Desktop tab entry's playing indicator.
+describe('TabBar: a Desktop tab that is playing sound (23-08)', () => {
+  const id = 'desktop:office-air.ts.net'
+  const tabs = [
+    { id: 'shell', name: 'shell', sessionId: 'shell' },
+    { id, name: 'office-air › Desktop', sessionId: id, type: 'desktop' as const, peerHost: 'office-air', connectHost: 'office-air.ts.net' },
+  ]
+  const entry = (c: HTMLElement) => c.querySelector<HTMLElement>(`[role="tab"][id="tab-${id}"]`)!
+  let container: HTMLElement
+  let root: ReturnType<typeof createRoot>
+  afterEach(() => {
+    act(() => root.unmount())
+    container.remove()
+  })
+
+  it('shows a 16 px speaker, hidden from assistive tech, between the name and the peer dot, and the accessible name ends with , playing sound', () => {
+    ;({ container, root } = renderTabBarWithTabs({ tabs, activeId: 'shell', playingTabIds: new Set([id]) }))
+    const t = entry(container)
+    const icon = t.querySelector('svg.tab__sound')!
+    expect(icon.getAttribute('aria-hidden')).toBe('true')
+    const kids = Array.from(t.children)
+    const name = t.querySelector('.tab__name')!
+    const dot = t.querySelector('.peer-dot')!
+    expect(kids.indexOf(name)).toBeLessThan(kids.indexOf(icon))
+    expect(kids.indexOf(icon)).toBeLessThan(kids.indexOf(dot))
+    expect(t.getAttribute('aria-label')).toBe('Desktop · office-air, playing sound')
+  })
+
+  it('shows it on an inactive tab too, and nothing on the others', () => {
+    ;({ container, root } = renderTabBarWithTabs({ tabs, activeId: 'shell', playingTabIds: new Set([id]) }))
+    expect(container.querySelectorAll('.tab__sound')).toHaveLength(1)
+    expect(container.querySelector('[role="tab"][id="tab-shell"]')!.getAttribute('aria-label')).toBeNull()
+  })
+
+  it('both go away when the tab is not playing', () => {
+    ;({ container, root } = renderTabBarWithTabs({ tabs, activeId: id, playingTabIds: new Set() }))
+    expect(container.querySelector('.tab__sound')).toBeNull()
+    expect(entry(container).getAttribute('aria-label')).toBeNull()
+    expect(entry(container).textContent).toBe('Desktop · office-air')
+  })
+
+  it('a local tab with the same id in the set shows no speaker', () => {
+    ;({ container, root } = renderTabBarWithTabs({ tabs, activeId: 'shell', playingTabIds: new Set(['shell']) }))
+    expect(container.querySelector('.tab__sound')).toBeNull()
+  })
+})
