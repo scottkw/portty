@@ -1,8 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log"
+	"net"
+	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -208,5 +214,143 @@ func TestDesktopShareApp_TrayShowSheet(t *testing.T) {
 	a.shareDesktopFromTray()
 	if shown != 1 || h.count("desktopshare:open-sheet") != 1 {
 		t.Errorf("shown=%d open-sheet=%d, want 1 and 1", shown, h.count("desktopshare:open-sheet"))
+	}
+}
+
+// shareRoute is what one fake daemon route answers.
+type shareRoute struct {
+	status int
+	body   string
+}
+
+// fakeShareDaemon serves the click-to-share routes on a temp daemon socket, so
+// the bindings run against real HTTP with no daemon, tailnet or capture. hits
+// records "METHOD path" for every request.
+func fakeShareDaemon(t *testing.T, routes map[string]shareRoute) (*App, *[]string) {
+	t.Helper()
+	sock := respawnHome(t)
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	hits := []string{}
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := r.Method + " " + r.URL.Path
+		mu.Lock()
+		hits = append(hits, key)
+		mu.Unlock()
+		rt, ok := routes[key]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		if rt.status != 0 {
+			w.WriteHeader(rt.status)
+		}
+		_, _ = w.Write([]byte(rt.body))
+	})}
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { _ = srv.Close() })
+	return &App{client: daemon.NewDaemonClient(sock)}, &hits
+}
+
+const shareTestURL = "https://mac.example.ts.net/d/?cap=SECRETCAP"
+
+func TestDesktopShareBinding_NilClientNeverThrows(t *testing.T) {
+	a := &App{}
+	if got := a.StartDesktopShare(); got.ErrorCode != "unavailable" || got.URL != "" {
+		t.Errorf("StartDesktopShare = %+v", got)
+	}
+	if got := a.GetDesktopShare(); got.ErrorCode != "unavailable" || got.Active {
+		t.Errorf("GetDesktopShare = %+v", got)
+	}
+	for name, got := range map[string]DesktopShareActionResult{
+		"stop":       a.StopDesktopShare(),
+		"admit":      a.AdmitDesktopGuest("r1"),
+		"deny":       a.DenyDesktopGuest("r1"),
+		"rights":     a.SetDesktopViewerRights("v1", true, false),
+		"disconnect": a.DisconnectDesktopViewer("v1"),
+	} {
+		if got.ErrorCode != "unavailable" {
+			t.Errorf("%s = %+v, want unavailable", name, got)
+		}
+	}
+}
+
+func TestDesktopShareBinding_StartAndGet(t *testing.T) {
+	var logs bytes.Buffer
+	log.SetOutput(&logs)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	a, _ := fakeShareDaemon(t, map[string]shareRoute{
+		"POST /desktop/share": {body: `{"url":"` + shareTestURL + `","firstShare":true}`},
+		"GET /desktop/share":  {body: `{"type":"state","active":true,"viewers":[],"pending":[],"url":"` + shareTestURL + `"}`},
+	})
+	if got := a.StartDesktopShare(); got != (DesktopShareResult{URL: shareTestURL, FirstShare: true}) {
+		t.Errorf("StartDesktopShare = %+v", got)
+	}
+	if got := a.GetDesktopShare(); got != (DesktopShareInfo{Active: true, URL: shareTestURL}) {
+		t.Errorf("GetDesktopShare = %+v", got)
+	}
+	if strings.Contains(logs.String(), "cap=") {
+		t.Errorf("a binding logged the link: %q", logs.String())
+	}
+}
+
+func TestDesktopShareBinding_StartRefusalsPassThrough(t *testing.T) {
+	for _, code := range []string{"gui_required", "tailscale_off", "https_off", "tailscale_userspace", "start_failed"} {
+		a, _ := fakeShareDaemon(t, map[string]shareRoute{
+			"POST /desktop/share": {status: http.StatusConflict, body: `{"error":"` + code + `","detail":"why"}`},
+		})
+		got := a.StartDesktopShare()
+		if got.ErrorCode != code || got.Detail != "why" || got.URL != "" {
+			t.Errorf("code %s: StartDesktopShare = %+v", code, got)
+		}
+	}
+}
+
+func TestDesktopShareBinding_TransportErrors(t *testing.T) {
+	// A daemon that is not listening: a transport error, not a daemon code.
+	a := &App{client: daemon.NewDaemonClient(respawnHome(t))}
+	if got := a.StartDesktopShare(); got.ErrorCode != "start_failed" || got.Detail == "" {
+		t.Errorf("StartDesktopShare = %+v, want start_failed with the local error", got)
+	}
+	if got := a.StopDesktopShare(); got.ErrorCode != "stop_failed" {
+		t.Errorf("StopDesktopShare = %+v, want stop_failed", got)
+	}
+	if got := a.GetDesktopShare(); got.ErrorCode != "unavailable" {
+		t.Errorf("GetDesktopShare = %+v, want unavailable", got)
+	}
+	if got := a.AdmitDesktopGuest("r1"); got.ErrorCode != "unavailable" {
+		t.Errorf("AdmitDesktopGuest = %+v, want unavailable", got)
+	}
+}
+
+func TestDesktopShareBinding_ActionsPassIDAndMapRefusals(t *testing.T) {
+	a, hits := fakeShareDaemon(t, map[string]shareRoute{
+		"DELETE /desktop/share":                 {status: http.StatusNoContent},
+		"POST /desktop/share/requests/r1/admit": {status: http.StatusNoContent},
+		"POST /desktop/share/requests/r2/deny":  {status: http.StatusNotFound, body: `{"error":"no_request"}`},
+		"PUT /desktop/share/viewers/v1/rights":  {status: http.StatusConflict, body: `{"error":"own_viewer"}`},
+		"DELETE /desktop/share/viewers/v2":      {status: http.StatusNotFound, body: `{"error":"no_viewer"}`},
+	})
+	if got := a.StopDesktopShare(); got != (DesktopShareActionResult{}) {
+		t.Errorf("StopDesktopShare = %+v", got)
+	}
+	if got := a.AdmitDesktopGuest("r1"); got != (DesktopShareActionResult{}) {
+		t.Errorf("AdmitDesktopGuest = %+v", got)
+	}
+	if got := a.DenyDesktopGuest("r2"); got.ErrorCode != "no_request" {
+		t.Errorf("DenyDesktopGuest = %+v", got)
+	}
+	if got := a.SetDesktopViewerRights("v1", true, true); got.ErrorCode != "own_viewer" {
+		t.Errorf("SetDesktopViewerRights = %+v", got)
+	}
+	if got := a.DisconnectDesktopViewer("v2"); got.ErrorCode != "no_viewer" {
+		t.Errorf("DisconnectDesktopViewer = %+v", got)
+	}
+	if len(*hits) != 5 {
+		t.Errorf("hits = %v, want 5 daemon calls", *hits)
 	}
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -159,6 +160,109 @@ func (a *App) setTrayViewers(n int) {
 func (a *App) shareDesktopFromTray() {
 	a.showWindow()
 	a.emitEvent("desktopshare:open-sheet", nil)
+}
+
+// The sheets' bindings. Like the Settings bindings they never throw: a failure is
+// an ErrorCode, and Detail is only ever the daemon's wording of its own refusal or
+// this process's own transport error, never text from a remote peer.
+
+// DesktopShareResult is StartDesktopShare's answer. The link is returned here and
+// by GetDesktopShare only, for the sheet's Copy Link; it is never logged, emitted
+// in an event or put in a notification.
+type DesktopShareResult struct {
+	URL        string `json:"url"`
+	FirstShare bool   `json:"firstShare"`
+	ErrorCode  string `json:"errorCode"`
+	Detail     string `json:"detail"`
+}
+
+// DesktopShareInfo is GetDesktopShare's answer: whether a share is active and its link.
+type DesktopShareInfo struct {
+	Active    bool   `json:"active"`
+	URL       string `json:"url"`
+	ErrorCode string `json:"errorCode"`
+	Detail    string `json:"detail"`
+}
+
+// DesktopShareActionResult answers every binding that returns nothing but success.
+type DesktopShareActionResult struct {
+	ErrorCode string `json:"errorCode"`
+	Detail    string `json:"detail"`
+}
+
+// shareFailure turns a client error into the binding's code and detail: the
+// daemon's own refusal keeps its code, anything else gets fallback.
+func shareFailure(err error, fallback string) (code, detail string) {
+	var se *daemon.ShareError
+	if errors.As(err, &se) {
+		return se.Code, se.Detail
+	}
+	return fallback, err.Error()
+}
+
+// shareAction runs one daemon call that returns only an error.
+func (a *App) shareAction(fallback string, call func(*daemon.DaemonClient) error) DesktopShareActionResult {
+	if a.client == nil {
+		return DesktopShareActionResult{ErrorCode: "unavailable", Detail: "daemon not connected"}
+	}
+	if err := call(a.client); err != nil {
+		code, detail := shareFailure(err, fallback)
+		return DesktopShareActionResult{ErrorCode: code, Detail: detail}
+	}
+	return DesktopShareActionResult{}
+}
+
+// StartDesktopShare starts the click-to-share, or returns the running one's link.
+func (a *App) StartDesktopShare() DesktopShareResult {
+	if a.client == nil {
+		return DesktopShareResult{ErrorCode: "unavailable", Detail: "daemon not connected"}
+	}
+	s, err := a.client.StartDesktopShare()
+	if err != nil {
+		code, detail := shareFailure(err, "start_failed")
+		return DesktopShareResult{ErrorCode: code, Detail: detail}
+	}
+	return DesktopShareResult{URL: s.URL, FirstShare: s.FirstShare}
+}
+
+// GetDesktopShare reads whether a share is active and, while one is, its link.
+func (a *App) GetDesktopShare() DesktopShareInfo {
+	if a.client == nil {
+		return DesktopShareInfo{ErrorCode: "unavailable", Detail: "daemon not connected"}
+	}
+	s, err := a.client.DesktopShare()
+	if err != nil {
+		code, detail := shareFailure(err, "unavailable")
+		return DesktopShareInfo{ErrorCode: code, Detail: detail}
+	}
+	return DesktopShareInfo{Active: s.Active, URL: s.URL}
+}
+
+// StopDesktopShare ends the guest share.
+func (a *App) StopDesktopShare() DesktopShareActionResult {
+	return a.shareAction("stop_failed", func(c *daemon.DaemonClient) error { return c.StopDesktopShare() })
+}
+
+// AdmitDesktopGuest lets the waiting guest in.
+func (a *App) AdmitDesktopGuest(id string) DesktopShareActionResult {
+	return a.shareAction("unavailable", func(c *daemon.DaemonClient) error { return c.AdmitDesktopGuest(id) })
+}
+
+// DenyDesktopGuest refuses the waiting guest, and the person for the rest of the share.
+func (a *App) DenyDesktopGuest(id string) DesktopShareActionResult {
+	return a.shareAction("unavailable", func(c *daemon.DaemonClient) error { return c.DenyDesktopGuest(id) })
+}
+
+// SetDesktopViewerRights sets a guest's control and clipboard rights.
+func (a *App) SetDesktopViewerRights(id string, control, clipboard bool) DesktopShareActionResult {
+	return a.shareAction("unavailable", func(c *daemon.DaemonClient) error {
+		return c.SetDesktopViewerRights(id, control, clipboard)
+	})
+}
+
+// DisconnectDesktopViewer cuts one viewer at once.
+func (a *App) DisconnectDesktopViewer(id string) DesktopShareActionResult {
+	return a.shareAction("unavailable", func(c *daemon.DaemonClient) error { return c.DisconnectDesktopViewer(id) })
 }
 
 // stopSharingFromTray ends the guest share at once, with no confirm. A failure

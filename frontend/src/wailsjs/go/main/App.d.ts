@@ -278,6 +278,41 @@ export interface DesktopLinkResult {
 }
 export function GetDesktopLink(): Promise<DesktopLinkResult>
 
+// Portty 22-09: the click-to-share sheets' actions. None throws; a failure is an
+// errorCode (the daemon's code, or unavailable, start_failed, stop_failed) and a
+// detail written by the daemon or this app, never by a remote peer.
+// The link is returned only by StartDesktopShare and GetDesktopShare, for Copy Link.
+export interface DesktopShareResult {
+  url: string
+  firstShare: boolean
+  errorCode: string
+  detail: string
+}
+export interface DesktopShareInfo {
+  active: boolean
+  url: string
+  errorCode: string
+  detail: string
+}
+export interface DesktopShareActionResult {
+  errorCode: string
+  detail: string
+}
+// StartDesktopShare: starts the share, or returns the running one's link.
+export function StartDesktopShare(): Promise<DesktopShareResult>
+// GetDesktopShare: whether a share is active and, while one is, its link.
+export function GetDesktopShare(): Promise<DesktopShareInfo>
+// StopDesktopShare: ends the share; ending one that is not running is harmless.
+export function StopDesktopShare(): Promise<DesktopShareActionResult>
+// AdmitDesktopGuest: id is the pending request's id; no_request means it is gone.
+export function AdmitDesktopGuest(id: string): Promise<DesktopShareActionResult>
+// DenyDesktopGuest: refuses the guest for the rest of the share.
+export function DenyDesktopGuest(id: string): Promise<DesktopShareActionResult>
+// SetDesktopViewerRights: own_viewer means the viewer is an own-account device and has no rights to set.
+export function SetDesktopViewerRights(id: string, control: boolean, clipboard: boolean): Promise<DesktopShareActionResult>
+// DisconnectDesktopViewer: cuts one viewer at once; no_viewer means they already left.
+export function DisconnectDesktopViewer(id: string): Promise<DesktopShareActionResult>
+
 // Phase 87 capability bound methods (SEC-01..SEC-05)
 export function RegenerateSigningKey(): Promise<void>
 
