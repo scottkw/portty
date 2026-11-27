@@ -166,6 +166,11 @@ export function DesktopTab({ tab, active, onDesktopState, onLabel, controlRef }:
   }, [])
   const labelCb = useRef(onLabel)
   labelCb.current = onLabel
+  // Closing the tab takes its sidebar line and toolbar label with it; the peer may keep announcing its desktop.
+  useEffect(() => () => {
+    stateCb.current(connectHost, null)
+    labelCb.current?.(null)
+  }, [connectHost])
   const label = pd.desktopTabLabel({ host: connectHost, ...view })
   useEffect(() => {
     // Only the active tab owns the toolbar label (like the On <host> chip).
