@@ -339,6 +339,9 @@ export function DesktopView({
       document.head.appendChild(meta)
     }
     meta.content = TITLE
+    // index.html's static splash belongs to the Wails window (App hides it on mount). The viewer never
+    // mounts App, so left alone it sits opaque over the picture and takes every pointer event (20-09, E1).
+    document.getElementById('splash-static')?.remove()
     // React sets the muted property but not the attribute; Safari's autoplay policy reads the attribute.
     videoRef.current?.setAttribute('muted', '')
   }, [])

@@ -1,0 +1,7 @@
+T1 string bytes=1024 chars=352 sha1=b3ac815e91fe
+start document: chars=0 utf8=0
+{"bytes":1024,"counters":{"btn":10,"hb":18,"key":138,"locked":1,"move":5,"not_held":1,"text":2,"unknown_code":6},"elapsed_ms":21,"op":"text"}
+
+TextEdit text bytes=1024 sha1=b3ac815e91fe
+chars=256 utf8=1024
+T1 MATCH exactly

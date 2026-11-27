@@ -1,0 +1,19 @@
+{"select_failed":""}
+start document: chars=0 utf8=0
+== click the text area through the viewer (focus the keyboard), then Shift down with no up
+safari-click viewport=187,262
+{"value":null}
+{"active":"desktop-stage__input"}
+daemon counters: {"btn":18,"covered":2,"effect_hit":5,"hb":48,"key":167,"locked":1,"move":12,"not_held":6,"raising":1,"text":7,"unknown_code":6,"wheel":8,"window_chord":1,"window_unavailable":2}
+== close the Safari viewer (session ended, tab closed) with Shift still down
+safari session closed
+== daemon log since the click
+2026/11/27 03:09:09.573456 INFO desktop: input summary viewer=18b3c309 counts="map[btn:4 hb:10 key:3 move:2]"
+2026/11/27 03:09:09.573713 INFO desktop: viewer left viewer=18b3c309 viewers=1
+== a letter typed now, with no viewer attached (pseudo-viewer through the same path): z must come out lower case
+{"counters":{"btn":18,"covered":2,"effect_hit":5,"hb":52,"key":168,"locked":1,"move":12,"not_held":6,"raising":1,"text":7,"unknown_code":6,"wheel":8,"window_chord":1,"window_unavailable":2}}
+TextEdit: [z]
+== reopen the viewer and type a
+p19-safari t=3 stats={"status":"streaming","state":"streaming","viewers":2,"framesDecoded":11,"frameWidth":2560,"frameHe
+safari-click viewport=187,262
+TextEdit now: [za]

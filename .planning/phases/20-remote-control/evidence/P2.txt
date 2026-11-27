@@ -1,0 +1,28 @@
+{"select_failed":""}
+== Copy from Mac
+  office clipboard set: types: public.utf8-plain-text,NSStringPboardType
+  viewer VM clipboard before: [unchanged-marker]
+picked Copy from Mac
+  page: urn together. Streaming Main Display View Only Control Copy from Mac Your browser didn't let Portty write to your clipboard. Select the text below and copy it. Done
+  viewer VM clipboard after (pbpaste as the console user): [unchanged-marker]
+== Paste to Mac
+  viewer VM clipboard set: types: public.utf8-plain-text,NSStringPboardType
+picked Paste to Mac
+  page: urn together. Streaming Main Display View Only Control Paste to Mac Your browser didn't let Portty read your clipboard. Paste your text here, then choose Send to Mac. This replaces what's on the Mac's clipboard. Discard Text Send to Mac
+  office clipboard after: [from mac]
+== concealed item
+  office clipboard set concealed: types: public.utf8-plain-text,NSStringPboardType,org.nspasteboard.ConcealedType
+  viewer VM clipboard set to a marker: types: public.utf8-plain-text,NSStringPboardType
+picked Copy from Mac
+  page: urn together. Streaming The Mac's clipboard holds a hidden item (password manager); not copied Main Display View Only Control
+  viewer VM clipboard after: [unchanged-marker]
+  daemon log (clipboard lines):
+2026/11/27 03:04:56.006413 INFO desktop: clipboard viewer=519d913e outcome=concealed bytes=0
+2026/11/27 03:05:41.928316 INFO desktop: clipboard viewer=519d913e outcome=ok bytes=8
+2026/11/27 03:05:59.138886 INFO desktop: clipboard viewer=519d913e outcome=concealed bytes=0
+office clipboard after: [to mac]
+urn together. Streaming Sent to the Mac's clipboard; press ⌘V Main Display View Only Control
+2026/11/27 03:04:56.006413 INFO desktop: clipboard viewer=519d913e outcome=concealed bytes=0
+2026/11/27 03:05:41.928316 INFO desktop: clipboard viewer=519d913e outcome=ok bytes=8
+2026/11/27 03:05:59.138886 INFO desktop: clipboard viewer=519d913e outcome=concealed bytes=0
+2026/11/27 03:06:23.501756 INFO desktop: clipboard viewer=519d913e outcome=ok bytes=6

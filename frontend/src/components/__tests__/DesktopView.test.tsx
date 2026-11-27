@@ -340,6 +340,14 @@ describe('layout and scope', () => {
     expect(window.location.search).toBe('?cap=tok123')
   })
 
+  it('removes the static splash from index.html, which would cover the picture and take every pointer event', () => {
+    const splash = document.createElement('div')
+    splash.id = 'splash-static'
+    document.body.appendChild(splash)
+    render()
+    expect(document.getElementById('splash-static')).toBeNull()
+  })
+
   it('stops the client on unmount', () => {
     render()
     const c = client()

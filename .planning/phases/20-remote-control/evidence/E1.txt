@@ -1,0 +1,19 @@
+## $ p20-rig.sh textedit-new 100 80 640 420  (host 02:24:28Z)
+window @100,80 640x420
+window title=[Untitled] @100,80 640x420 minimized=false
+front: TextEdit pid=93184
+start document: chars=0 utf8=0
+
+## $ p20-rig.sh safari-click 0.234 0.416  (host 02:24:34Z)
+safari-click viewport=187,262
+
+## $ p20-rig.sh safari-type Portty 20  (host 02:24:42Z)
+
+## $ p20-rig.sh textedit-read  (host 02:24:46Z)
+Portty 20
+chars=9 utf8=9
+
+## $ p20-rig.sh probe control  (host 02:24:49Z)
+{"control_input":"ok","control_window":"","counters":{"btn":8,"key":86,"move":4,"unknown_code":6},"elapsed_ms":0,"op":"control","pseudo_counters":{}}
+
+

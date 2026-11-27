@@ -1,0 +1,37 @@
+start document: chars=0 utf8=0
+TextEdit window id=3097
+== open Chrome viewer next to the Safari viewer (ICE: status reaches streaming with framesDecoded 0 first?)
+chrome-open: started at guest epoch 1795747781
+  t+1 epoch=1795747781 safari=["streaming","streaming",1,4631,1280,840] chrome=Portty Desktop (debug fd=2 fw=2560 csp=0 st=streaming)
+  t+2 epoch=1795747792 safari=["streaming","streaming",2,4631,1280,840] chrome=Portty Desktop (debug fd=82 fw=2560 csp=0 st=streaming)
+  t+3 epoch=1795747800 safari=["streaming","streaming",2,4631,1280,840] chrome=Portty Desktop (debug fd=143 fw=2560 csp=0 st=streaming)
+  t+4 epoch=1795747807 safari=["streaming","streaming",2,4631,1280,840] chrome=Portty Desktop (debug fd=203 fw=2560 csp=0 st=streaming)
+  t+5 epoch=1795747814 safari=["streaming","streaming",2,4631,1280,840] chrome=Portty Desktop (debug fd=266 fw=2560 csp=0 st=streaming)
+  t+6 epoch=1795747821 safari=["streaming","streaming",2,4631,1280,840] chrome=Portty Desktop (debug fd=330 fw=2560 csp=0 st=streaming)
+  t+7 epoch=1795747828 safari=["streaming","streaming",2,4660,2560,1440] chrome=Portty Desktop (debug fd=393 fw=2560 csp=0 st=streaming)
+== D1: display -> window -> display -> window, each viewer polled after each switch
+{"select_failed":"","surface":{"epoch":11,"h":720,"id":1,"kind":"display","w":1280}}
+  after select display +1 epoch=1795747838 safari=["streaming","streaming",2,4747,2560,1440] chrome=Portty Desktop (debug fd=482 fw=2560 csp=0 st=streaming)
+  after select display +2 epoch=1795747845 safari=["streaming","streaming",2,4811,2560,1440] chrome=Portty Desktop (debug fd=545 fw=2560 csp=0 st=streaming)
+  after select display +3 epoch=1795747852 safari=["streaming","streaming",2,4872,2560,1440] chrome=Portty Desktop (debug fd=603 fw=2560 csp=0 st=streaming)
+{"select_failed":"","surface":{"epoch":12,"h":420,"id":3097,"kind":"window","w":640}}
+  after select window +1 epoch=1795747863 safari=["streaming","streaming",2,4974,1280,840] chrome=Portty Desktop (debug fd=722 fw=1280 csp=0 st=streaming)
+  after select window +2 epoch=1795747871 safari=["streaming","streaming",2,5055,1280,840] chrome=Portty Desktop (debug fd=802 fw=1280 csp=0 st=streaming)
+  after select window +3 epoch=1795747879 safari=["streaming","streaming",2,5125,1280,840] chrome=Portty Desktop (debug fd=873 fw=1280 csp=0 st=streaming)
+{"select_failed":"","surface":{"epoch":13,"h":720,"id":1,"kind":"display","w":1280}}
+  after select display +1 epoch=1795747890 safari=["streaming","streaming",2,5232,2560,1440] chrome=Portty Desktop (debug fd=972 fw=2560 csp=0 st=streaming)
+  after select display +2 epoch=1795747897 safari=["streaming","streaming",2,5292,2560,1440] chrome=Portty Desktop (debug fd=1036 fw=2560 csp=0 st=streaming)
+  after select display +3 epoch=1795747904 safari=["streaming","streaming",2,5354,2560,1440] chrome=Portty Desktop (debug fd=1106 fw=2560 csp=0 st=streaming)
+{"select_failed":"","surface":{"epoch":14,"h":420,"id":3097,"kind":"window","w":640}}
+  after select window +1 epoch=1795747915 safari=["streaming","streaming",2,5461,1280,840] chrome=Portty Desktop (debug fd=1199 fw=1280 csp=0 st=streaming)
+  after select window +2 epoch=1795747922 safari=["streaming","streaming",2,5549,1280,840] chrome=Portty Desktop (debug fd=1296 fw=1280 csp=0 st=streaming)
+  after select window +3 epoch=1795747929 safari=["streaming","streaming",2,5619,1280,840] chrome=Portty Desktop (debug fd=1366 fw=1280 csp=0 st=streaming)
+== daemon log lines since the start of D1 (joins, leaves, switches)
+2026/11/27 02:49:46.560102 http: TLS handshake error from 100.x.x.N:53518: EOF
+2026/11/27 02:49:46.564195 http: TLS handshake error from 100.x.x.N:53520: EOF
+2026/11/27 02:49:46.564212 http: TLS handshake error from 100.x.x.N:53519: EOF
+2026/11/27 02:49:48.170757 INFO desktop: viewer joined viewer=8f5795a1 viewers=2
+2026/11/27 02:50:38.632508 INFO desktop: surface switched kind=display viewers=2
+2026/11/27 02:51:03.204641 INFO desktop: surface switched kind=window viewers=2
+2026/11/27 02:51:29.762737 INFO desktop: surface switched kind=display viewers=2
+2026/11/27 02:51:54.963007 INFO desktop: surface switched kind=window viewers=2
