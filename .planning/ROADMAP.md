@@ -329,7 +329,7 @@ Plans:
   3. The sharer can stop the share or revoke one viewer at any time, which ends that connection at once, and the link stops working when the share ends. The shared Mac shows join and leave notifications and a persistent "shared with N" indicator with one-click stop. (DSHR-05, DSHR-06)
   4. Every join, leave and control grant is written to a local audit log on the shared Mac. (DSHR-07)
   5. With several viewers allowed to control, whoever typed last holds control for about 2 seconds while the others wait. The person physically at the shared Mac always wins over remote input. (DCTL-04)
-**Plans**: 5/13 plans executed
+**Plans**: 7/13 plans executed
 
 Plans:
 **Wave 1**
@@ -344,8 +344,8 @@ Plans:
 - [x] 22-05-PLAN.md — Live grants (`SetRights`), revoke and Stop in the safe order with concurrent close, lease and physical-wins in `pressAllowed`, lease messages
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 22-06-PLAN.md — Daemon guest share lifecycle, GUI events stream (doubles as GUI liveness), admit/deny/rights/disconnect on the daemon socket only, audit wiring (gated on 20-10)
-- [ ] 22-07-PLAN.md — Guest page mode in DesktopView and desktopClient: guest cards, chips, close reasons, bar restrictions (gated on 20-07, 20-08, 21-08, 21-10)
+- [x] 22-06-PLAN.md — Daemon guest share lifecycle, GUI events stream (doubles as GUI liveness), admit/deny/rights/disconnect on the daemon socket only, audit wiring (gated on 20-10)
+- [x] 22-07-PLAN.md — Guest page mode in DesktopView and desktopClient: guest cards, chips, close reasons, bar restrictions (gated on 20-07, 20-08, 21-08, 21-10)
 
 **Wave 5** *(blocked on Wave 4 completion)*
 - [ ] 22-08-PLAN.md — GUI holds the events stream; tray slot (Share Desktop…, Desktop shared with N, Stop Sharing) and sharing icon variant
@@ -437,5 +437,5 @@ Plans:
 | 19. Unattended Desktop Viewing | v2.0 | 17/17 | Complete    | 2026-11-26 |
 | 20. Remote Control | v2.0 | 11/11 | Complete    | 2026-11-27 |
 | 21. Portty App and iPhone Viewers | v2.0 | 13/13 | In Progress | - |
-| 22. Click-to-Share for Tailnet People | v2.0 | 5/13 | In Progress | - |
+| 22. Click-to-Share for Tailnet People | v2.0 | 7/13 | In Progress | - |
 | 23. Audio, Adaptive Quality, Unlock and Release | v2.0 | 0/16 | Not started | - |
