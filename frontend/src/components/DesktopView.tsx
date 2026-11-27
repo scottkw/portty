@@ -569,6 +569,15 @@ export function DesktopView({
             resetLease()
           } else if (inputCtl.current) setCanControl(true)
         }
+        if (!guest && !phone && inputCtl.current) {
+          // A later hello (a reconnect) is the grant as it stands now: drop what it no longer allows.
+          setCanSurface(r.surface)
+          setCanClipboard(r.clipboard)
+          if (!r.control) {
+            inputCtl.current.setControl(false)
+            setCanControl(false)
+          } else setCanControl(true)
+        }
         const stage = stageRef.current
         const input = inputRef.current
         if (!r.control || phone || inputCtl.current || !stage || !input) return
