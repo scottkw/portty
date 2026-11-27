@@ -1153,6 +1153,8 @@ export function DesktopView({
   const stateCard = desk ? STATE_CARDS[desk.state] : undefined
   let cardKey: CardKey | GuestCardKey | null = null
   let chip: { Icon?: Icon; text: string; fading?: boolean } | null = null
+  // A phone has no desktop controller, so canControl stays false there; its grant is phoneRights.
+  const mayControl = phoneMode ? phoneRights?.control === true : canControl
   // Embedded, the other-account case is the Refused card (the page's Refused screen talks about a link).
   const clientStatus = embedded && status.kind === 'other_account' ? 'token_rejected' : status.kind
   if (hostCard) cardKey = null
@@ -1169,11 +1171,11 @@ export function DesktopView({
   else if (canControl && ctlState.window !== '') chip = WINDOW_CHIPS[ctlState.window]
   else if (canControl && accessNeeded) chip = ACCESSIBILITY_CHIP
   // The lease chips are for every viewer that can control, own-account viewers included (22-UI-SPEC chip table, WR-07).
-  else if (canControl && lease?.state === 'unavailable') chip = { Icon: ExclamationTriangleIcon, text: copy.CHIP_CONTROL_UNAVAILABLE }
-  else if (canControl && someoneUsing) chip = { Icon: HandRaisedIcon, text: copy.GUEST_CHIP_SOMEONE }
+  else if (mayControl && lease?.state === 'unavailable') chip = { Icon: ExclamationTriangleIcon, text: copy.CHIP_CONTROL_UNAVAILABLE }
+  else if (mayControl && someoneUsing) chip = { Icon: HandRaisedIcon, text: copy.GUEST_CHIP_SOMEONE }
   else if (slow) chip = SLOW_CHIP
-  else if (canControl && lease?.state === 'other') chip = { Icon: UserIcon, text: copy.controllingChip(lease.name || 'Someone') }
-  else if (guest && canControl) chip = { Icon: CursorArrowRaysIcon, text: copy.GUEST_CHIP_CONTROL }
+  else if (mayControl && lease?.state === 'other') chip = { Icon: UserIcon, text: copy.controllingChip(lease.name || 'Someone') }
+  else if (guest && mayControl) chip = { Icon: CursorArrowRaysIcon, text: copy.GUEST_CHIP_CONTROL }
   else if (guest) chip = { Icon: EyeIcon, text: copy.GUEST_CHIP_VIEW_ONLY }
   else if (chipPhase !== 'gone' && viewers !== null && viewers >= 1) {
     chip = { text: `Streaming to ${viewers} ${viewers === 1 ? 'viewer' : 'viewers'}`, fading: chipPhase === 'fading' }
