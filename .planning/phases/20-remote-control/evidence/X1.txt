@@ -1,0 +1,23 @@
+window share of the TextEdit document: {"control_window":""}
+typeface before:   AXPopUpButton Description=typeface Value=Helvetica @247,119 82x22
+counters before: {"btn":14,"covered":1,"effect_hit":4,"hb":37,"key":160,"locked":1,"move":9,"not_held":5,"raising":1,"text":7,"unknown_code":6,"wheel":8,"window_chord":1,"window_unavailable":2}
+hit role=AXPopUpButton title=[] desc=[typeface] valueChars=9 @247,119 82x22
+press: 0
+TextEdit windows now: cgwin owner=TextEdit pid=95992 layer=101 id=3086 @162,18 357x549;cgwin owner=TextEdit pid=95992 layer=3 id=3079 @300,200 470x250;cgwin owner=TextEdit pid=95992 layer=0 id=3077 @106,86 66x20;cgwin owner=TextEdit pid=95992 layer=0 id=3074 @100,80 640x420;
+hit role=AXMenuItem title=[Recently Used] desc=[] valueChars=0 @237,98 207x22
+hit role=AXMenuItem title=[Helvetica] desc=[] valueChars=0 @237,120 207x22
+hit role=AXMenuItem title=[Times] desc=[] valueChars=0 @237,142 207x22
+hit role=AXMenuItem title=[Menlo] desc=[] valueChars=0 @237,164 207x22
+hit role=AXMenuItem title=[] desc=[] valueChars=0 @237,186 207x11
+hit role=AXMenuItem title=[More Fonts…] desc=[] valueChars=0 @237,197 207x22
+hit role=AXMenuItem title=[] desc=[] valueChars=0 @237,219 207x11
+hit role=AXMenuItem title=[Preferred Languages] desc=[] valueChars=0 @237,230 207x22
+hit role=AXMenuItem title=[Academy Engraved LET] desc=[] valueChars=0 @237,252 207x22
+hit role=AXMenuItem title=[Al Bayan] desc=[] valueChars=0 @237,274 207x22
+hit role=AXMenuItem title=[Al Nile] desc=[] valueChars=0 @237,296 207x22
+hit role=AXMenuItem title=[Al Tarikh] desc=[] valueChars=0 @237,318 207x22
+-- viewer click on the pop-up's Menlo item
+safari-click viewport=300,156
+counters after: {"btn":14,"covered":2,"effect_hit":5,"hb":37,"key":160,"locked":1,"move":10,"not_held":6,"raising":1,"text":7,"unknown_code":6,"wheel":8,"window_chord":1,"window_unavailable":2}
+typeface after:   AXPopUpButton Description=typeface Value=Helvetica @247,119 82x22
+TextEdit windows: cgwin owner=TextEdit pid=95992 layer=101 id=3086 @162,18 357x549;cgwin owner=TextEdit pid=95992 layer=3 id=3079 @300,200 470x250;cgwin owner=TextEdit pid=95992 layer=0 id=3077 @106,86 66x20;cgwin owner=TextEdit pid=95992 layer=0 id=3074 @100,80 640x420;

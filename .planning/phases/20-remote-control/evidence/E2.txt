@@ -1,0 +1,22 @@
+## $ p20-rig.sh ax charrect com.apple.TextEdit 0 1  (host 02:24:58Z)
+charrect 105.0 180.0 8.00390625 14.0
+
+## $ p20-rig.sh ax selrange com.apple.TextEdit  (host 02:25:01Z)
+selrange loc=9 len=0
+
+## $ p20-rig.sh safari-click 0.083594 0.259722  (host 02:25:09Z)
+safari-click viewport=67,192
+
+## $ p20-rig.sh ax selrange com.apple.TextEdit  (host 02:25:16Z)
+selrange loc=0 len=0
+
+## $ p20-rig.sh safari-type X  (host 02:25:19Z)
+
+## $ p20-rig.sh textedit-read  (host 02:25:23Z)
+XPortty 20
+chars=10 utf8=10
+
+## $ p20-rig.sh probe control  (host 02:25:25Z)
+{"control_input":"ok","control_window":"","counters":{"btn":10,"key":90,"move":5,"unknown_code":6},"elapsed_ms":0,"op":"control","pseudo_counters":{}}
+
+

@@ -1,0 +1,6 @@
+start document: chars=0 utf8=0
+{"select_failed":"","surface":{"epoch":24,"h":420,"id":3178,"kind":"window","w":640}}
+TextEdit windows before: layer=3 id=3176 @300,200 470x250;layer=0 id=3182 @106,86 66x20;layer=0 id=3178 @100,80 640x420;
+after Cmd+S (Save sheet): TextEdit pid=99256 layer=3 id=3176 @300,200 470x250;TextEdit pid=99256 layer=0 id=3184 @225,181 390x218;TextEdit pid=99256 layer=0 id=3182 @106,86 66x20;TextEdit pid=99256 layer=0 id=3178 @100,80 640x420;
+page notice: urn together. Streaming TextEdit — Untitled View Only Control Copy from Mac Your browser didn't let Portty write to your clipboard. Select the text below and copy it. Done
+after Escape: TextEdit pid=99256 layer=3 id=3176 @300,200 470x250;TextEdit pid=99256 layer=0 id=3184 @225,181 390x218;TextEdit pid=99256 layer=0 id=3182 @106,86 66x20;TextEdit pid=99256 layer=0 id=3178 @100,80 640x420;

@@ -1,0 +1,19 @@
+start document: chars=0 utf8=0
+{"bytes":471,"elapsed_ms":22}
+{"bytes":501,"elapsed_ms":10}
+document: chars=934 utf8=934
+natural scrolling pref now: 1
+{"op":"chord"}
+[on] at top:    scrollbar orientation=AXVerticalOrientation value=0 
+{"op":"scroll","counters":{"btn":10,"hb":30,"key":150,"locked":1,"move":5,"not_held":1,"text":6,"unknown_code":6,"wheel":5}}
+[on] after dy=-240 (CG sign, wheel1): scrollbar orientation=AXVerticalOrientation value=0.1789709172259508 
+{"op":"scroll"}
+[on] after dy=+240 (CG sign):         scrollbar orientation=AXVerticalOrientation value=0 
+natural scrolling pref now: 0
+{"op":"chord"}
+[off] at top:    scrollbar orientation=AXVerticalOrientation value=0 
+{"op":"scroll","counters":{"btn":10,"hb":33,"key":154,"locked":1,"move":5,"not_held":1,"text":6,"unknown_code":6,"wheel":7}}
+[off] after dy=-240 (CG sign, wheel1): scrollbar orientation=AXVerticalOrientation value=0.1789709172259508 
+{"op":"scroll"}
+[off] after dy=+240 (CG sign):         scrollbar orientation=AXVerticalOrientation value=0 
+natural scrolling pref now: 1

@@ -1,0 +1,13 @@
+switch before:           AXCell @222,179 468x37;           AXStaticText Value=Portty @230,185 69x24;           AXCheckBox [AXSwitch] Value=0 @644,191 36x16;
+== click the Portty switch (centre of 644,191 36x16)
+windows now (non-system owners):
+cgwin owner=System Settings pid=98218 layer=0 id=3150 @210,184 260x348
+cgwin owner=System Settings pid=98218 layer=0 id=3145 @-30,46 740x625
+front: front: System Settings pid=98218
+password field chars: valueChars=5
+hit role=AXButton title=[] desc=[Modify Settings] valueChars=0 @226,452 228x28
+press: 0
+permissions: {"sr":true,"ax":true}
+switch after:            AXStaticText Value=Portty @230,185 69x24;           AXCheckBox [AXSwitch] Value=1 @644,191 36x16;
+windows (non-system owners):
+cgwin owner=System Settings pid=98218 layer=0 id=3145 @-30,46 740x625

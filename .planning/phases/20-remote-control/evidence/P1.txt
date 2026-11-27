@@ -1,0 +1,16 @@
+== daemon identity: daemon 92805 ppid=1 xpc_service_name=app.portty.Portty.daemon
+== accessBehavior (the daemon's own NSPasteboard): {"behavior":"alwaysAllow","error":""}
+windows other than the app's own before:
+== pbread of plain text, nobody touching the VM
+  set: types: public.utf8-plain-text,NSStringPboardType
+{"outcome":"ok","bytes":10,"text":"probe text","error":"","elapsed_ms":6}
+windows after the read:
+== pbwrite
+{"error":"","elapsed_ms":0}
+  clipboard now (read as the console user): written by the daemon
+windows after the write:
+== concealed item: only the types are read, no content
+  set: types: public.utf8-plain-text,NSStringPboardType,org.nspasteboard.ConcealedType
+{"outcome":"concealed","bytes":0,"error":"","elapsed_ms":0}
+windows after the concealed read:
+== daemon still serving: {"sr":true,"ax":true}

@@ -1,0 +1,34 @@
+== setup: TextEdit window, then Finder frontmost
+front: TextEdit pid=95709
+start document: chars=0 utf8=0
+TextEdit window id=3055
+front: Finder pid=424
+{"pid":424,"ok":true,"frame":[66,88,920,436],"error":""}
+== raise while Finder is frontmost
+{"op":"raise","found":true,"rung":1,"error":"","elapsed_ms":210}
+front: TextEdit pid=95709
+ax-front epoch=1795747391 front: TextEdit pid=95709
+{"pid":95709,"ok":true,"frame":[100,80,640,420],"error":""}
+== minimize the window, then raise
+hit role=AXButton title=[] desc=[] valueChars=0 @131,88 16x16
+press: 0
+window title=[Untitled] @100,80 640x420 minimized=true
+{"minimized":true,"found":true,"error":""}
+{"op":"raise","found":true,"rung":1,"error":"","elapsed_ms":621}
+window title=[Untitled] @100,80 640x420 minimized=false
+{"minimized":false,"found":true,"error":""}
+ax-front epoch=1795747418 front: TextEdit pid=95709
+cgwin owner=TextEdit pid=95709 layer=0 id=3055 @100,80 640x420
+== focus follows app switches
+front: Finder pid=424
+  probe focus: {"pid":424,"ok":true,"error":""}
+  probe focus again: {"pid":424,"ok":true,"error":""}
+front: TextEdit pid=95709
+  probe focus: {"pid":95709,"ok":true,"error":""}
+  probe focus again: {"pid":95709,"ok":true,"error":""}
+front: Finder pid=424
+  probe focus: {"pid":424,"ok":true,"error":""}
+  probe focus again: {"pid":424,"ok":true,"error":""}
+front: TextEdit pid=95709
+  probe focus: {"pid":95709,"ok":true,"error":""}
+  probe focus again: {"pid":95709,"ok":true,"error":""}
