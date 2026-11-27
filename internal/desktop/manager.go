@@ -482,9 +482,10 @@ func (m *Manager) Start(ctx context.Context) error {
 	m.win.done = make(chan struct{})
 	go m.windowLoop(lctx, m.win.done)
 
-	// The input goroutine outlives the state loop's context: Close drains the
-	// queued releases through it before it cancels this one.
-	ictx, icancel := context.WithCancel(ctx)
+	// The input goroutine outlives the state loop's context, and the caller's:
+	// the daemon cancels ctx before it calls Close, and Close drains the queued
+	// releases through this goroutine before it cancels it. Only Close ends it.
+	ictx, icancel := context.WithCancel(context.WithoutCancel(ctx))
 	m.in.mu.Lock()
 	m.in.cancel, m.in.done = icancel, make(chan struct{})
 	m.in.mu.Unlock()
