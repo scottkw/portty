@@ -19,13 +19,17 @@ interface MockClient {
   currentEpoch: ReturnType<typeof vi.fn>
   requestSurfaces: ReturnType<typeof vi.fn>
   selectSurface: ReturnType<typeof vi.fn>
+  copyFromMac: ReturnType<typeof vi.fn>
+  pasteToMac: ReturnType<typeof vi.fn>
   on: (ev: string, cb: Listener) => () => void
   emit: <K extends keyof DesktopEvents>(ev: K, v: DesktopEvents[K]) => void
 }
 
 const h = vi.hoisted(() => ({ clients: [] as unknown[] }))
 
-vi.mock('../../lib/desktopClient', () => ({
+vi.mock('../../lib/desktopClient', async (importOriginal) => ({
+  // The clipboard constants and helpers are the real ones; only the connection is replaced.
+  ...(await importOriginal<typeof import('../../lib/desktopClient')>()),
   createDesktopClient: vi.fn(() => {
     const ls = new Map<string, Set<Listener>>()
     const client = {
@@ -45,6 +49,8 @@ vi.mock('../../lib/desktopClient', () => ({
         }),
       ),
       selectSurface: vi.fn(),
+      copyFromMac: vi.fn(() => Promise.resolve({ outcome: 'failed' })),
+      pasteToMac: vi.fn(() => Promise.resolve({ outcome: 'ok' })),
       on: (ev: string, cb: Listener) => {
         if (!ls.has(ev)) ls.set(ev, new Set())
         ls.get(ev)!.add(cb)
@@ -1041,6 +1047,208 @@ describe('bar items wired to the view (Phase 20-07 Task 3)', () => {
       expect(unlock).toHaveBeenCalledTimes(1)
       expect(btn('Full Screen')).not.toBeNull()
     })
+  })
+})
+
+describe('Copy from Mac (Phase 20-08 Task 1)', () => {
+  const btn = (name: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${name}"]`)!
+  const notice = () => container.querySelector('.desktop-chip--notice')
+  const item = (t: string) =>
+    Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).find((i) => i.textContent === t)!
+  const flush = () => act(async () => { for (let i = 0; i < 12; i++) await Promise.resolve() })
+
+  /** A deferred result for the next copyFromMac. */
+  function pending() {
+    let resolve!: (r: { outcome: string; text?: string }) => void
+    const p = new Promise<{ outcome: string; text?: string }>((r) => { resolve = r })
+    client().copyFromMac.mockReturnValueOnce(p)
+    return resolve
+  }
+
+  /** navigator.clipboard.write that, like a browser, waits for the ClipboardItem's blob promise. */
+  function stubWrite() {
+    const written: string[] = []
+    const write = vi.fn(async (items: { items: Record<string, Promise<Blob> | Blob> }[]) => {
+      const blob = await items[0].items['text/plain']
+      written.push((blob as unknown as { parts: string[] }).parts.join(''))
+    })
+    class FakeItem {
+      constructor(readonly items: Record<string, Promise<Blob> | Blob>) {}
+    }
+    // jsdom's Blob cannot be read back under fake timers, so a stand-in keeps its parts.
+    vi.stubGlobal('Blob', class { constructor(readonly parts: string[], readonly opts: unknown) {} })
+    vi.stubGlobal('ClipboardItem', FakeItem)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { write, writeText: vi.fn(async () => {}) } })
+    return { write, written }
+  }
+
+  function ownAccount(rights = { control: true, clipboard: true, surface: true }) {
+    for (const [a, b] of [['clientWidth', 1000], ['clientHeight', 500], ['videoWidth', 1600], ['videoHeight', 1000]] as const) {
+      Object.defineProperty(video(), a, { configurable: true, value: b })
+    }
+    act(() => client().emit('rights', rights))
+  }
+  async function choose(name: string) {
+    act(() => btn('Clipboard').click())
+    await act(async () => { item(name).click() })
+  }
+
+  beforeEach(() => window.localStorage.clear())
+  afterEach(() => {
+    delete (navigator as unknown as { clipboard?: unknown }).clipboard
+    vi.unstubAllGlobals()
+  })
+
+  it('asks for nothing until Copy from Mac is chosen, and sends one clip_get for one choice', async () => {
+    stubWrite()
+    render()
+    ownAccount()
+    await firstFrame()
+    advance(60000)
+    expect(client().copyFromMac).not.toHaveBeenCalled()
+    await choose('Copy from Mac')
+    expect(client().copyFromMac).toHaveBeenCalledTimes(1)
+  })
+
+  it('starts the browser write inside the click with a ClipboardItem whose text/plain promise resolves when the Mac answers', async () => {
+    const { write, written } = stubWrite()
+    render()
+    const resolve = pending()
+    ownAccount()
+    await firstFrame()
+    await choose('Copy from Mac')
+    // Begun in the click, before the Mac has answered.
+    expect(write).toHaveBeenCalledTimes(1)
+    expect(written).toEqual([])
+    resolve({ outcome: 'ok', text: 'hello' })
+    await flush()
+    expect(written).toEqual(['hello'])
+    expect(notice()?.textContent).toBe('Copied from Mac')
+    expect(notice()?.getAttribute('role')).toBeNull()
+    advance(2999)
+    expect(notice()).not.toBeNull()
+    advance(151)
+    expect(notice()).toBeNull()
+  })
+
+  it('falls back to writeText after the answer where ClipboardItem is missing', async () => {
+    const writeText = vi.fn(async () => {})
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    render()
+    const resolve = pending()
+    ownAccount()
+    await firstFrame()
+    await choose('Copy from Mac')
+    expect(writeText).not.toHaveBeenCalled()
+    resolve({ outcome: 'ok', text: 'hello' })
+    await flush()
+    expect(writeText).toHaveBeenCalledWith('hello')
+    expect(notice()?.textContent).toBe('Copied from Mac')
+  })
+
+  it.each([
+    ['concealed', "The Mac's clipboard holds a hidden item (password manager); not copied", 5000, false],
+    ['empty', "The Mac's clipboard has no text", 3000, false],
+    ['waiting_approval', 'Waiting for approval at the Mac. macOS is asking before Portty reads its clipboard.', 5000, false],
+    ['too_large', "The Mac's clipboard text is too large to copy (limit 1 MB)", 5000, false],
+    ['failed', "Couldn't copy from the Mac. Try again.", 5000, true],
+    ['forbidden', "Couldn't copy from the Mac. Try again.", 5000, true],
+    ['busy', "Couldn't copy from the Mac. Try again.", 5000, true],
+  ])('%s shows exactly one notice with its words and writes nothing', async (outcome, text, dwell, alert) => {
+    const { written } = stubWrite()
+    render()
+    const resolve = pending()
+    ownAccount()
+    await firstFrame()
+    await choose('Copy from Mac')
+    resolve({ outcome })
+    await flush()
+    expect(container.querySelectorAll('.desktop-chip--notice')).toHaveLength(1)
+    expect(notice()?.textContent).toBe(text)
+    expect(notice()?.getAttribute('role')).toBe(alert ? 'alert' : null)
+    expect(written).toEqual([])
+    advance(dwell - 1)
+    expect(notice()).not.toBeNull()
+    advance(1 + 150)
+    expect(notice()).toBeNull()
+  })
+
+  it('shows Copying from the Mac… only after 400 ms and keeps it until the result replaces it', async () => {
+    stubWrite()
+    render()
+    const resolve = pending()
+    ownAccount()
+    await firstFrame()
+    await choose('Copy from Mac')
+    advance(399)
+    expect(notice()).toBeNull()
+    advance(1)
+    expect(notice()?.textContent).toBe('Copying from the Mac…')
+    advance(60000)
+    expect(notice()?.textContent).toBe('Copying from the Mac…')
+    resolve({ outcome: 'ok', text: 'hello' })
+    await flush()
+    expect(notice()?.textContent).toBe('Copied from Mac')
+  })
+
+  it('a quick answer never shows Copying from the Mac…', async () => {
+    stubWrite()
+    render()
+    const resolve = pending()
+    ownAccount()
+    await firstFrame()
+    await choose('Copy from Mac')
+    advance(200)
+    resolve({ outcome: 'empty' })
+    await flush()
+    advance(1000)
+    expect(notice()?.textContent ?? '').not.toContain('Copying')
+  })
+
+  it('greys both Clipboard items while a transfer is in flight, so two never overlap, and frees them after', async () => {
+    stubWrite()
+    render()
+    const resolve = pending()
+    ownAccount()
+    await firstFrame()
+    await choose('Copy from Mac')
+    act(() => btn('Clipboard').click())
+    expect(Array.from(document.querySelectorAll('[role="menuitem"]')).map((i) => i.getAttribute('aria-disabled'))).toEqual(['true', 'true'])
+    await act(async () => { item('Copy from Mac').click() })
+    expect(client().copyFromMac).toHaveBeenCalledTimes(1)
+    act(() => { document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
+    resolve({ outcome: 'empty' })
+    await flush()
+    act(() => btn('Clipboard').click())
+    expect(Array.from(document.querySelectorAll('[role="menuitem"]')).map((i) => i.getAttribute('aria-disabled'))).toEqual([null, null])
+  })
+
+  it('is not offered to a viewer without the clipboard right, and the Clipboard button greys while locked', async () => {
+    render()
+    ownAccount({ control: true, clipboard: false, surface: true })
+    await firstFrame()
+    expect(btn('Clipboard')).toBeNull()
+    act(() => root.unmount())
+    root = createRoot(container)
+    render()
+    ownAccount()
+    state({ state: 'locked', viewers: 1, locked: true })
+    await firstFrame()
+    expect(btn('Clipboard').getAttribute('aria-disabled')).toBe('true')
+    expect(btn('Clipboard').getAttribute('title')).toBe('Locked')
+  })
+
+  it('never puts the Mac\'s text in a log call', async () => {
+    stubWrite()
+    const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) => vi.spyOn(console, m).mockImplementation(() => {}))
+    render()
+    const resolve = pending()
+    ownAccount()
+    await firstFrame()
+    await choose('Copy from Mac')
+    resolve({ outcome: 'ok', text: 'hunter2-secret' })
+    await flush()
+    for (const s of spies) expect(JSON.stringify(s.mock.calls)).not.toContain('hunter2')
   })
 })
 

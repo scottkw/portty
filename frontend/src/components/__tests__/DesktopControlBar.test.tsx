@@ -28,7 +28,7 @@ const LIST: DesktopSurfacesMsg = {
 }
 
 const STREAMING: BarState = {
-  locked: false, reconnecting: false, accessNeeded: false, switching: false, mode: 'control', canSurface: true, fullscreenAvailable: true,
+  locked: false, reconnecting: false, accessNeeded: false, switching: false, mode: 'control', canSurface: true, fullscreenAvailable: true, canClipboard: true,
 }
 
 function props(over: Partial<Omit<DesktopControlBarProps, 'state'>> & { state?: Partial<BarState> } = {}): DesktopControlBarProps {
@@ -47,6 +47,9 @@ function props(over: Partial<Omit<DesktopControlBarProps, 'state'>> & { state?: 
     fullscreen: false,
     onFullscreen: vi.fn(),
     controlRef: { current: null },
+    onCopy: vi.fn(),
+    onPaste: vi.fn(),
+    clipBusy: false,
     ...rest,
   }
 }
@@ -249,6 +252,7 @@ describe('barAvailability (Task 3)', () => {
   })
   it('hides what this viewer can never use', () => {
     expect(view(a({ canSurface: false, fullscreenAvailable: false }))).toMatchObject({ picker: 'hidden', fullscreen: 'hidden' })
+    expect(view(a({ canClipboard: false })).clipboard).toBe('hidden')
   })
   it('locked wins over View Only', () => {
     expect(a({ locked: true, mode: 'view' }).sendKeys.reason).toBe('Locked')
@@ -347,7 +351,7 @@ describe('bar behaviour (Task 3)', () => {
     const seen = Array.from(bar().querySelectorAll('button, .desktop-bar__divider')).map((e) =>
       e.classList.contains('desktop-bar__divider') ? '|' : e.getAttribute('aria-label'),
     )
-    expect(seen).toEqual(['Main Display', '|', 'Send Keys', '|', 'Swap Ctrl and Cmd', null, null, '|', 'Full Screen'])
+    expect(seen).toEqual(['Main Display', '|', 'Send Keys', 'Clipboard', '|', 'Swap Ctrl and Cmd', null, null, '|', 'Full Screen'])
   })
 
   it('greyed items are aria-disabled, never disabled, carry the reason as title and as linked text, and ignore clicks', () => {
@@ -452,5 +456,78 @@ describe('bar behaviour (Task 3)', () => {
   it('the style sheet has no transition on the bar under reduced motion', () => {
     const css = readFileSync(resolve(__dirname, '../../style.css'), 'utf8')
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.desktop-bar\s*\{\s*transition: none/)
+  })
+})
+
+describe('Clipboard menu (Phase 20-08 Task 1)', () => {
+  const clipBtn = () => container.querySelector<HTMLButtonElement>('button[aria-label="Clipboard"]')
+  const items = () => Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]'))
+  const item = (t: string) => items().find((i) => i.textContent === t)!
+  const CAPTION = "Cmd+C and Cmd+V in the picture use the Mac's own clipboard. Use these to move text between the two."
+
+  it('sits after Send Keys and offers Copy from Mac, Paste to Mac and the caption', () => {
+    render(props())
+    const labels = Array.from(container.querySelectorAll('.desktop-bar__item')).map((b) => b.getAttribute('aria-label'))
+    expect(labels.indexOf('Clipboard')).toBe(labels.indexOf('Send Keys') + 1)
+    act(() => clipBtn()!.click())
+    expect(items().map((i) => i.textContent)).toEqual(['Copy from Mac', 'Paste to Mac'])
+    expect(caption()).toBe(CAPTION)
+    expect(clipBtn()!.getAttribute('aria-haspopup')).toBe('menu')
+    expect(clipBtn()!.getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('reads and writes nothing until an item is chosen, and an item runs its handler once, in the click', () => {
+    const p = render(props())
+    act(() => clipBtn()!.click())
+    expect(p.onCopy).not.toHaveBeenCalled()
+    expect(p.onPaste).not.toHaveBeenCalled()
+    act(() => item('Copy from Mac').click())
+    expect(p.onCopy).toHaveBeenCalledTimes(1)
+    expect(p.onPaste).not.toHaveBeenCalled()
+    expect(menu()).toBeNull()
+    act(() => clipBtn()!.click())
+    act(() => item('Paste to Mac').click())
+    expect(p.onPaste).toHaveBeenCalledTimes(1)
+  })
+
+  it('tells the view while its menu is open so everything held is released', () => {
+    const p = render(props())
+    act(() => clipBtn()!.click())
+    expect(p.onMenuOpenChange).toHaveBeenLastCalledWith(true)
+    act(() => item('Copy from Mac').click())
+    expect(p.onMenuOpenChange).toHaveBeenLastCalledWith(false)
+  })
+
+  it('greys both items while a transfer is in flight, and they do nothing', () => {
+    const p = render(props({ clipBusy: true }))
+    act(() => clipBtn()!.click())
+    expect(items().map((i) => i.getAttribute('aria-disabled'))).toEqual(['true', 'true'])
+    act(() => item('Copy from Mac').click())
+    act(() => item('Paste to Mac').click())
+    expect(p.onCopy).not.toHaveBeenCalled()
+    expect(p.onPaste).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['locked', { locked: true }, 'Locked'],
+    ['reconnecting', { reconnecting: true }, 'Reconnecting'],
+  ])('is greyed while %s, with the reason as its title and as text, and opens no menu', (_n, state, reason) => {
+    render(props({ state }))
+    expect(clipBtn()!.getAttribute('aria-disabled')).toBe('true')
+    expect(clipBtn()!.getAttribute('title')).toBe(reason)
+    const describedBy = clipBtn()!.getAttribute('aria-describedby')!
+    expect(document.getElementById(describedBy)!.textContent).toBe(reason)
+    act(() => clipBtn()!.click())
+    expect(menu()).toBeNull()
+  })
+
+  it('is not offered to a viewer without the clipboard right', () => {
+    render(props({ state: { canClipboard: false } }))
+    expect(clipBtn()).toBeNull()
+  })
+
+  it('stays available in a window share and while the Mac needs Accessibility (it does not inject input)', () => {
+    render(props({ surface: { kind: 'window', id: 7, name: 'Terminal — zsh' }, state: { accessNeeded: true } }))
+    expect(clipBtn()!.getAttribute('aria-disabled')).toBeNull()
   })
 })

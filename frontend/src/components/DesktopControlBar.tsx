@@ -5,6 +5,7 @@ import {
   ArrowsRightLeftIcon,
   CheckIcon,
   ChevronDownIcon,
+  ClipboardDocumentIcon,
   ComputerDesktopIcon,
   KeyIcon,
   WindowIcon,
@@ -26,6 +27,8 @@ export const COMPACT_WIDTH = 880
 const ZONE_HEIGHT_PX = 16
 export const WINDOWS_CAPTION = "Menus and pop-ups don't appear in a window share. Share the display to see them."
 const WINDOWS_CAPTION_ID = 'desktop-picker-caption'
+export const CLIPBOARD_CAPTION = "Cmd+C and Cmd+V in the picture use the Mac's own clipboard. Use these to move text between the two."
+const CLIPBOARD_CAPTION_ID = 'desktop-clipboard-caption'
 const CONTROL_TOOLTIP = 'Control: click the picture to type. To give the keyboard back, press Ctrl+Option+Cmd+Return.'
 
 export type ControlMode = 'view' | 'control'
@@ -43,6 +46,8 @@ export interface BarState {
   canSurface: boolean
   /** document.fullscreenEnabled; without it the button is not offered. */
   fullscreenAvailable: boolean
+  /** The hello grants the clipboard right; without it the Clipboard button is not offered. */
+  canClipboard: boolean
 }
 
 export interface ItemAvailability {
@@ -69,7 +74,7 @@ export function barAvailability(s: BarState): Record<BarItem, ItemAvailability> 
     sendKeys: grey(
       lost ?? (s.accessNeeded ? 'Control needs Accessibility' : s.mode === 'view' ? 'Turn on Control first' : undefined),
     ),
-    clipboard: grey(lost),
+    clipboard: { ...grey(lost), hidden: !s.canClipboard },
     swap: grey(undefined),
     control: lost
       ? grey(lost)
@@ -106,6 +111,13 @@ export interface DesktopControlBarProps {
   onFullscreen: () => void
   /** The Control segment: the release chord moves focus here. */
   controlRef: React.RefObject<HTMLButtonElement | null>
+  /** Copy from Mac / Paste to Mac were chosen. Both run inside the click (the browser's clipboard gesture rule). */
+  onCopy: () => void
+  onPaste: () => void
+  /** A transfer is in flight: both items are greyed so two never overlap. */
+  clipBusy: boolean
+  /** The Clipboard button, so the host can anchor its Copy and Paste popovers under it. */
+  clipboardRef?: React.RefObject<HTMLButtonElement | null>
 }
 
 type PickerList = { state: 'loading' } | { state: 'failed' } | { state: 'ready'; list: DesktopSurfacesMsg }
@@ -237,14 +249,17 @@ function BarButton({ label, avail, children, onActivate, ref, className, extra }
  */
 export function DesktopControlBar({
   state, surface, requestSurfaces, onSelectSurface, sendChord, onMenuOpenChange, onSendKeysDone,
-  swapOn, onSwapChange, onModeChange, fullscreen, onFullscreen, controlRef,
+  swapOn, onSwapChange, onModeChange, fullscreen, onFullscreen, controlRef, onCopy, onPaste, clipBusy, clipboardRef,
 }: DesktopControlBarProps): React.ReactElement {
   const barRef = useRef<HTMLDivElement>(null)
   const sendKeysBtn = useRef<HTMLButtonElement>(null)
   const pickerBtn = useRef<HTMLButtonElement>(null)
+  const ownClipBtn = useRef<HTMLButtonElement>(null)
+  const clipBtn = clipboardRef ?? ownClipBtn
   const viewOnlyBtn = useRef<HTMLButtonElement>(null)
   const [sendKeys, setSendKeys] = useState<{ x: number; y: number } | null>(null)
   const [picker, setPicker] = useState<{ x: number; y: number } | null>(null)
+  const [clipMenu, setClipMenu] = useState<{ x: number; y: number } | null>(null)
   const [pickerList, setPickerList] = useState<PickerList>({ state: 'loading' })
   const chose = useRef(false)
   // A newer open ignores the answer of an older one.
@@ -254,7 +269,7 @@ export function DesktopControlBar({
 
   const avail = barAvailability(state)
   const windowShare = surface?.kind === 'window'
-  const menuOpen = sendKeys !== null || picker !== null
+  const menuOpen = sendKeys !== null || picker !== null || clipMenu !== null
   const revealed = useReveal(barRef, menuOpen, `${state.locked}|${state.accessNeeded}|${surface?.kind}:${surface?.id}`)
 
   function anchorBelow(btn: HTMLElement) {
@@ -266,6 +281,19 @@ export function DesktopControlBar({
     chose.current = false
     setSendKeys(anchorBelow(sendKeysBtn.current!))
     onMenuOpenChange(true)
+  }
+
+  function openClipMenu() {
+    setClipMenu(anchorBelow(clipBtn.current!))
+    onMenuOpenChange(true)
+  }
+
+  function clipItems(): ContextMenuEntry[] {
+    return [
+      { label: 'Copy from Mac', onSelect: onCopy, disabled: clipBusy },
+      { label: 'Paste to Mac', onSelect: onPaste, disabled: clipBusy },
+      { kind: 'caption', text: CLIPBOARD_CAPTION, id: CLIPBOARD_CAPTION_ID, separatorBefore: true },
+    ]
   }
 
   function openPicker() {
@@ -328,6 +356,7 @@ export function DesktopControlBar({
   })
   const pickerTrigger = trigger(picker !== null, openPicker)
   const sendKeysTrigger = trigger(sendKeys !== null, openSendKeys)
+  const clipTrigger = trigger(clipMenu !== null, openClipMenu)
 
   function onSegmentKeyDown(e: React.KeyboardEvent) {
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
@@ -368,7 +397,8 @@ export function DesktopControlBar({
       </BarButton>,
     )
   }
-  groups.push(
+  // Send Keys and Clipboard are one group: what the viewer sends to the Mac.
+  const sendGroup: React.ReactNode[] = [
     <BarButton
       key="sendKeys"
       ref={sendKeysBtn}
@@ -381,7 +411,24 @@ export function DesktopControlBar({
       <span className="desktop-bar__label">Send Keys</span>
       <ChevronDownIcon className="desktop-bar__icon" aria-hidden="true" />
     </BarButton>,
-  )
+  ]
+  if (!avail.clipboard.hidden) {
+    sendGroup.push(
+      <BarButton
+        key="clipboard"
+        ref={clipBtn}
+        label="Clipboard"
+        avail={avail.clipboard}
+        onActivate={clipTrigger.onActivate}
+        extra={{ 'aria-haspopup': 'menu', 'aria-expanded': clipMenu !== null, onMouseDown: clipTrigger.onMouseDown }}
+      >
+        <ClipboardDocumentIcon className="desktop-bar__icon" aria-hidden="true" />
+        <span className="desktop-bar__label">Clipboard</span>
+        <ChevronDownIcon className="desktop-bar__icon" aria-hidden="true" />
+      </BarButton>,
+    )
+  }
+  groups.push(<React.Fragment key="send">{sendGroup}</React.Fragment>)
   groups.push(
     <React.Fragment key="mapping">
       <BarButton
@@ -440,6 +487,7 @@ export function DesktopControlBar({
   const reasons: [string, string][] = []
   if (avail.picker.reason && !avail.picker.hidden) reasons.push([pickerLabel, avail.picker.reason])
   if (avail.sendKeys.reason) reasons.push(['Send Keys', avail.sendKeys.reason])
+  if (avail.clipboard.reason && !avail.clipboard.hidden) reasons.push(['Clipboard', avail.clipboard.reason])
   if (avail.control.reason) reasons.push(['control', avail.control.reason])
 
   return (
@@ -470,6 +518,19 @@ export function DesktopControlBar({
           onClose={() => {
             listSeq.current++
             setPicker(null)
+            onMenuOpenChange(false)
+          }}
+        />
+      )}
+      {clipMenu && (
+        <ContextMenu
+          className="desktop-menu"
+          items={clipItems()}
+          x={clipMenu.x}
+          y={clipMenu.y}
+          invoker={clipBtn.current}
+          onClose={() => {
+            setClipMenu(null)
             onMenuOpenChange(false)
           }}
         />

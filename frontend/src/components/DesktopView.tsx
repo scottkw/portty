@@ -1,12 +1,15 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowPathIcon,
+  ClipboardDocumentCheckIcon,
+  ClipboardIcon,
   ClockIcon,
   ArrowsPointingOutIcon,
   ArrowsRightLeftIcon,
   ComputerDesktopIcon,
   CursorArrowRaysIcon,
   ExclamationTriangleIcon,
+  EyeSlashIcon,
   HandRaisedIcon,
   InformationCircleIcon,
   LockClosedIcon,
@@ -16,8 +19,11 @@ import {
   WindowIcon,
 } from '@heroicons/react/24/outline'
 import {
+  CLIP_MAX_BYTES,
+  clipByteLength,
   createDesktopClient,
   type ClientStatus,
+  type ClipOutcome,
   type DesktopControlMsg,
   type DesktopClient,
   type DesktopStateMsg,
@@ -122,6 +128,8 @@ const SURFACE_FALLBACKS: Record<string, string | undefined> = {
 }
 const CHIP_SHOW_MS = 3000
 const CHIP_FADE_MS = 150
+/** A transfer that takes longer than this shows Copying from the Mac… or Sending to the Mac… until it ends. */
+export const CLIP_SLOW_MS = 400
 
 // Notice copy is 20-UI-SPEC Surface C word for word. Every string is fixed here; the wire only picks one.
 const RELEASE_CHORD_HINT = 'Typing goes to the Mac. To give the keyboard back, press Ctrl+Option+Cmd+Return.'
@@ -142,7 +150,34 @@ interface Notice {
   text: string
   dwell: number
   alert?: boolean
+  /** Stays until a newer notice replaces it (a transfer in flight); dwell is ignored. */
+  persistent?: boolean
 }
+
+// Clipboard notices are 20-UI-SPEC Surface B and C word for word. Every string is fixed here.
+type NoticeSpec = Omit<Notice, 'id'>
+const COPY_NOTICES: Partial<Record<ClipOutcome, NoticeSpec>> = {
+  ok: { Icon: ClipboardDocumentCheckIcon, text: 'Copied from Mac', dwell: 3000 },
+  concealed: {
+    Icon: EyeSlashIcon,
+    text: "The Mac's clipboard holds a hidden item (password manager); not copied",
+    dwell: 5000,
+  },
+  empty: { Icon: ClipboardIcon, text: "The Mac's clipboard has no text", dwell: 3000 },
+  waiting_approval: {
+    Icon: ClockIcon,
+    text: "Waiting for approval at the Mac. macOS is asking before Portty reads its clipboard.",
+    dwell: 5000,
+  },
+  too_large: { Icon: ExclamationTriangleIcon, text: "The Mac's clipboard text is too large to copy (limit 1 MB)", dwell: 5000 },
+}
+const COPY_FAILED: NoticeSpec = { Icon: ExclamationTriangleIcon, text: "Couldn't copy from the Mac. Try again.", dwell: 5000, alert: true }
+const PASTE_NOTICES: Partial<Record<ClipOutcome, NoticeSpec>> = {
+  ok: { Icon: ClipboardDocumentCheckIcon, text: "Sent to the Mac's clipboard; press ⌘V", dwell: 5000 },
+  empty: { Icon: ClipboardIcon, text: 'Your clipboard has no text', dwell: 3000 },
+  too_large: { Icon: ExclamationTriangleIcon, text: 'Your clipboard text is too large to send (limit 1 MB)', dwell: 5000 },
+}
+const PASTE_FAILED: NoticeSpec = { Icon: ExclamationTriangleIcon, text: "Couldn't send to the Mac. Try again.", dwell: 5000, alert: true }
 
 export type { ControlMode }
 
@@ -236,6 +271,12 @@ export function DesktopView({
   useEffect(() => setMode(controlMode), [controlMode])
   const [swapOn, setSwapOn] = useState(false)
   const [canSurface, setCanSurface] = useState(false)
+  const [canClipboard, setCanClipboard] = useState(false)
+  // A clipboard transfer is in flight: both Clipboard items are greyed so two never overlap.
+  const [clipBusy, setClipBusy] = useState(false)
+  const clipBusyRef = useRef(false)
+  // The Mac's text when the browser refused the write (Task 2 shows it in the Copy popover). Memory only, never logged.
+  const copyFallback = useRef<string | null>(null)
   const [fullscreen, setFullscreen] = useState(false)
   // Whether the stage had the keyboard when the pointer went down on the bar (the press itself blurs it).
   const stageHadFocus = useRef(false)
@@ -274,7 +315,7 @@ export function DesktopView({
 
   // A notice dwells, then fades, then goes; a newer one replaces it and restarts the clock.
   useEffect(() => {
-    if (!notice) return
+    if (!notice || notice.persistent) return
     const fade = setTimeout(() => setNoticeFading(true), notice.dwell)
     const gone = setTimeout(() => setNotice(null), notice.dwell + CHIP_FADE_MS)
     return () => {
@@ -384,6 +425,7 @@ export function DesktopView({
         inputCtl.current = ctl
         setSwapOn(ctl.swap())
         setCanSurface(r.surface)
+        setCanClipboard(r.clipboard)
         setCanControl(true)
       }),
       client.on('input', ({ open }) => {
@@ -559,6 +601,98 @@ export function DesktopView({
     })
   }
 
+  /** Marks a transfer in flight; the slow notice shows only if it outlasts CLIP_SLOW_MS. Returns the end of the transfer. */
+  function beginTransfer(slowText: string): () => void {
+    clipBusyRef.current = true
+    setClipBusy(true)
+    const slow = setTimeout(() => pushNotice({ Icon: ClipboardIcon, text: slowText, dwell: 0, persistent: true }), CLIP_SLOW_MS)
+    return () => {
+      clearTimeout(slow)
+      clipBusyRef.current = false
+      setClipBusy(false)
+    }
+  }
+
+  /** Copy from Mac. Runs inside the click: the browser write starts now, with a promise for the text (Safari's gesture rule). */
+  function copyFromMac() {
+    const client = clientRef.current
+    if (!client || clipBusyRef.current) return
+    const end = beginTransfer('Copying from the Mac…')
+    const result = client.copyFromMac()
+    const clip = navigator.clipboard
+    let written: Promise<boolean>
+    if (typeof ClipboardItem !== 'undefined' && clip?.write) {
+      // Rejects on any outcome but ok, so a refused copy writes nothing.
+      const blob = result.then((r) => {
+        if (r.outcome !== 'ok' || !r.text) throw new Error(r.outcome)
+        return new Blob([r.text], { type: 'text/plain' })
+      })
+      blob.catch(() => {})
+      try {
+        written = clip.write([new ClipboardItem({ 'text/plain': blob })]).then(() => true, () => false)
+      } catch {
+        written = Promise.resolve(false)
+      }
+    } else {
+      written = result.then(async (r) => {
+        if (r.outcome !== 'ok' || !r.text || !clip?.writeText) return false
+        try {
+          await clip.writeText(r.text)
+          return true
+        } catch {
+          return false
+        }
+      })
+    }
+    void (async () => {
+      const r = await result
+      const ok = await written
+      end()
+      if (r.outcome === 'ok' && r.text) {
+        if (ok) pushNotice(COPY_NOTICES.ok!)
+        else {
+          copyFallback.current = r.text
+          pushNotice(COPY_FAILED) // Task 2 opens the Copy popover here instead
+        }
+      } else {
+        pushNotice(r.outcome === 'ok' ? COPY_NOTICES.empty! : (COPY_NOTICES[r.outcome] ?? COPY_FAILED))
+      }
+    })()
+  }
+
+  async function sendToMac(text: string) {
+    const client = clientRef.current
+    if (!client) return
+    const n = clipByteLength(text)
+    if (n === 0) return pushNotice(PASTE_NOTICES.empty!)
+    if (n > CLIP_MAX_BYTES) return pushNotice(PASTE_NOTICES.too_large!)
+    if (clipBusyRef.current) return
+    const end = beginTransfer('Sending to the Mac…')
+    const { outcome } = await client.pasteToMac(text)
+    end()
+    pushNotice(PASTE_NOTICES[outcome] ?? PASTE_FAILED)
+  }
+
+  /** Paste to Mac. The read of the viewer's clipboard starts inside the click; it is sent at once. */
+  async function pasteToMac() {
+    if (!clientRef.current || clipBusyRef.current) return
+    const clip = navigator.clipboard
+    if (!clip?.readText) return // Task 2 opens the Paste popover here
+    clipBusyRef.current = true
+    setClipBusy(true)
+    let text: string
+    try {
+      text = await clip.readText()
+    } catch {
+      clipBusyRef.current = false
+      setClipBusy(false)
+      return // Task 2 opens the Paste popover here
+    }
+    clipBusyRef.current = false
+    setClipBusy(false)
+    await sendToMac(text)
+  }
+
   if (status.kind === 'other_account') return <UserRefused />
 
   // One card or one chip at a time; the first that applies wins.
@@ -677,6 +811,7 @@ export function DesktopView({
               mode,
               canSurface,
               fullscreenAvailable: document.fullscreenEnabled === true,
+              canClipboard,
             }}
             surface={surf ? { kind: surf.kind, id: surf.id, name: surf.name } : null}
             requestSurfaces={() => clientRef.current?.requestSurfaces() ?? Promise.reject(new Error('not connected'))}
@@ -696,6 +831,9 @@ export function DesktopView({
             fullscreen={fullscreen}
             onFullscreen={() => void toggleFullscreen()}
             controlRef={controlSegRef}
+            onCopy={copyFromMac}
+            onPaste={() => void pasteToMac()}
+            clipBusy={clipBusy}
           />
         </div>
       )}
