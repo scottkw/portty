@@ -2,6 +2,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act } from 'react'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { createRoot, type Root } from 'react-dom/client'
 import { createDesktopInput, type InputMsg } from '../../lib/desktopInput'
 import { DesktopSendKeysMenu, type DesktopSendKeysMenuProps } from '../DesktopSendKeysMenu'
@@ -125,5 +127,105 @@ describe('Send Keys items (Task 1)', () => {
       ['MetaLeft', false, 0],
     ])
     ctl.destroy()
+  })
+})
+
+describe('Lock Screen confirm and window share (Task 3)', () => {
+  const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')
+  const dlgButton = (name: string) => Array.from(dialog()!.querySelectorAll('button')).find((b) => b.textContent === name)!
+
+  it('Lock Screen… opens the Lock This Mac dialog with Don\'t Lock focused, and sends nothing yet', () => {
+    const p = open()
+    click(byLabel('Lock Screen…'))
+    expect(dialog()).not.toBeNull()
+    expect(dialog()!.getAttribute('aria-modal')).toBe('true')
+    expect(dialog()!.querySelector('.dialog__title')?.textContent).toBe('Lock This Mac')
+    expect(dialog()!.textContent).toContain(
+      "The Mac will lock and stay locked until someone unlocks it at the Mac. Remote unlock isn't available yet.",
+    )
+    expect(dlgButton("Don't Lock")).toBeDefined()
+    expect(dlgButton('Lock Screen')).toBeDefined()
+    expect(document.activeElement).toBe(dlgButton("Don't Lock"))
+    expect(p.sendChord).not.toHaveBeenCalled()
+    expect(p.onClose).not.toHaveBeenCalled()
+    expect(menu()).toBeNull()
+  })
+
+  it('Esc does what Don\'t Lock does: closes with nothing sent', () => {
+    const p = open()
+    click(byLabel('Lock Screen…'))
+    press('Escape')
+    expect(dialog()).toBeNull()
+    expect(p.sendChord).not.toHaveBeenCalled()
+    expect(p.onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('Don\'t Lock closes with nothing sent', () => {
+    const p = open()
+    click(byLabel('Lock Screen…'))
+    click(dlgButton("Don't Lock"))
+    expect(dialog()).toBeNull()
+    expect(p.sendChord).not.toHaveBeenCalled()
+    expect(p.onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('only the Lock Screen button sends the Ctrl+Cmd+Q tap, once, and closes', async () => {
+    const p = open()
+    click(byLabel('Lock Screen…'))
+    await act(async () => { dlgButton('Lock Screen').click() })
+    expect(p.sendChord).toHaveBeenCalledTimes(1)
+    expect(p.sendChord).toHaveBeenCalledWith(['ControlLeft', 'MetaLeft', 'KeyQ'])
+    expect(p.onClose).toHaveBeenCalledTimes(1)
+    expect(dialog()).toBeNull()
+  })
+
+  it('in a window share all three items are greyed with the caption and the dialog cannot open', () => {
+    const p = open({ windowShare: true })
+    expect(items().every((i) => i.getAttribute('aria-disabled') === 'true')).toBe(true)
+    expect(document.querySelector('.desktop-menu__caption')?.textContent).toBe(
+      'Not available in a window share. Share the display to use these.',
+    )
+    click(byLabel('Lock Screen…'))
+    click(byLabel('Cmd+Tab'))
+    expect(dialog()).toBeNull()
+    expect(p.sendChord).not.toHaveBeenCalled()
+  })
+
+  it('a window share that starts while the dialog is open still never sends the chord', async () => {
+    const sendChord = vi.fn()
+    open({ sendChord })
+    click(byLabel('Lock Screen…'))
+    open({ sendChord, windowShare: true })
+    await act(async () => { dlgButton('Lock Screen').click() })
+    expect(sendChord).not.toHaveBeenCalled()
+  })
+
+  it('a disabledReason (Locked) greys the items with that title', () => {
+    const p = open({ disabledReason: 'Locked' })
+    expect(items().every((i) => i.getAttribute('aria-disabled') === 'true' && i.getAttribute('title') === 'Locked')).toBe(true)
+    click(byLabel('Cmd+Space'))
+    expect(p.sendChord).not.toHaveBeenCalled()
+  })
+
+  it('renders inside the full-screen element when there is one', () => {
+    const fs = document.createElement('div')
+    document.body.appendChild(fs)
+    Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => fs })
+    try {
+      open()
+      expect(fs.contains(menu())).toBe(true)
+      click(byLabel('Lock Screen…'))
+      expect(fs.contains(dialog())).toBe(true)
+    } finally {
+      delete (document as unknown as { fullscreenElement?: unknown }).fullscreenElement
+      act(() => root.unmount())
+      fs.remove()
+      root = createRoot(container)
+    }
+  })
+
+  it('the component adds no markup injection path', () => {
+    const src = readFileSync(resolve(__dirname, '../DesktopSendKeysMenu.tsx'), 'utf8')
+    expect(src).not.toContain('dangerouslySetInnerHTML')
   })
 })

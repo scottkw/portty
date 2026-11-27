@@ -36,6 +36,10 @@ export function DesktopSendKeysMenu({
   const [confirm, setConfirm] = useState(false)
   // The menu closes itself after a pick; when the pick opened the confirm, the confirm owns what follows.
   const confirming = useRef(false)
+  function closeConfirm() {
+    setConfirm(false)
+    onClose()
+  }
   const inert = windowShare || disabledReason !== undefined
   const title = disabledReason
   const describedBy = windowShare ? CAPTION_ID : undefined
@@ -84,14 +88,15 @@ export function DesktopSendKeysMenu({
             cancelLabel="Don't Lock"
             titleId="desktop-lock-title"
             destructive={false}
-            onCancel={onClose}
+            onCancel={closeConfirm}
             onConfirm={async () => {
               // A window share must not grant more than a window: the chord is never sent there.
               if (!windowShare) sendChord(LOCK_SCREEN)
-              onClose()
+              closeConfirm()
             }}
           />,
-          document.body,
+          // As ContextMenu: inside the full-screen element when there is one, or the dialog would be invisible.
+          document.fullscreenElement ?? document.body,
         )}
     </>
   )

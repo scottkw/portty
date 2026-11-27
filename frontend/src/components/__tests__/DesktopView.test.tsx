@@ -855,6 +855,195 @@ describe('surface picker and notices (Phase 20-07 Task 2)', () => {
   })
 })
 
+describe('bar items wired to the view (Phase 20-07 Task 3)', () => {
+  const btn = (name: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${name}"]`)!
+  const radio = (name: string) => Array.from(container.querySelectorAll<HTMLElement>('[role="radio"]')).find((r) => r.textContent === name)!
+  const notice = () => container.querySelector('.desktop-chip--notice')
+  const stage = () => container.querySelector('.desktop-stage') as HTMLElement
+  const input = () => container.querySelector('textarea') as HTMLTextAreaElement
+  const ring = () => container.querySelector('.desktop-ring')
+  const sentTypes = () => client().sendInput.mock.calls.map((c) => (c[0] as { t: string }).t)
+
+  function ownAccount(rights = { control: true, clipboard: true, surface: true }) {
+    for (const [a, b] of [['clientWidth', 1000], ['clientHeight', 500], ['videoWidth', 1600], ['videoHeight', 1000]] as const) {
+      Object.defineProperty(video(), a, { configurable: true, value: b })
+    }
+    act(() => client().emit('rights', rights))
+  }
+  const press = () =>
+    act(() => {
+      stage().dispatchEvent(new PointerEvent('pointerdown', { clientX: 500, clientY: 250, bubbles: true, button: 0, pointerId: 1 }))
+    })
+
+  beforeEach(() => window.localStorage.clear())
+  afterEach(() => {
+    delete (document as unknown as { fullscreenEnabled?: unknown }).fullscreenEnabled
+    delete (document as unknown as { fullscreenElement?: unknown }).fullscreenElement
+    delete (navigator as unknown as { keyboard?: unknown }).keyboard
+  })
+
+  it('chips sit below the bar row on a viewer that may control, and stay at the top elsewhere', () => {
+    render()
+    expect(container.querySelector('.desktop-view')?.classList.contains('desktop-view--bar')).toBe(false)
+    ownAccount()
+    expect(container.querySelector('.desktop-view')?.classList.contains('desktop-view--bar')).toBe(true)
+  })
+
+  it('the picker is absent when the hello grants no surface choice', async () => {
+    render()
+    ownAccount({ control: true, clipboard: false, surface: false })
+    await firstFrame()
+    expect(container.querySelector('.desktop-bar__picker')).toBeNull()
+  })
+
+  it('View Only releases and drops the ring, the stage goes to tabindex -1, Control returns it', async () => {
+    render()
+    ownAccount()
+    await firstFrame()
+    press()
+    expect(ring()).not.toBeNull()
+    client().sendInput.mockClear()
+    act(() => radio('View Only').click())
+    expect(sentTypes()).toContain('release')
+    expect(ring()).toBeNull()
+    expect(stage().getAttribute('tabindex')).toBe('-1')
+    expect(radio('View Only').getAttribute('aria-checked')).toBe('true')
+    expect(btn('Send Keys').getAttribute('title')).toBe('Turn on Control first')
+    act(() => radio('Control').click())
+    expect(stage().getAttribute('tabindex')).toBe('0')
+  })
+
+  it('the release chord moves focus to the Control segment and shows the bar', async () => {
+    render()
+    ownAccount()
+    await firstFrame()
+    advance(5200)
+    expect(container.querySelector('.desktop-bar')?.classList.contains('desktop-bar--hidden')).toBe(true)
+    press()
+    act(() => {
+      input().dispatchEvent(new KeyboardEvent('keydown', { code: 'Enter', key: 'Enter', ctrlKey: true, altKey: true, metaKey: true, bubbles: true, cancelable: true }))
+    })
+    expect(document.activeElement).toBe(radio('Control'))
+    expect(container.querySelector('.desktop-bar')?.classList.contains('desktop-bar--hidden')).toBe(false)
+  })
+
+  it('Swap toggles the controller setting, remembers it, and shows its notice', async () => {
+    render()
+    ownAccount()
+    await firstFrame()
+    act(() => btn('Swap Ctrl and Cmd').click())
+    expect(btn('Swap Ctrl and Cmd').getAttribute('aria-pressed')).toBe('true')
+    expect(window.localStorage.getItem('portty:desktop-swap-ctrl-cmd')).toBe('1')
+    expect(notice()?.textContent).toBe('Ctrl and Cmd are swapped')
+    act(() => btn('Swap Ctrl and Cmd').click())
+    expect(btn('Swap Ctrl and Cmd').getAttribute('aria-pressed')).toBe('false')
+    expect(notice()?.textContent).toBe('Ctrl and Cmd are back to normal')
+  })
+
+  it('Swap starts on when this browser remembered it', async () => {
+    window.localStorage.setItem('portty:desktop-swap-ctrl-cmd', '1')
+    render()
+    ownAccount()
+    await firstFrame()
+    expect(btn('Swap Ctrl and Cmd').getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('the Locked state greys what sends and keeps Swap live', async () => {
+    render()
+    ownAccount()
+    state({ state: 'locked', viewers: 1, locked: true })
+    await firstFrame()
+    expect(btn('Send Keys').getAttribute('aria-disabled')).toBe('true')
+    expect(btn('Send Keys').getAttribute('title')).toBe('Locked')
+    expect(btn('Swap Ctrl and Cmd').getAttribute('aria-disabled')).toBeNull()
+  })
+
+  it('needs Accessibility greys Send Keys and the Control segment', async () => {
+    render()
+    ownAccount()
+    await firstFrame()
+    act(() => client().emit('control', { input: 'needs_accessibility', window: '' }))
+    expect(btn('Send Keys').getAttribute('title')).toBe('Control needs Accessibility')
+    expect(radio('Control').getAttribute('aria-disabled')).toBe('true')
+    expect(radio('View Only').getAttribute('aria-disabled')).toBeNull()
+  })
+
+  describe('Full Screen', () => {
+    function fullscreenSupport(enabled: boolean) {
+      Object.defineProperty(document, 'fullscreenEnabled', { configurable: true, value: enabled })
+    }
+    const request = () => {
+      const fn = vi.fn(() => Promise.resolve())
+      Object.defineProperty(HTMLElement.prototype, 'requestFullscreen', { configurable: true, writable: true, value: fn })
+      return fn
+    }
+
+    it('is absent when the browser reports fullscreen unavailable', async () => {
+      fullscreenSupport(false)
+      render()
+      ownAccount()
+      await firstFrame()
+      expect(btn('Full Screen')).toBeNull()
+    })
+
+    it('enters fullscreen on the viewer root, focuses the stage and, with Keyboard Lock granted, says so', async () => {
+      fullscreenSupport(true)
+      const req = request()
+      const lock = vi.fn(() => Promise.resolve())
+      Object.defineProperty(navigator, 'keyboard', { configurable: true, value: { lock, unlock: vi.fn() } })
+      render()
+      ownAccount()
+      await firstFrame()
+      await act(async () => { btn('Full Screen').click() })
+      expect(req).toHaveBeenCalledTimes(1)
+      expect(req.mock.contexts[0]).toBe(container.querySelector('.desktop-view'))
+      expect(lock).toHaveBeenCalledTimes(1)
+      expect(document.activeElement).toBe(input())
+      expect(notice()?.textContent).toBe('Cmd and Esc shortcuts now go to the Mac. Hold Esc to leave full screen.')
+      advance(4999)
+      expect(notice()).not.toBeNull()
+    })
+
+    it.each([
+      ['Keyboard Lock is refused', () => Object.defineProperty(navigator, 'keyboard', { configurable: true, value: { lock: () => Promise.reject(new Error('no')) } })],
+      ['Keyboard Lock does not exist', () => {}],
+    ])('when %s the notice says the browser keeps Cmd shortcuts, and it is not an error', async (_w, setup) => {
+      fullscreenSupport(true)
+      request()
+      setup()
+      render()
+      ownAccount()
+      await firstFrame()
+      await act(async () => { btn('Full Screen').click() })
+      expect(notice()?.textContent).toBe(
+        'Full screen is on. This browser keeps Cmd shortcuts; use Send Keys for Cmd+Tab and Cmd+Space.',
+      )
+      expect(notice()?.getAttribute('role')).toBeNull()
+    })
+
+    it('leaving fullscreen releases held input and the keyboard lock', async () => {
+      fullscreenSupport(true)
+      request()
+      const unlock = vi.fn()
+      Object.defineProperty(navigator, 'keyboard', { configurable: true, value: { lock: () => Promise.resolve(), unlock } })
+      render()
+      ownAccount()
+      await firstFrame()
+      press()
+      client().sendInput.mockClear()
+      Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => container })
+      act(() => { document.dispatchEvent(new Event('fullscreenchange')) })
+      expect(btn('Exit Full Screen')).not.toBeNull()
+      expect(sentTypes()).not.toContain('release')
+      Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => null })
+      act(() => { document.dispatchEvent(new Event('fullscreenchange')) })
+      expect(sentTypes()).toContain('release')
+      expect(unlock).toHaveBeenCalledTimes(1)
+      expect(btn('Full Screen')).not.toBeNull()
+    })
+  })
+})
+
 describe('videoContentRect', () => {
   it('letterboxes a wide video in a wider element', () => {
     expect(videoContentRect(1000, 500, 1600, 1000)).toEqual({ x: 100, y: 0, width: 800, height: 500 })

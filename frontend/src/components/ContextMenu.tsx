@@ -177,6 +177,7 @@ export function ContextMenu({ items, x, y, invoker, onClose, className }: Contex
         )
       })}
     </div>,
-    document.body,
+    // Only the full-screen element and what it contains are drawn while something is full screen (the viewer's bar menus).
+    document.fullscreenElement ?? document.body,
   )
 }

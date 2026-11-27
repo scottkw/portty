@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowPathIcon,
   ClockIcon,
+  ArrowsPointingOutIcon,
+  ArrowsRightLeftIcon,
   ComputerDesktopIcon,
   CursorArrowRaysIcon,
   ExclamationTriangleIcon,
@@ -24,7 +26,7 @@ import {
 import { HINT_KEY, createDesktopInput, type DesktopInput, type ReleaseReason } from '../lib/desktopInput'
 import { isPhone } from '../lib/phoneQuery'
 import { UserRefused } from './UserRefused'
-import { DesktopControlBar, SWITCH_TIMEOUT_MS, type SurfacePick } from './DesktopControlBar'
+import { DesktopControlBar, SWITCH_TIMEOUT_MS, type ControlMode, type SurfacePick } from './DesktopControlBar'
 
 const TITLE = 'Portty Desktop'
 
@@ -142,7 +144,7 @@ interface Notice {
   alert?: boolean
 }
 
-export type ControlMode = 'view' | 'control'
+export type { ControlMode }
 
 /** Safari with storage blocked throws on the property read itself; the setting then reads as off. */
 function safeStorage(): Storage | null {
@@ -151,6 +153,15 @@ function safeStorage(): Storage | null {
   } catch {
     return null
   }
+}
+
+interface KeyboardApi {
+  lock?: (codes?: string[]) => Promise<void>
+  unlock?: () => void
+}
+/** navigator.keyboard (Chrome, Edge); absent in Safari and Firefox. */
+function keyboardApi(): KeyboardApi | undefined {
+  return (navigator as Navigator & { keyboard?: KeyboardApi }).keyboard
 }
 
 export interface DesktopViewProps {
@@ -183,6 +194,8 @@ export function DesktopView({
   onControlChange,
   onReleaseChord,
 }: DesktopViewProps = {}): React.ReactElement {
+  const rootRef = useRef<HTMLDivElement>(null)
+  const controlSegRef = useRef<HTMLButtonElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -218,6 +231,12 @@ export function DesktopView({
   const surfRef = useRef<DesktopSurfaceMsg | null>(null)
   const switchingRef = useRef<(SurfacePick & { previous: string }) | null>(null)
   const [barMenuOpen, setBarMenuOpen] = useState(false)
+  // The bar owns View Only or Control; the controlMode prop sets it, and a change of the prop wins.
+  const [mode, setMode] = useState<ControlMode>(controlMode)
+  useEffect(() => setMode(controlMode), [controlMode])
+  const [swapOn, setSwapOn] = useState(false)
+  const [canSurface, setCanSurface] = useState(false)
+  const [fullscreen, setFullscreen] = useState(false)
   // Whether the stage had the keyboard when the pointer went down on the bar (the press itself blurs it).
   const stageHadFocus = useRef(false)
 
@@ -353,6 +372,8 @@ export function DesktopView({
             onReleaseChord: () => {
               typingStays()
               chordCb.current?.()
+              // The keyboard is the viewer's own again: the bar shows and focus waits on its Control segment.
+              controlSegRef.current?.focus()
             },
             onReleased: (reason) => {
               if (HELD_NOTICE.has(reason)) pushNotice({ Icon: HandRaisedIcon, text: 'Held keys were released', dwell: 3000 })
@@ -361,6 +382,8 @@ export function DesktopView({
         )
         ctl.setControl(true)
         inputCtl.current = ctl
+        setSwapOn(ctl.swap())
+        setCanSurface(r.surface)
         setCanControl(true)
       }),
       client.on('input', ({ open }) => {
@@ -447,7 +470,7 @@ export function DesktopView({
 
   const locked = desk?.locked === true || desk?.state === 'locked'
   const accessNeeded = ctlState.input === 'needs_accessibility'
-  const active = canControl && controlMode === 'control'
+  const active = canControl && mode === 'control'
   const paused = locked || status.kind === 'reconnecting' || status.kind === 'unreachable' || accessNeeded
 
   useEffect(() => {
@@ -483,6 +506,59 @@ export function DesktopView({
     changeCb.current?.({ available: canControl, captured })
   }, [canControl, captured])
 
+  // Leaving full screen (the button, a long Esc, the browser) lets go of the keyboard lock and every held key.
+  useEffect(() => {
+    const onChange = () => {
+      const on = document.fullscreenElement != null
+      setFullscreen(on)
+      if (on) return
+      keyboardApi()?.unlock?.()
+      inputCtl.current?.releaseAll('blur')
+    }
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
+
+  async function toggleFullscreen() {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen().catch(() => {})
+      return
+    }
+    const root = rootRef.current
+    if (!root) return
+    try {
+      await root.requestFullscreen()
+    } catch {
+      return // The browser refused full screen itself; nothing changed, nothing to explain.
+    }
+    // The click on the button blurred the stage, and Keyboard Lock only helps a focused page.
+    stageRef.current?.focus({ preventScroll: true })
+    let granted = false
+    try {
+      await keyboardApi()?.lock?.()
+      granted = keyboardApi()?.lock !== undefined
+    } catch {
+      // A refused lock is never an error: the browser keeps its shortcuts.
+    }
+    pushNotice({
+      Icon: ArrowsPointingOutIcon,
+      text: granted
+        ? 'Cmd and Esc shortcuts now go to the Mac. Hold Esc to leave full screen.'
+        : 'Full screen is on. This browser keeps Cmd shortcuts; use Send Keys for Cmd+Tab and Cmd+Space.',
+      dwell: 5000,
+    })
+  }
+
+  function toggleSwap(on: boolean) {
+    inputCtl.current?.setSwap(on)
+    setSwapOn(on)
+    pushNotice({
+      Icon: ArrowsRightLeftIcon,
+      text: on ? 'Ctrl and Cmd are swapped' : 'Ctrl and Cmd are back to normal',
+      dwell: 3000,
+    })
+  }
+
   if (status.kind === 'other_account') return <UserRefused />
 
   // One card or one chip at a time; the first that applies wins.
@@ -506,7 +582,7 @@ export function DesktopView({
   const card = cardKey ? CARDS[cardKey] : null
 
   return (
-    <div className="desktop-view">
+    <div ref={rootRef} className={canControl ? 'desktop-view desktop-view--bar' : 'desktop-view'}>
       <div
         className={active && !paused ? 'desktop-stage desktop-stage--live' : 'desktop-stage'}
         ref={stageRef}
@@ -584,11 +660,25 @@ export function DesktopView({
         </div>
       </div>
       {showBar && (
-        <div className="desktop-overlay" onPointerDownCapture={() => { stageHadFocus.current = capturedRef.current }}>
+        <div
+          className="desktop-overlay"
+          onPointerDownCapture={() => {
+            // The press itself takes the keyboard off the stage, so read it now.
+            stageHadFocus.current = capturedRef.current
+            if (capturedRef.current) typingStays()
+          }}
+        >
           <DesktopControlBar
-            windowShare={surf?.kind === 'window'}
+            state={{
+              locked,
+              reconnecting: status.kind === 'reconnecting',
+              accessNeeded,
+              switching: switching !== null,
+              mode,
+              canSurface,
+              fullscreenAvailable: document.fullscreenEnabled === true,
+            }}
             surface={surf ? { kind: surf.kind, id: surf.id, name: surf.name } : null}
-            switching={switching !== null}
             requestSurfaces={() => clientRef.current?.requestSurfaces() ?? Promise.reject(new Error('not connected'))}
             onSelectSurface={(pick) => {
               if (switchingRef.current) return
@@ -600,6 +690,12 @@ export function DesktopView({
             sendChord={(codes) => inputCtl.current?.sendChord(codes)}
             onMenuOpenChange={setBarMenuOpen}
             onSendKeysDone={() => { if (stageHadFocus.current) inputRef.current?.focus({ preventScroll: true }) }}
+            swapOn={swapOn}
+            onSwapChange={toggleSwap}
+            onModeChange={setMode}
+            fullscreen={fullscreen}
+            onFullscreen={() => void toggleFullscreen()}
+            controlRef={controlSegRef}
           />
         </div>
       )}
