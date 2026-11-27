@@ -73,9 +73,24 @@ export function createTrackpad(
   // idle: nothing down. touching: one finger, still tap-sized. second: a finger that landed within
   // the double-tap window of a tap (tap, double-tap or drag, not decided yet). moving: a pointer
   // move. dragging: tap-then-drag. longPressed: the long press fired. tapPending: finger up, the
-  // tap is waiting out the double-tap window.
-  type Mode = 'idle' | 'touching' | 'second' | 'moving' | 'dragging' | 'longPressed' | 'tapPending'
+  // tap is waiting out the double-tap window. two: a two-finger gesture (scroll, pinch or tap).
+  // ignoring: a cancelled or finished gesture whose fingers are still down; nothing until all lift.
+  type Mode = 'idle' | 'touching' | 'second' | 'moving' | 'dragging' | 'longPressed' | 'tapPending' | 'two' | 'ignoring'
   let mode: Mode = 'idle'
+
+  // Two-finger state. The gesture is chosen once, on the first move past decidePx: pinch if the
+  // finger distance changed more than the pair's centroid travelled, else scroll.
+  let d0 = 0 // finger distance at the start (0 until the fingers separate)
+  let c0x = 0 // centroid at the start
+  let c0y = 0
+  let lcx = 0 // centroid at the last scroll delta
+  let lcy = 0
+  let twoT0 = 0
+  let decided: 'pinch' | 'scroll' | null = null
+  let maxDist = 0 // largest distance change and centroid travel seen, for the two-finger tap test
+  let maxTravel = 0
+  let twoTapChained = false // this pair landed within the double-tap window of a two-finger tap
+  let lastTwoTapAt: number | null = null
   let sx = 0 // where this touch began
   let sy = 0
   let t0 = 0 // when it began
@@ -107,12 +122,72 @@ export function createTrackpad(
     tapTimer = clock.setTimeout(() => {
       tapTimer = null
       flushTap()
-      mode = 'idle'
+      if (mode === 'tapPending') mode = 'idle'
     }, TRACKPAD.doubleTapMs)
   }
-  // A drag in progress must end (button up on the Mac) however the gesture is torn down.
-  const endDragIfAny = (): void => {
+  // However a gesture is torn down, a held button must be released on the Mac and a pinch closed
+  // so the caller can drop will-change.
+  const endGestureIfAny = (): void => {
     if (mode === 'dragging') onIntent({ kind: 'dragEnd', at: clock.now() })
+    else if (mode === 'two' && decided === 'pinch') onIntent({ kind: 'pinchEnd' })
+  }
+
+  const dist = (a: TouchPoint, b: TouchPoint): number => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
+
+  const beginTwo = (a: TouchPoint, b: TouchPoint): void => {
+    clearPressTimer()
+    endGestureIfAny()
+    flushTap() // a tap still waiting out its window is a real tap
+    const now = clock.now()
+    twoTapChained = lastTwoTapAt !== null && now - lastTwoTapAt <= TRACKPAD.doubleTapMs
+    lastTwoTapAt = null
+    d0 = dist(a, b)
+    c0x = lcx = (a.clientX + b.clientX) / 2
+    c0y = lcy = (a.clientY + b.clientY) / 2
+    twoT0 = now
+    decided = null
+    maxDist = maxTravel = 0
+    mode = 'two'
+  }
+
+  const moveTwo = (a: TouchPoint, b: TouchPoint): void => {
+    const d = dist(a, b)
+    if (d0 === 0) {
+      // Two fingers on one point have no distance to compare against; wait for them to separate.
+      if (d > 0) d0 = d
+      return
+    }
+    const cx = (a.clientX + b.clientX) / 2
+    const cy = (a.clientY + b.clientY) / 2
+    const dDist = Math.abs(d - d0)
+    const travel = Math.hypot(cx - c0x, cy - c0y)
+    maxDist = Math.max(maxDist, dDist)
+    maxTravel = Math.max(maxTravel, travel)
+    if (decided === null) {
+      if (dDist <= TRACKPAD.decidePx && travel <= TRACKPAD.decidePx) return
+      decided = dDist > travel ? 'pinch' : 'scroll'
+    }
+    if (decided === 'pinch') {
+      onIntent({ kind: 'pinch', scale: d / d0, cx, cy })
+      return
+    }
+    const dx = cx - lcx
+    const dy = cy - lcy
+    lcx = cx
+    lcy = cy
+    if (dx !== 0 || dy !== 0) onIntent({ kind: 'scroll', dx, dy })
+  }
+
+  // The first finger to lift ends a two-finger gesture; the other is ignored until it lifts too.
+  const endTwo = (remaining: number): void => {
+    const now = clock.now()
+    if (decided === 'pinch') {
+      onIntent({ kind: 'pinchEnd' })
+    } else if (decided === null && maxDist <= TRACKPAD.tapMovePx && maxTravel <= TRACKPAD.tapMovePx && now - twoT0 <= TRACKPAD.tapMs) {
+      if (twoTapChained) onIntent({ kind: 'resetZoom' })
+      else lastTwoTapAt = now
+    }
+    mode = remaining === 0 ? 'idle' : 'ignoring'
   }
 
   // Delta since the last reference point, scaled by the speed measured over that span.
@@ -130,10 +205,23 @@ export function createTrackpad(
 
   return {
     start(e) {
-      if (e.touches.length !== 1) return
+      const n = e.touches.length
+      if (n === 2) {
+        beginTwo(e.touches[0], e.touches[1])
+        return
+      }
+      if (n >= 3) {
+        // A third finger cancels whatever was going on, with no intent of its own.
+        clearPressTimer()
+        endGestureIfAny()
+        flushTap()
+        mode = 'ignoring'
+        return
+      }
+      if (n !== 1) return
       const t = e.touches[0]
       clearPressTimer()
-      endDragIfAny() // a start with no preceding end: the lift was lost
+      endGestureIfAny() // a start with no preceding end: the lift was lost
       const now = clock.now()
       if (mode === 'tapPending' && prev && now - prev.at <= TRACKPAD.doubleTapMs) {
         clearTapTimer()
@@ -154,6 +242,10 @@ export function createTrackpad(
       }, TRACKPAD.longPressMs)
     },
     move(e) {
+      if (mode === 'two' && e.touches.length === 2) {
+        moveTwo(e.touches[0], e.touches[1])
+        return
+      }
       if (e.touches.length !== 1) return
       const t = e.touches[0]
       if (mode === 'touching' || mode === 'second') {
@@ -172,8 +264,16 @@ export function createTrackpad(
       const d = gainedDelta(t.clientX, t.clientY)
       if (d.dx !== 0 || d.dy !== 0) onIntent({ kind: mode === 'dragging' ? 'dragMove' : 'move', ...d })
     },
-    end() {
+    end(e) {
       clearPressTimer()
+      if (mode === 'two') {
+        endTwo(e.touches.length)
+        return
+      }
+      if (mode === 'ignoring') {
+        if (e.touches.length === 0) mode = 'idle'
+        return
+      }
       const now = clock.now()
       const tapped = now - t0 <= TRACKPAD.tapMs
       switch (mode) {
@@ -195,7 +295,7 @@ export function createTrackpad(
           }
           break
         case 'dragging':
-          endDragIfAny()
+          endGestureIfAny()
           mode = 'idle'
           break
         case 'moving':
@@ -208,7 +308,8 @@ export function createTrackpad(
       clearPressTimer()
       clearTapTimer()
       prev = null
-      endDragIfAny() // pending states emit nothing; only a held button needs releasing
+      lastTwoTapAt = null
+      endGestureIfAny() // pending states emit nothing; only a held button or open pinch needs closing
       mode = 'idle'
     },
   }
