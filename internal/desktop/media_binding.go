@@ -52,7 +52,8 @@ func (m *Manager) checkMediaIdentity(v *viewer, pair *webrtc.ICECandidatePair) {
 	}
 	slog.Warn("desktop: guest media identity", "viewer", string(v.ID)[:8], "kind", kind)
 	v.gs.emit(GuestEvent{Kind: AuditRevoked, Reason: ReasonMediaIdentityMismatch, Ident: v.Identity})
-	_ = v.ws.Close(CloseGuestRevoked, guestReasonRevoked)
+	// A close handshake can take seconds; the caller must not wait for it.
+	go func() { _ = v.ws.Close(CloseGuestRevoked, guestReasonRevoked) }()
 }
 
 // mediaMismatch returns why the pair is not the admitted node's, or "" when it is.

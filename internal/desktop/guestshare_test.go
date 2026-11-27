@@ -334,7 +334,7 @@ func TestGuestShare_UnknownAnsweredAndEndedRequestsChangeNothing(t *testing.T) {
 
 func TestGuestShare_EventsCarryTheSanitizedIdentity(t *testing.T) {
 	r := newShareRig(t)
-	req, err := r.gs.Knock(desktop.NewIdentity(1001, "ada@example.com", "Ada‮ Lovelace", "mac\nbook", "stable-n", "100.64.0.9"))
+	req, err := r.gs.Knock(desktop.NewIdentity(1001, "ada@example.com", "Ada\u202e Lovelace", "mac\nbook", "stable-n", "100.64.0.9"))
 	if err != nil {
 		t.Fatal(err)
 	}
