@@ -407,13 +407,22 @@ describe('the soft keyboard and the bars', () => {
   let vv: StubVV
   let frames: Array<() => void>
   const flush = () => act(() => { frames.splice(0).forEach((cb) => cb()) })
+  // On a phone the keyboard rises because the hidden field took focus, and goes down when it loses it.
   const raiseKeyboard = () => {
+    act(() => field().focus())
     vv.height = 400
     act(() => { vv.dispatchEvent(new Event('resize')) })
     flush()
   }
   const lowerKeyboard = () => {
+    act(() => field().blur())
     vv.height = 768
+    act(() => { vv.dispatchEvent(new Event('resize')) })
+    flush()
+  }
+  // The visual viewport alone, the field's focus untouched (Chrome for iOS's accessory bar, the keyboard animating).
+  const viewport = (height: number) => {
+    vv.height = height
     act(() => { vv.dispatchEvent(new Event('resize')) })
     flush()
   }
@@ -462,6 +471,55 @@ describe('the soft keyboard and the bars', () => {
     expect(toolbar()?.getAttribute('aria-label')).toBe('Desktop keys')
     lowerKeyboard()
     expect(toolbar()?.getAttribute('aria-label')).toBe('Desktop controls')
+  })
+
+  // M-197 (real iPhone 16 Pro, Chrome for iOS): the key row often never replaced the bottom bar with the keyboard up.
+  it('M-197: the key row shows whenever the hidden field has focus, even while the visual viewport reports no keyboard', () => {
+    act(() => byText('Show Keyboard').click())
+    expect(document.activeElement).toBe(field())
+    expect(toolbar()?.getAttribute('aria-label')).toBe('Desktop keys')
+    expect(container.querySelector('.keybar--kb-up')).not.toBeNull()
+    act(() => field().blur())
+    expect(toolbar()?.getAttribute('aria-label')).toBe('Desktop controls')
+  })
+
+  it('M-197: a viewport change while the field keeps focus neither swaps the row nor disarms a modifier', () => {
+    raiseKeyboard()
+    press(byText('Cmd'))
+    viewport(768)
+    expect(toolbar()?.getAttribute('aria-label')).toBe('Desktop keys')
+    expect(byText('Cmd').getAttribute('aria-pressed')).toBe('true')
+  })
+
+  // M-197: tapping Cmd dismissed the iPhone keyboard, so Cmd+A could never be sent.
+  it('M-197: arming a modifier keeps focus on the same hidden field: touchstart and mousedown are cancelled, no blur', () => {
+    raiseKeyboard()
+    const before = field()
+    const blurred = vi.fn()
+    before.addEventListener('blur', blurred)
+    const cmd = byText('Cmd')
+    const ts = new Event('touchstart', { bubbles: true, cancelable: true })
+    act(() => { cmd.dispatchEvent(ts) })
+    press(cmd)
+    const md = new MouseEvent('mousedown', { bubbles: true, cancelable: true })
+    act(() => { byText('Cmd').dispatchEvent(md) })
+    act(() => { byText('Cmd').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 })) })
+    expect(ts.defaultPrevented).toBe(true) // iOS: no synthetic mouse events, so no focus change
+    expect(md.defaultPrevented).toBe(true)
+    expect(byText('Cmd').getAttribute('aria-pressed')).toBe('true')
+    expect(field()).toBe(before)
+    expect(document.activeElement).toBe(before)
+    expect(blurred).not.toHaveBeenCalled()
+    expect(toolbar()?.getAttribute('aria-label')).toBe('Desktop keys')
+  })
+
+  it('M-197: Cmd armed from the key row then a typed a sends Cmd+A', () => {
+    raiseKeyboard()
+    press(byText('Cmd'))
+    typed('a')
+    const a = keys().find((k) => k.code === 'KeyA' && k.d)!
+    expect(a.m & 8).toBe(8)
+    expect(document.activeElement).toBe(field())
   })
 
   it('typed text goes as a Phase 20 text message and is kept out of the field', () => {

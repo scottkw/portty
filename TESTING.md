@@ -2516,7 +2516,8 @@ Rig: the user's iPhone (Safari, then the Home Screen icon) signed in to the same
   3. Note whether Safari shows its form-assist bar (arrows, Done) above the keyboard and whether the key bar sits above or behind it.
   PASS when: the sentence arrives as typed, Backspace deletes exactly one character each and Return starts a new line; the armed Cmd with c copies on the Mac and the Cmd button disarms; the key bar is usable and any gap above the keyboard is no larger than the form-assist bar (accepted, record the size).
   - _Last run:_ 2026-11-27, DEFERRED (deferred to user UAT, 21-UAT.md; the owner was not available and did not run it).
-  - _Why not automatable:_ the iOS soft keyboard and its form-assist bar do not exist in a VM or in jsdom; the sentinel and chord encoding are unit-tested (`desktopPhoneInput.test.ts`).
+  - _2026-11-27 owner run (iPhone 16 Pro, Chrome for iOS):_ FAIL. The key row often did not replace the bottom bar with the keyboard up, and tapping Cmd dismissed the keyboard. Fixed (the key row follows the hidden field's focus; key-row taps cancel touchstart and mousedown), see .planning/debug/phone-keyrow-keyboard.md. Re-run in both Safari and Chrome for iOS, with Cmd then a (Cmd+A) and the debug file's re-check list.
+  - _Why not automatable:_ the iOS soft keyboard and its form-assist bar do not exist in a VM or in jsdom; the sentinel and chord encoding are unit-tested (`desktopPhoneInput.test.ts`); the key row's focus signal and its cancelled touchstart are unit-tested (`DesktopPhoneLayer.test.tsx`).
   - _Source:_ 21-UI-SPEC.md "UI Considerations" (soft keyboard backstop), 21-10-SUMMARY.md (armed modifiers sent as a chord).
 
 - **M-198** Send Keys works from the phone (Cmd+Tab), Lock Screen asks first, and the surface picker lists the office Mac's displays (DVWR-03; Portty 21-10; the owner runs it; human_needed).

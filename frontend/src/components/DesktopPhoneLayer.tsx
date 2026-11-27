@@ -83,7 +83,11 @@ export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconn
   const armedRef = useRef(armed)
   armedRef.current = armed
   const [surface, setSurface] = useState<{ kind: DesktopSurfaceMsg['kind']; id: number; name: string } | null>(null)
-  const { keyboardUp } = useVisualViewportInset(true, { rootSelector: '.desktop-view', fieldSelector: PHONE_FIELDS })
+  // The viewport hook only sizes the root to the visual viewport. Whether the keyboard is up is the hidden
+  // field's focus (M-197): Chrome for iOS's accessory bar and the keyboard's animation made the viewport
+  // reading miss it, so the key row often never showed, and a false "down" disarmed an armed modifier.
+  useVisualViewportInset(true, { rootSelector: '.desktop-view', fieldSelector: PHONE_FIELDS })
+  const [keyboardUp, setKeyboardUp] = useState(false)
 
   useEffect(() => {
     if (!stage) return
@@ -295,16 +299,12 @@ export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconn
       return next
     })
 
-  // The keyboard going down lets go of everything and disarms: nothing waits for a key that cannot come.
+  // The keyboard going down (the field's blur) lets go of everything and disarms: nothing waits for a key that cannot come.
   const keyboardDown = useCallback(() => {
+    setKeyboardUp(false)
     disarm()
     input.current?.releaseAll()
   }, [disarm])
-  const wasUp = useRef(false)
-  useEffect(() => {
-    if (wasUp.current && !keyboardUp) keyboardDown()
-    wasUp.current = keyboardUp
-  }, [keyboardUp, keyboardDown])
 
   const sendable = () => live.current.canControl && !live.current.paused && input.current !== null
   const armedCodes = () => MODIFIER_CODES.filter(([m]) => armedRef.current.has(m)).map(([, code]) => code)
@@ -376,6 +376,10 @@ export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconn
       else if (field.value === '') typing.current.sendKey('Backspace') // the sentinel went without a beforeinput we could use
       reset()
     }
+    const onFocus = () => {
+      setKeyboardUp(true)
+      reset()
+    }
     const onCompositionStart = () => {
       composing = true
     }
@@ -386,7 +390,8 @@ export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconn
     }
 
     reset()
-    field.addEventListener('focus', reset)
+    setKeyboardUp(document.activeElement === field)
+    field.addEventListener('focus', onFocus)
     field.addEventListener('blur', keyboardDown)
     field.addEventListener('keydown', onKeyDown)
     field.addEventListener('beforeinput', onBeforeInput)
@@ -394,13 +399,14 @@ export function DesktopPhoneLayer({ client, video, stage, rights, locked, reconn
     field.addEventListener('compositionstart', onCompositionStart)
     field.addEventListener('compositionend', onCompositionEnd)
     return () => {
-      field.removeEventListener('focus', reset)
+      field.removeEventListener('focus', onFocus)
       field.removeEventListener('blur', keyboardDown)
       field.removeEventListener('keydown', onKeyDown)
       field.removeEventListener('beforeinput', onBeforeInput)
       field.removeEventListener('input', onInput)
       field.removeEventListener('compositionstart', onCompositionStart)
       field.removeEventListener('compositionend', onCompositionEnd)
+      setKeyboardUp(false)
     }
   }, [canControl, disarm, keyboardDown])
 
