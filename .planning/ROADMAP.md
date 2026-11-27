@@ -329,13 +329,13 @@ Plans:
   3. The sharer can stop the share or revoke one viewer at any time, which ends that connection at once, and the link stops working when the share ends. The shared Mac shows join and leave notifications and a persistent "shared with N" indicator with one-click stop. (DSHR-05, DSHR-06)
   4. Every join, leave and control grant is written to a local audit log on the shared Mac. (DSHR-07)
   5. With several viewers allowed to control, whoever typed last holds control for about 2 seconds while the others wait. The person physically at the shared Mac always wins over remote input. (DCTL-04)
-**Plans**: 0/13 plans executed
+**Plans**: 3/13 plans executed
 
 Plans:
 **Wave 1**
-- [ ] 22-01-PLAN.md — Guest token (own HKDF key), `requireTailnetPeer(Page)`, `/desktop/guest/` page, assets and ws routes, two static pages, extended WhoIs fake, route-table and cross-token tests
-- [ ] 22-02-PLAN.md — JSON Lines audit appender (0600, 5 MiB rotation, never blocks a join) and the guest name sanitizer / Identity type
-- [ ] 22-03-PLAN.md — Listen-only event tap and Secure Event Input probe; pure arbiter: physical wins (fails closed on an unhealthy tap), 2 s lease
+- [x] 22-01-PLAN.md — Guest token (own HKDF key), `requireTailnetPeer(Page)`, `/desktop/guest/` page, assets and ws routes, two static pages, extended WhoIs fake, route-table and cross-token tests
+- [x] 22-02-PLAN.md — JSON Lines audit appender (0600, 5 MiB rotation, never blocks a join) and the guest name sanitizer / Identity type
+- [x] 22-03-PLAN.md — Listen-only event tap and Secure Event Input probe; pure arbiter: physical wins (fails closed on an unhealthy tap), 2 s lease
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 22-04-PLAN.md — Manager guest path: admission queue, limits, 5-minute timeout, deny by user ID, re-admit, no PeerConnection before Admit, media bound to the admitted node (gated on 20-04, 20-05)
@@ -437,5 +437,5 @@ Plans:
 | 19. Unattended Desktop Viewing | v2.0 | 17/17 | Complete    | 2026-11-26 |
 | 20. Remote Control | v2.0 | 11/11 | Complete    | 2026-11-27 |
 | 21. Portty App and iPhone Viewers | v2.0 | 10/13 | In Progress | - |
-| 22. Click-to-Share for Tailnet People | v2.0 | 0/TBD | Not started | - |
+| 22. Click-to-Share for Tailnet People | v2.0 | 3/13 | In Progress | - |
 | 23. Audio, Adaptive Quality, Unlock and Release | v2.0 | 0/16 | Not started | - |
