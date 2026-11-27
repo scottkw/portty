@@ -286,7 +286,7 @@ Plans:
   1. In the Portty app on another Mac, the sidebar lists a peer's desktop next to its sessions. Clicking it opens a Desktop tab that shows and controls that desktop, with the same state and reconnect behaviour as the browser viewer. If Phase 17 found WebRTC unusable in the Wails web view, the row opens the browser link instead and the docs say so. (DVWR-01)
   2. In control mode in a Desktop tab, Cmd+W, Cmd+Q and Cmd+C go to the remote Mac instead of closing the tab, quitting Portty or copying locally. Leaving control mode gives Portty its shortcuts back. (DVWR-04)
   3. On an iPhone, in Safari or from the Home Screen, the viewer offers trackpad mode, pinch-zoom, long-press for right-click, two-finger scroll and the soft keyboard, and it picks up again after the phone sleeps. (DVWR-03)
-**Plans**: 10/13 plans executed
+**Plans**: 11/13 plans executed
 
 Plans:
 **Wave 1**
@@ -310,7 +310,7 @@ Plans:
 - [x] 21-10-PLAN.md — iPhone viewer: touch layer, bottom bar and key bar, soft keyboard, Tap to start after sleep (gated on 20-01, 20-02, 20-06, 20-07, 20-08)
 
 **Wave 6** *(blocked on Wave 5 completion; gated on 20-06, 20-09)*
-- [ ] 21-11-PLAN.md — Tart VM rows: Desktop row and tab in the real app, Local Network denied state (user checkpoints)
+- [x] 21-11-PLAN.md — Tart VM rows: Desktop row and tab in the real app, Local Network denied state (user checkpoints)
 
 **Wave 7** *(blocked on Wave 6 completion; gated on 20-02, 20-05, 20-06, 20-08, 20-09)*
 - [ ] 21-12-PLAN.md — Tart VM rows: Local Network allowed and heal, hidden tab and window, one tab per peer, Cmd+W/Q/C forwarded and given back, no held keys, Cmd+V (user checkpoint)
@@ -436,6 +436,6 @@ Plans:
 | 18.1. Apple Silicon Release Pipeline (INSERTED) | v2.0 | 4/4 | Complete    | 2026-11-26 |
 | 19. Unattended Desktop Viewing | v2.0 | 17/17 | Complete    | 2026-11-26 |
 | 20. Remote Control | v2.0 | 11/11 | Complete    | 2026-11-27 |
-| 21. Portty App and iPhone Viewers | v2.0 | 10/13 | In Progress | - |
+| 21. Portty App and iPhone Viewers | v2.0 | 11/13 | In Progress | - |
 | 22. Click-to-Share for Tailnet People | v2.0 | 3/13 | In Progress | - |
 | 23. Audio, Adaptive Quality, Unlock and Release | v2.0 | 0/16 | Not started | - |
