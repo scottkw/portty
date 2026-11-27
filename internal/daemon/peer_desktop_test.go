@@ -190,6 +190,29 @@ func TestPeerDesktop_HostResolutionFailures(t *testing.T) {
 	}
 }
 
+// AR-21-01: connect re-resolves the host against the (own-account-filtered)
+// discovery list on the daemon side. A host the UI names that discovery does not
+// list, such as a node shared in from another account, is refused before any
+// cap is fetched or stored.
+func TestPeerDesktop_RefusesHostMissingFromDiscovery(t *testing.T) {
+	a, peer := capRoute(t, 0, "tok")
+	const sharedIn = "sharedin-air.example"
+	for _, host := range []string{sharedIn, "sharedin-air"} {
+		if code, body := postPeerDesktop(t, a, host); code != http.StatusNotFound || decodeConnectErr(t, body).Error != PeerErrUnknownHost {
+			t.Fatalf("POST %q = %d %s; want 404 unknown_host", host, code, body)
+		}
+	}
+	peer.mu.Lock()
+	posts := peer.capPosts
+	peer.mu.Unlock()
+	if posts != 0 {
+		t.Fatalf("cap route hit %d times for a host discovery does not list", posts)
+	}
+	if _, _, _, ok := a.desktopCaps.Get(sharedIn); ok {
+		t.Fatal("a cap was stored for a host discovery does not list")
+	}
+}
+
 func TestPeerDesktop_FreezeGateExempt(t *testing.T) {
 	a, _ := capRoute(t, 0, "tok")
 	a.frozen.Store(true)

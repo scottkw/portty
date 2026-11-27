@@ -235,6 +235,19 @@ func TestPeerConnect_UnknownHostListsProbed(t *testing.T) {
 	}
 }
 
+// AR-21-01: a host that discovery (own account only) does not list is refused
+// before any session meta or cap is requested from it.
+func TestPeerConnect_RefusesHostMissingFromDiscovery(t *testing.T) {
+	e := newConnectEnv(t, buildSess)
+	code, _, bad := e.connect(t, "sharedin-air.other.ts.net", "build")
+	if code != http.StatusNotFound || bad.Error != daemon.PeerErrUnknownHost {
+		t.Fatalf("status %d, body %+v; want 404 unknown_host", code, bad)
+	}
+	if e.host.capRequested != "" {
+		t.Fatalf("cap requested (%q) for a host discovery does not list", e.host.capRequested)
+	}
+}
+
 func TestPeerConnect_ClientDecodesError(t *testing.T) {
 	e := newConnectEnv(t, buildSess, logsSess)
 	sock := fmt.Sprintf("/tmp/ahpc%d_%d.sock", os.Getpid(), time.Now().UnixNano()%100000)
