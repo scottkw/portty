@@ -7,6 +7,7 @@ import { RegenerateKeyModal } from './components/RegenerateKeyModal'
 import { Sidebar } from './components/Sidebar'
 import { SettingsSheet, type Appearance } from './components/SettingsSheet'
 import { ShareDesktopSheet } from './components/ShareDesktopSheet'
+import { AdmitSheet } from './components/AdmitSheet'
 import { useDesktopShare, NO_SHARE_EVENTS } from './lib/desktopShare'
 import { stripAnsi } from './lib/stripAnsi'
 import { sanitizeFilename } from './lib/sanitizeFilename'
@@ -1633,6 +1634,8 @@ function App(): React.ReactElement {
         onCancel={() => { setRestartPrompt(0); void AnswerDaemonRestart(false) }}
       />
 
+      {/* Phase 22: the last modal in the DOM, so a knock is topmost over every sheet and confirm. */}
+      {mode !== 'web' && <AdmitSheet pending={share.state.pending} />}
     </div>
   )
 }
