@@ -424,19 +424,29 @@ func TestQuality_LoneSlowViewerStillGetsTheFloor(t *testing.T) {
 	}
 }
 
-// gccEst is a GCC whose estimate the test sets.
+// gccEst is a GCC whose estimate the test sets, and whether its delay controller
+// is cutting (pion's stats say state decrease after it saw overuse).
 type gccEst struct {
 	fakeEst
-	rate atomic.Int64
+	rate    atomic.Int64
+	cutting atomic.Bool
 }
 
 func (g *gccEst) GetTargetBitrate() int { return int(g.rate.Load()) }
+
+func (g *gccEst) GetStats() map[string]any {
+	if g.cutting.Load() {
+		return map[string]any{"state": "decrease", "usage": "overuse"}
+	}
+	return map[string]any{"state": "increase", "usage": "normal"}
+}
 
 // sentViewer is a viewer behind the real viewerBWE, so what it is sent is
 // measured as in production, over an estimate the test moves. Feedback has
 // arrived, so the estimate counts.
 type sentViewer struct {
 	est *gccEst
+	bwe *viewerBWE
 	w   interceptor.RTPWriter
 }
 
@@ -450,13 +460,15 @@ func (qt *qTest) sentViewer(t *testing.T, id ViewerID, est int) *sentViewer {
 		t.Fatal(err)
 	}
 	qt.q.register(&viewer{Viewer: Viewer{ID: id}}, bwe)
-	return &sentViewer{est: g, w: w}
+	return &sentViewer{est: g, bwe: bwe, w: w}
 }
 
 // send is a quarter second of the shared encoder at bps.
-func (v *sentViewer) send(t *testing.T, bps int) {
+func (v *sentViewer) send(t *testing.T, bps int) { v.sendBytes(t, bps/8/4) }
+
+func (v *sentViewer) sendBytes(t *testing.T, n int) {
 	t.Helper()
-	if _, err := v.w.Write(&rtp.Header{}, make([]byte, bps/8/4), nil); err != nil {
+	if _, err := v.w.Write(&rtp.Header{}, make([]byte, n), nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -506,9 +518,15 @@ func TestQuality_CleanViewerNotSlowBesideASlowOne(t *testing.T) {
 		t.Fatalf("target %d with two clean viewers, want the ceiling", got)
 	}
 
+	// A full drop-tail queue: B's delay no longer grows, so its GCC is not cutting,
+	// but its reports show heavy loss. While it still counts its estimate is a limit.
 	bShaped = true
 	qt.q.noteLoss("b", 0.6)
-	tick(60 * time.Second)
+	tick(2 * time.Second)
+	if got := qt.m.QualityStats().TargetBps; got != floorBps {
+		t.Fatalf("target %d while B, losing 60 percent, still counts, want the floor (a slow viewer constrains until it is left out)", got)
+	}
+	tick(58 * time.Second)
 	if got := qt.told("a"); len(got) != 0 {
 		t.Errorf("A, on a clean link, was told %v (DESK-07: only the slow viewer is told)", got)
 	}
@@ -562,12 +580,14 @@ func TestQuality_CleanViewerClimbsBackFromTheFloor(t *testing.T) {
 	}
 	tick(10 * time.Second)
 	dip = true
+	a.est.cutting.Store(true) // a short burst: GCC saw overuse and cut
 	tick(2 * time.Second)
 	if got := qt.m.QualityStats().TargetBps; got != floorBps {
 		t.Fatalf("target %d after the estimate was cut to the floor, want it followed down to the floor", got)
 	}
 
 	dip = false
+	a.est.cutting.Store(false)
 	out := tick(60 * time.Second)
 	if got := qt.told("a"); len(got) != 0 {
 		t.Errorf("a viewer with good feedback was told %v", got)
@@ -577,12 +597,119 @@ func TestQuality_CleanViewerClimbsBackFromTheFloor(t *testing.T) {
 		t.Fatalf("a minute after feedback was good again: target %d at step %d, want past 4 Mbps at step 0 (stuck at the floor)", st.TargetBps, st.Step)
 	}
 
-	// A cut under what it is sent is congestion: the target follows it at once.
+	// A cut that still leaves room over what the viewer was sent does not limit
+	// what the encoder really sends: not followed.
+	before := qt.m.QualityStats().TargetBps
+	a.est.rate.Store(int64(1.3 * float64(out)))
+	a.est.cutting.Store(true)
+	qt.q.tick()
+	if got := qt.m.QualityStats().TargetBps; got < before {
+		t.Fatalf("target %d after a cut to 1.3 times the %d sent, want it not lowered from %d", got, out, before)
+	}
+
+	// A cut under what it is sent is congestion: the target follows it at once,
+	// even when GCC's cut is over before the tick (the report that saw it latched it).
 	cut := int(0.85 * float64(out))
 	a.est.rate.Store(int64(cut))
+	a.est.cutting.Store(true)
+	if err := a.bwe.WriteRTCP([]rtcp.Packet{&rtcp.TransportLayerCC{}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	a.est.cutting.Store(false)
 	qt.q.tick()
 	if got := qt.m.QualityStats().TargetBps; got != cut {
 		t.Fatalf("target %d after a cut to %d (85 percent of the %d sent), want it followed", got, cut, out)
+	}
+}
+
+// pinnedGCC is pion's estimate once it has cut a few times at about the rate it
+// is now sent: it increases additively and never past 1.5 times what came back
+// over the last 500 ms (rate_controller.go increase, rate_calculator.go), never
+// under its minimum, the floor. It is not congestion: its delay controller says
+// increase.
+func pinnedGCC(est, recv500 int) int {
+	return min(max(min(est+2_000, recv500*3/2), floorBps), ceilingBps)
+}
+
+// Finding 2 persists (VM row Q-03, lone viewer): after GCC's cuts a lone viewer on
+// a clean link is sent about what it was sent at those cuts, so pion's estimate
+// stays pinned to its additive cap. With bursty content (the date changing once a
+// second) a 500 ms window without the big frame holds 0.27 of the second, so the
+// estimate sits on the floor clamp, under what is sent, though GCC sees no
+// congestion. The target must climb back past 4 Mbps at full quality within a
+// minute, and a still screen, where nothing is measured, must not read that
+// pinned estimate as a limit (the lone run's still tick cut 8 M to 4.6 M).
+func TestQuality_PinnedEstimateDoesNotHoldTheTargetAtTheFloor(t *testing.T) {
+	qt := newQTest(t)
+	a := qt.sentViewer(t, "a", ceilingBps)
+	qt.m.noteSize(2560, 1600)
+	quarter, last := 0, 0
+	tick := func(d time.Duration) {
+		for e := time.Duration(0); e < d; e += 250 * time.Millisecond {
+			perSec := min(qt.m.QualityStats().TargetBps, 600_000) / 8 // the content needs no more
+			n := perSec * 2 / 15                                      // a quarter without the change
+			if quarter%4 == 0 {
+				n = perSec * 6 / 10 // the quarter with the once-a-second change
+			}
+			quarter++
+			a.sendBytes(t, n)
+			if !a.est.cutting.Load() {
+				a.est.rate.Store(int64(pinnedGCC(int(a.est.rate.Load()), (n+last)*8*2)))
+			}
+			last = n
+			qt.q.tick()
+			qt.clk.Advance(250 * time.Millisecond)
+		}
+	}
+
+	// A short congestion episode: GCC cuts to its floor. Followed at once, and the
+	// frame rate halves after 2 s under the ladder line.
+	a.est.cutting.Store(true)
+	a.est.rate.Store(floorBps)
+	if err := a.bwe.WriteRTCP([]rtcp.Packet{&rtcp.TransportLayerCC{}}, nil); err != nil { // a report during the cut
+		t.Fatal(err)
+	}
+	tick(3 * time.Second)
+	if st := qt.m.QualityStats(); st.TargetBps != floorBps || st.Step != 1 {
+		t.Fatalf("after GCC cut to the floor: target %d at step %d, want the floor at step 1", st.TargetBps, st.Step)
+	}
+
+	a.est.cutting.Store(false) // the episode is over: GCC increases again, pinned by its cap
+	tick(60 * time.Second)
+	if got := qt.told("a"); len(got) != 0 {
+		t.Errorf("a viewer on a clean link was told %v", got)
+	}
+	st := qt.m.QualityStats()
+	if st.TargetBps <= 4_000_000 || st.Step != 0 {
+		t.Fatalf("a minute after the episode, GCC estimate %d (pinned, no congestion): target %d at step %d, want past 4 Mbps at step 0 (held at the floor)", a.est.rate.Load(), st.TargetBps, st.Step)
+	}
+
+	// Still: next to nothing is sent, so nothing is measured and the viewer counts
+	// with the estimate it had. A raw estimate on the floor clamp does not pull the
+	// target down, and a real cut is not lifted on no measurement.
+	still := func(on bool) {
+		qt.q.mu.Lock()
+		qt.q.still.still = on
+		qt.q.mu.Unlock()
+	}
+	still(true)
+	a.est.rate.Store(floorBps)
+	qt.run(10 * time.Second)
+	if got := qt.m.QualityStats().TargetBps; got < st.TargetBps {
+		t.Fatalf("target %d after 10 s of a still screen, was %d: a still screen read the pinned estimate as a limit", got, st.TargetBps)
+	}
+	still(false)
+	tick(2 * time.Second)     // motion again: a whole second of what is sent is measured
+	a.est.cutting.Store(true) // a real cut: 85 percent of the 600 kbps the content sends
+	a.est.rate.Store(510_000)
+	tick(250 * time.Millisecond)
+	if got := qt.m.QualityStats().TargetBps; got != 510_000 {
+		t.Fatalf("target %d after GCC cut to 510000, want it followed", got)
+	}
+	still(true)
+	qt.run(10 * time.Second)
+	if got := qt.m.QualityStats().TargetBps; got != 510_000 {
+		t.Fatalf("target %d after 10 s of a still screen that began during a cut to 510000, want it held (lifted on no measurement)", got)
 	}
 }
 
@@ -620,10 +747,10 @@ func TestQuality_NoFeedbackViewerCountsAsCeiling(t *testing.T) {
 	bwe := newViewerBWE(fakeEst{rate: 900_000}, qt.clk.Now)
 	qt.q.register(&viewer{Viewer: Viewer{ID: "n"}}, bwe)
 
-	// Before its first packet there is nothing to say about feedback: its estimate counts.
+	// Before its first packet there is nothing to say about feedback.
 	qt.run(time.Second)
-	if got := qt.m.QualityStats().TargetBps; got != 900_000 {
-		t.Fatalf("target %d with a viewer estimated at 900000 and no packet yet, want 900000", got)
+	if got := qt.m.QualityStats().NoFeedback; got != 0 {
+		t.Fatalf("no_feedback %d before the viewer's first packet, want 0", got)
 	}
 	sendOne(t, bwe)
 	qt.run(4 * time.Second)

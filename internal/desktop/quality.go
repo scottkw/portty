@@ -91,6 +91,7 @@ type viewerBWE struct {
 	firstSent atomic.Int64 // unix nanos of the first outgoing packet; 0 before it
 	feedback  atomic.Bool  // a transport-cc report has come back
 	sent      atomic.Int64 // bytes sent, headers included
+	cut       atomic.Bool  // GCC was cutting at a report since the controller last looked
 }
 
 func newViewerBWE(e cc.BandwidthEstimator, now func() time.Time) *viewerBWE {
@@ -109,16 +110,32 @@ func (b *viewerBWE) AddStream(info *interceptor.StreamInfo, w interceptor.RTPWri
 	})
 }
 
-// WriteRTCP notes transport-cc feedback and passes everything on.
+// WriteRTCP notes transport-cc feedback and passes everything on. A cut can be
+// over between two controller ticks, so each report latches it.
 func (b *viewerBWE) WriteRTCP(pkts []rtcp.Packet, a interceptor.Attributes) error {
+	fb := false
 	for _, p := range pkts {
 		if _, ok := p.(*rtcp.TransportLayerCC); ok {
 			b.feedback.Store(true)
+			fb = true
 			break
 		}
 	}
-	return b.BandwidthEstimator.WriteRTCP(pkts, a)
+	err := b.BandwidthEstimator.WriteRTCP(pkts, a)
+	if fb && b.gccCutting() {
+		b.cut.Store(true)
+	}
+	return err
 }
+
+// gccCutting reports GCC's own congestion signal: its delay controller saw the
+// queue grow and cut. pion writes its stats only on increase and decrease
+// updates, so the state stays "decrease" through the hold after a cut.
+func (b *viewerBWE) gccCutting() bool { return b.GetStats()["state"] == "decrease" }
+
+// cutting reports whether GCC was cutting at any report since the last call, or
+// is now. q.mu held (one reader).
+func (b *viewerBWE) cutting() bool { return b.cut.Swap(false) || b.gccCutting() }
 
 // noFeedback reports that the first packet left at least noFeedbackAfter ago and
 // no feedback has come back.
@@ -280,6 +297,12 @@ type qViewer struct {
 	sentBps int
 	mark    int64
 	markAt  time.Time
+
+	// held is the estimate the viewer counts with, kept while the screen is
+	// still; raw and cutting are what GCC said at the last tick (logged).
+	held    int
+	raw     int
+	cutting bool
 }
 
 // sentRate is what v was sent over the last whole second, in bits per second.
@@ -332,7 +355,7 @@ func newQualityController(m *Manager) *qualityController {
 func (q *qualityController) register(v *viewer, bwe *viewerBWE) {
 	now := q.m.d.Now()
 	q.mu.Lock()
-	q.viewers[v.ID] = &qViewer{ws: v.ws, bwe: bwe, joined: now, sentBps: ceilingBps, markAt: now}
+	q.viewers[v.ID] = &qViewer{ws: v.ws, bwe: bwe, joined: now, sentBps: ceilingBps, markAt: now, held: ceilingBps}
 	q.mu.Unlock()
 }
 
@@ -479,7 +502,13 @@ func (q *qualityController) decideLocked(now time.Time, pw, ph int, sized bool) 
 		return p, false
 	}
 	lowest, lowestAll, counted := ceilingBps, ceilingBps, 0
+	var lowID, lowAllID ViewerID
 	for id, v := range q.viewers {
+		// Heavy loss in the viewer's own receiver reports is bad whatever the
+		// estimate says: GCC keeps only the last 250 packets of history, so a viewer
+		// whose feedback arrives later than that (a flood into a slow link) yields
+		// no acknowledgments and an estimate that never moves.
+		lossy := v.loss > lossLimit
 		est := ceilingBps
 		switch {
 		case v.stub != nil:
@@ -491,24 +520,26 @@ func (q *qualityController) decideLocked(now time.Time, pw, ph int, sized bool) 
 			v.noFB = true
 		default:
 			v.noFB = false
-			est = v.bwe.GetTargetBitrate()
-			// GCC learns only from what it is sent: a cut lands at 0.85 times what came
-			// back and a rise stops near 1.5 times it, never under its floor clamp. An
-			// estimate with room over what this viewer was really sent therefore says
-			// the encoder sent less, not that the link can take no more; read as a
-			// limit it held a clean viewer at the floor, told it slow and kept the
-			// target there (VM row Q-03). It counts as the ceiling. When the encoder
-			// fills its target this is decide's room rule, unchanged. Not while the
-			// screen is still: next to nothing is sent then, so estimates hold as they were.
-			if sent := v.sentRate(now); !q.still.still && float64(est) >= upRatio*float64(sent) {
-				est = ceilingBps
+			v.raw, v.cutting = v.bwe.GetTargetBitrate(), v.bwe.cutting()
+			sent := v.sentRate(now)
+			// GCC learns only from what it is sent. Once it has cut a few times at about
+			// the rate it is sent now, it rises additively and never past 1.5 times what
+			// came back in the last 500 ms, so with bursty screen content its estimate
+			// sits at or under what was sent though nothing is congested; read as a
+			// limit it held the target at the floor (VM row Q-03, lone viewer). So an
+			// estimate constrains only while GCC is cutting (its own congestion signal)
+			// or the viewer loses heavily (a full drop-tail queue shows no delay trend),
+			// and not even then with room over what this viewer was really sent. While
+			// the screen is still next to nothing is sent and nothing is measured: the
+			// estimate is the one the viewer last counted with.
+			if !q.still.still {
+				v.held = v.raw
+				if !(v.cutting || lossy) || float64(v.raw) >= upRatio*float64(sent) {
+					v.held = ceilingBps
+				}
 			}
+			est = v.held
 		}
-		// Heavy loss in the viewer's own receiver reports is bad whatever the
-		// estimate says: GCC keeps only the last 250 packets of history, so a viewer
-		// whose feedback arrives later than that (a flood into a slow link) yields
-		// no acknowledgments and an estimate that never moves.
-		lossy := v.loss > lossLimit
 		bad, good := est <= floorBps || lossy, float64(est) > upRatio*floorBps && !lossy
 		if v.noFB {
 			bad, good = lossy, !lossy
@@ -517,16 +548,26 @@ func (q *qualityController) decideLocked(now time.Time, pw, ph int, sized bool) 
 		if v.slow, changed = stepSlow(v.slow, now, bad, good); changed {
 			p.notices = append(p.notices, slowNotice{id: id, ws: v.ws, slow: v.slow.Slow})
 		}
-		lowestAll = min(lowestAll, est)
+		if est <= lowestAll {
+			lowestAll, lowAllID = est, id
+		}
 		if !v.slow.Slow {
-			lowest = min(lowest, est)
+			if est <= lowest {
+				lowest, lowID = est, id
+			}
 			counted++
 		}
 	}
 	if counted == 0 {
-		lowest = lowestAll // every viewer is slow: a lone slow viewer still gets the floor
+		lowest, lowID = lowestAll, lowAllID // every viewer is slow: a lone slow viewer still gets the floor
 	}
+	old := q.state.Target
 	q.state = decide(policyInput{Now: now, Min: lowest, Prev: q.state}).Next
+	if v := q.viewers[lowID]; v != nil && q.state.Target != old {
+		// What the VM rows need to see: which viewer's estimate moved the target, and why.
+		slog.Info("desktop: target changed", "from", old, "to", q.state.Target, "min", lowest,
+			"viewer", shortID(lowID), "est", v.raw, "sent", v.sentBps, "cutting", v.cutting, "still", q.still.still)
+	}
 
 	if q.state.Target != q.appliedBps {
 		p.bps = q.state.Target
