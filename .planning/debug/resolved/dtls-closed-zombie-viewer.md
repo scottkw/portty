@@ -1,8 +1,8 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: "pion closes the server's peer connection by itself when the viewer's side sends a DTLS close notice ('Closing PeerConnection from DTLS CloseNotify', state Closed). serveAdmitted's connection-state handler (internal/desktop/manager.go ~796-814) acts only on Connected and Failed, so a viewer whose media closed but whose signalling socket stayed open keeps counting as a viewer and keeps capture running until the socket drops (over 60 s in the harness). Also look at: serveAdmitted's 2 s close ceiling does not hold while a viewer's read loop is blocked in coder/websocket (a silent peer's socket lingers ~5 s)."
 created: 2026-11-27T03:00:00Z
-updated: 2026-11-27T04:30:00Z
+updated: 2026-11-28T00:00:00Z
 ---
 
 ## Current Focus
@@ -117,3 +117,4 @@ verification:
   guardrail_verdict: accepted
 files_changed: [internal/desktop/manager.go, internal/desktop/revoke.go, internal/desktop/goroutine_leak_test.go, internal/desktop/revoke_test.go]
 vm_result: "2026-11-28, build 23.10.3 (5ea587fe), Z-01 RESULT=PARTIAL. Only window.__pc.close() was run on a home Safari viewer, with the page and its socket left open. Stats read viewers 0 at the next 0.25 s poll change; the daemon logged `viewer left` about 0.6 s after the close; the audit leave reason is viewer_closed. The page then reconnected as a new viewer 1.6 s later. The G-04 half (Stop with an unresponsive guest) was not run: the rig has no procedure for an unresponsive guest. Evidence (phase 23 evidence folder): Z-01.txt"
+resolved_note: "Resolved 2026-11-28 by the orchestrator: the VM half that can be driven (Z-01, media closed with the socket open) left in about 0.6 s. The unresponsive-guest Stop half cannot be produced by the rig (no way to make a real guest page silent); its 2 s ceiling is covered by TestGuestStop_ThreeSilentPeersDoNotHoldItUp."

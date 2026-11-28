@@ -1,8 +1,8 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: "UNLK-01 F-late-success: a slow macOS authorization (2.3 s) was read as still locked after the 3 s check; the daemon retyped the password (a real wrong try; in U-10 the retype hit the live desktop), reported unlock_failed and never armed the re-lock, leaving the Mac unlocked with no viewer"
 created: 2026-11-27T19:50:00Z
-updated: 2026-11-27T21:00:00Z
+updated: 2026-11-28T00:00:00Z
 ---
 
 ## Current Focus
@@ -90,3 +90,4 @@ verification:
 files_changed: [internal/desktop/unlock.go, internal/desktop/lease.go, internal/desktop/unlock_test.go, internal/desktop/export_unlock_test.go]
 oracle_type: specified (the brief's required behaviour: exact typing counts, states, audit lines, relock_armed, failure count)
 vm_result: "2026-11-28, build 23.10.3 (5ea587fe), office under load. U-03r PASS: 10 typed cycles, each with exactly one typing and a success, authorization 0.40-2.08 s after loginPressed, failures 0, relock_armed true, no retype; 3 further cycles typed nothing because the viewer was reconnecting or gone. U-04r PASS: one wrong sentinel gave exactly two typed tries, the failed state 28.13 s after the click, failures 1, relock_armed false, no late success. U-10r PASS: relocked 31 s after the leave (under load macOS read the session locked at 41 s). U-12r PASS: 0 sentinel hits. New and outside this fix: U-load FAIL, because failed joins restart the 30 s re-lock timer (an unlocked Mac stayed unlocked for more than 5 min while a page retried against a wedged encoder). Evidence (phase 23 evidence folder): U-03r.*, U-04r.txt, U-10r.txt, U-10r.unlock.txt, U-12r.txt, U-load-encoder.txt"
+resolved_note: "Resolved 2026-11-28 by the orchestrator on U-03r, U-04r, U-10r and U-12r (build 23.10.3, office under load): one typing per submit, no retype into an unlocked desktop, a wrong password still fails after exactly two typed tries, the re-lock fires on time. The re-lock deferral by failed joins seen in U-load is a separate session (relock-deferred-by-failed-joins)."

@@ -34,3 +34,21 @@ Resolved debug sessions. Used by `gsd-debugger` to surface known-pattern hypothe
 - **Why not caught:** no test restarted the source with a viewer kept; the VM rows looked at the restart, not at an existing viewer's decoding after it
 - **Recurrence guard:** TestFanout_SourceRestartKeepsRTPSequence and TestFanout_SourceRestartStampsTheGap (pion loopback); TESTING.md M-221 (VM, Safari and Chrome PASS 2026-11-27). Pattern: anything stamped into RTP (sequence, timestamp, SSRC) belongs to the viewer's track, not to a capture run
 ---
+
+## dtls-closed-zombie-viewer — a viewer whose media closed kept counting until its socket dropped; silent guests took 5-7 s to end
+- **Date:** 2026-11-28
+- **Error patterns:** zombie viewer, viewer count stuck, DTLS close, PeerConnectionStateClosed, capture keeps running, guest stop slow, CloseNow waits, read lock
+- **Root cause(s):** serveAdmitted's OnConnectionStateChange handled Connected and Failed only, so pion's Closed (after a DTLS close notice) never ended the viewer; closeSocket's 2 s ceiling called coder/websocket CloseNow, which waits for the read lock held by the blocked read loop (~5 s)
+- **Fix:** Failed and Closed both end the session through cutViewer(1001); the read loop reads on a child context cancelled at the ceiling (viewer.drop)
+- **Files changed:** internal/desktop/manager.go, internal/desktop/revoke.go, internal/desktop/goroutine_leak_test.go, internal/desktop/revoke_test.go
+- **Recurrence guard:** TestFanout_JoinLeaveCyclesLeaveNoGoroutines/media_closed_socket_open, TestGuestStop_ThreeSilentPeersDoNotHoldItUp; VM row Z-01
+---
+
+## unlk01-late-success-retype — a slow Mac authorization made the unlock retype into an unlocked desktop and skip the re-lock
+- **Date:** 2026-11-28
+- **Error patterns:** unlock retype, Trying once more, late success, unlock_failed but Mac unlocked, relock_armed false, loginPressed twice, Screensaver authorization succeeded late, loaded VM
+- **Root cause(s):** a 3 s check window shorter than a loaded Mac's authorization plus lock-flag clear; no fresh lock read before each key; a final failure verdict so a later unlock never armed the re-lock
+- **Fix:** 10 s check window; lockedForKey before the wake key, each stroke and Return; a 30 s late watch that turns a late unlock into the normal success path (audit, armRelock)
+- **Files changed:** internal/desktop/unlock.go, internal/desktop/lease.go, internal/desktop/unlock_test.go, internal/desktop/export_unlock_test.go
+- **Recurrence guard:** TestUnlock_LateSuccessIsOneTyping, TestUnlock_UnlockedBeforeTheRetypeTypesNothing, TestUnlock_SuccessAfterTheVerdictCountsAsSuccess and siblings; VM rows U-03r, U-04r, U-10r
+---
