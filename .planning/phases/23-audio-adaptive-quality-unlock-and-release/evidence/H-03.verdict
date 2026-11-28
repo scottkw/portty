@@ -1,0 +1,6 @@
+samples=62 first=2026-11-28T07:23:29Z last=2026-11-28T08:24:37Z
+pid: 64837 throughout, samples with another pid: 0
+state: samples not streaming: 0, samples with no viewer: 0
+warm-up minutes 5..15 (11 samples): rss median 46576 kB, footprint median 28527424 B, fds 43..45, goroutines 65..67
+from minute 5 (57 samples): max rss ratio 1.036 (limit 1.15), max footprint ratio 1.059 (limit 1.15), fds outside +-5: 0, goroutines outside +-10: 0
+VERDICT: PASS

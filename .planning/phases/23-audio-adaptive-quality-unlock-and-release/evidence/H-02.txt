@@ -1,0 +1,29 @@
+relock-watch H-02: office-start=2026-11-28 07:18:45 audit-lines-before=402
+t=0.0 07:18:45 locked=false {"viewers":1,"own_viewers":1,"relock_armed":true,"unlock":"idle"}
+t=15.0 07:19:03 locked= 
+t=15.5 07:19:03 locked=false {"viewers":0,"own_viewers":0,"relock_armed":true,"unlock":"idle"}
+t=16.5 07:19:05 locked=false {"viewers":1,"own_viewers":0,"relock_armed":true,"unlock":"idle"}
+t=17.5 07:19:06 locked=false {"viewers":1,"own_viewers":1,"relock_armed":true,"unlock":"idle"}
+t=58.5 07:19:50 locked=false {"viewers":0,"own_viewers":0,"relock_armed":true,"unlock":"idle"}
+t=87.0 07:20:20 locked=false {"viewers":0,"own_viewers":0,"relock_armed":false,"unlock":"idle"}
+t=95.5 07:20:30 locked=true {"viewers":0,"own_viewers":0,"relock_armed":false,"unlock":"idle"}
+audit events since the start:
+{"ts":"2026-11-28T07:19:02Z","event":"leave","mode":"own","reason":"daemon_exit"}
+{"ts":"2026-11-28T07:19:05Z","event":"join","mode":"own","reason":null}
+{"ts":"2026-11-28T07:19:49Z","event":"leave","mode":"own","reason":"viewer_closed"}
+{"ts":"2026-11-28T07:20:20Z","event":"relocked","mode":"own","reason":null}
+loginwindow:
+07:20:20.612 _handleAppleEvent | Received a kAELockScreenEvent
+07:20:20.780 -[LWDefaultScreenLockUI hidePasswordField] |       hiding password field
+07:20:20.799 -[LWScreenLock startUnlock:] |      _numFailedAuthAttempts = 0
+07:20:20.821 -[LWDefaultScreenLockUI hidePasswordField] |       hiding password field
+07:20:20.843 -[LWDefaultScreenLockUI showPasswordFieldMakingFirstResponder:] | 	  showing password field, shouldMakeFirstResponder: 1
+07:20:50.831 -[LWDefaultScreenLockUI handleTimeOutTimer:] | enter. timeout timer fired
+07:20:50.834 -[LWDefaultScreenLockUI showPasswordFieldMakingFirstResponder:] | 	  showing password field, shouldMakeFirstResponder: 1
+07:20:50.864 Clearing password field for NSWorkspaceScreensDidSleepNotification
+07:20:50.884 [ Display:Power      ] Event: Will Sleep
+07:20:50.885 [ Display:Power      ] Event: Did Sleep
+lw-log: end
+daemon.log lines about the re-lock:
+2026/11/28 07:19:03.508485 INFO desktop: re-lock was armed before this start; it is armed again
+2026/11/28 07:20:20.531328 INFO desktop: the Mac was locked again after the last own-account viewer left

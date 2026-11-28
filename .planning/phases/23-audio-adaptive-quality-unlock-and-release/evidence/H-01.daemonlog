@@ -1,0 +1,11 @@
+-rw-------  1 admin  staff     886 Nov 28 07:13 daemon.log
+-rw-------  1 admin  staff    1821 Nov 28 07:13 daemon.log.1
+-rw-------  1 admin  staff     263 Nov 26 07:42 update.log
+2026/11/28 07:13:29.257552 INFO desktop: viewer joined viewer=2bb902ea viewers=1
+2026/11/28 07:13:29.794413 handoff: takeover pid 61856 (build "v23.11.1") accepted
+2026/11/28 07:13:29.957875 INFO desktop: viewer left viewer=2bb902ea viewers=0
+2026/11/28 07:13:29.958163 handoff: committed: 2 sessions moved to pid 61856 in 165ms; exiting
+2026/11/28 07:13:31.667027 INFO desktop: viewer joined viewer=9d331ed0 viewers=1
+---
+{"schemaVersion":1,"approvalSeenAt":1795720561,"captureActive":true,"abnormalExits":null}
+{"sr":true,"ax":true}

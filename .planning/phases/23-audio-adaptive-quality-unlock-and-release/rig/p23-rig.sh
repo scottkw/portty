@@ -47,6 +47,15 @@
 #   shape on KBIT            a pipe of KBIT kbit/s on traffic from the office to the home VM
 #   shape off                flush the anchor and the pipes, print dnctl list (empty) and pf state
 #   shape list               dnctl list and the anchor's rules
+# Hardening (23-11):
+#   build-pair VN VN1 OUT    two version stamps of HEAD: OUT/n and OUT/n1 (compile only on the host)
+#   tick-start               office: two ticking sessions (one with 300 history lines first), session 1 shared to the home VM
+#   term-open                home: the terminal share page in a second Safari window beside the desktop viewer
+#   state-h ROW              p19 state capture (shell pids, ticks, daemon), saved as evidence/ROW.state
+#   h01-run APP ROW          watch the viewer and the terminal page for 200 s, install APP over the running build 25 s in
+#   relock-watch SECS ROW    office lock, re-lock and viewer counts, changes only, with audit and loginwindow lines
+#   soak SAMPLES SECS ROW    start scripts/desktop-soak.sh in the office; soak-collect ROW copies the CSV into evidence
+#   soak-motion N ON OFF     N cycles of motion on for ON s then off for OFF s
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -634,9 +643,249 @@ exit 0
 EOF
 }
 
+# ---- hardening (23-11) --------------------------------------------------------------------------
+# Two-build upgrade with everything live (H-01, H-02) and the one-hour soak (H-03). Build N and N+1 are the same
+# tree with two version stamps. The upgrade is the Phase 19 F5/S5 path: quit the GUI only, replace
+# /Applications/Portty.app, start the GUI, which takes the daemon over (the same sequence the in-app updater ends
+# in). Everything runs inside the VMs; the host builds (compile only), copies and writes scrubbed evidence.
+
+# build-pair VER_N VER_N1 OUTBASE: OUTBASE/n/Portty.app and OUTBASE/n1/Portty.app (scratch, outside the repo).
+cmd_build_pair() {
+  [ $# -eq 3 ] || die "usage: build-pair VER_N VER_N1 OUTBASE"
+  cmd_build "$1" "$3/n"
+  cmd_build "$2" "$3/n1"
+}
+
+# tick-start: two sessions in the office. Session 1 prints 300 history lines (HIST n) and then ticks once a
+# second (TICK n epoch); session 2 only ticks. Each tick also appends "shell-pid n epoch" to ~/p19/tick-ID.txt
+# (the p19 state capture reads those). Session 1 is shared through the daemon and its link goes to the home VM's
+# ~/p19/term-link.txt (never printed). The session ids stay in ~/p23/ids.txt in the office.
+cmd_tick_start() {
+  vmsh <<'EOF'
+SOCK="$HOME/Library/Application Support/portty/daemon.sock"
+EXE=/Applications/Portty.app/Contents/MacOS/Portty
+mkdir -p ~/p19 ~/p23
+cat > ~/p19/attach.exp <<'EXP'
+set id [lindex $argv 0]; set cmd [lindex $argv 1]
+log_user 0
+set timeout 30
+set stty_init "rows 30 cols 100"
+spawn -noecho /Applications/Portty.app/Contents/MacOS/Portty attach $id
+sleep 3
+send -- "$cmd\r"
+sleep 3
+send -- "\034"
+expect eof
+EXP
+: > ~/p23/ids.txt
+for n in 1 2; do
+  id=$("$EXE" new </dev/null | tail -1)
+  rm -f ~/p19/tick-$id.txt
+  hist=''
+  [ "$n" = 1 ] && hist='i=0; while [ $i -lt 300 ]; do i=$((i+1)); print "HIST $i"; done; '
+  tickcmd="${hist}"'zmodload zsh/datetime; ( i=0; while :; do i=$((i+1)); print "TICK $i $EPOCHSECONDS"; print "$$ $i $EPOCHSECONDS" >> '"$HOME/p19/tick-$id.txt"'; sleep 1; done ) &!'
+  /usr/bin/expect -f ~/p19/attach.exp "$id" "$tickcmd" </dev/null >/dev/null 2>&1
+  echo "$id" >> ~/p23/ids.txt
+  echo "tick-start: session $n started ($(echo "$id" | cut -c1-8))"
+done
+id1=$(head -1 ~/p23/ids.txt)
+resp=$(curl -s -m 60 -X PUT --unix-socket "$SOCK" -H 'Content-Type: application/json' -d '{"shared":true}' "http://localhost/sessions/$id1/share")
+printf '%s' "$resp" | jq -r '.url // empty' > ~/p23/term-link.txt
+echo "tick-start: session 1 shared, link bytes $(wc -c < ~/p23/term-link.txt | tr -d ' ')"
+exit 0
+EOF
+  vm 'cat ~/p23/term-link.txt' |
+    vm2 'mkdir -p ~/p19 ~/p23 && chmod 700 ~/p19 && cat > ~/p19/term-link.txt && chmod 600 ~/p19/term-link.txt && echo "tick-start: term link bytes in the home VM: $(wc -c < ~/p19/term-link.txt | tr -d " ")"'
+  vm 'rm -f ~/p23/term-link.txt'
+}
+
+# term-open: home Safari (the kept viewer session) gets a second window beside the desktop window on the terminal
+# share link, and the page-side readers (xterm buffer reader, the audio packet counter once the hook is in).
+cmd_term_open() {
+  vm2 'mkdir -p ~/p23 && cat > ~/p23/readterm23.js' < "$HERE/js/readterm23.js"
+  bash "$P19" safari-wins | tail -1
+}
+
+# state-h ROW: the p19 state capture (sessions' shell pids, ticks, daemon pid and version), scrubbed again here and
+# saved as evidence/ROW.state. Not p19's own save (that goes into phase 19's evidence).
+cmd_state_h() {
+  [ $# -eq 1 ] || die "usage: state-h ROW"
+  mkdir -p "$PHASE_DIR/evidence"
+  bash "$P19" state - | scrub | tee "$PHASE_DIR/evidence/$1.state"
+}
+
+# h01-watch SECS ROW: inside the home VM, once a second for SECS seconds: the desktop window's debug status, frames
+# decoded, viewers, whether its text holds Reconnecting, the video element's sound state, the received audio
+# packet count and the page's load origin (a reload would change it); then the terminal window's buffer facts
+# (readterm23.js). Saved as evidence/ROW.watch.
+cmd_h01_watch() {
+  [ $# -eq 2 ] || die "usage: h01-watch SECS ROW"
+  mkdir -p "$PHASE_DIR/evidence"
+  vm2sh "$1" <<'EOF' | scrub > "$PHASE_DIR/evidence/$2.watch"
+secs=$1
+D=http://127.0.0.1:4444
+SID=$(cat ~/p19/safari.sid); DH=$(cat ~/p19/win-desktop.txt); TH=$(cat ~/p19/win-term.txt)
+sw() { curl -s -m 10 -X POST $D/session/$SID/window -d "$(jq -nc --arg h "$1" '{handle:$h}')" >/dev/null; }
+ex() { curl -s -m 20 -X POST $D/session/$SID/execute/sync -d "$1"; }
+TERMJS=$(jq -nc --rawfile s ~/p23/readterm23.js '{script:$s,args:[]}')
+DESKJS=$(jq -nc --arg s 'const s=window.__desktopStats||{}; const a=window.__aud||{}; const v=document.querySelector("video"); return JSON.stringify({status:s.status,fd:s.framesDecoded,viewers:s.viewers,rec:/Reconnecting/.test(document.body.innerText),muted:v?v.muted:null,paused:v?v.paused:null,arecv:a.recv,origin:Math.round(performance.timeOrigin)})' '{script:$s,args:[]}')
+for i in $(seq 1 $secs); do
+  e=$(date +%s)
+  sw "$DH"; d=$(ex "$DESKJS" | jq -r '.value|tostring' 2>/dev/null)
+  sw "$TH"; t=$(ex "$TERMJS" | jq -r '.value|tostring' 2>/dev/null)
+  echo "t=$i epoch=$e desk=${d:-?} term=${t:-?}"
+  sleep 0.6
+done
+sw "$DH"
+exit 0
+EOF
+}
+
+# upgrade APP: install APP over the running build (GUI quit only, the daemon is kept), start the GUI, then read
+# /health every 3 s for 90 s. Epochs are the office's.
+cmd_upgrade() {
+  [ $# -eq 1 ] && [ -d "$1/Contents" ] || die "usage: upgrade APP"
+  echo "upgrade: start office epoch $(cmd_clock) health before: $(vm "curl -s -m 3 --unix-socket $SOCKQ http://localhost/health")"
+  bash "$P19" deploy "$1" --keep-daemon
+  echo "upgrade: app replaced, office epoch $(cmd_clock)"
+  bash "$P19" start-gui 40 | tail -1
+  echo "upgrade: GUI started, office epoch $(cmd_clock)"
+  vmsh <<'EOF'
+SOCK="$HOME/Library/Application Support/portty/daemon.sock"
+for i in $(seq 1 30); do
+  echo "upgrade: health epoch=$(date +%s) $(curl -s -m 3 --unix-socket "$SOCK" http://localhost/health 2>/dev/null || echo unreachable)"
+  sleep 3
+done
+exit 0
+EOF
+}
+
+# h01-run APP ROW: H-01's measured upgrade. The watch (home) and the stats log (office) run for 200 s; 25 s in, APP
+# is installed over the running build. Saves ROW.watch, ROW.stats and ROW.upgrade.
+cmd_h01_run() {
+  [ $# -eq 2 ] || die "usage: h01-run APP ROW"
+  mkdir -p "$PHASE_DIR/evidence"
+  cmd_h01_watch 200 "$2" &
+  local w=$!
+  cmd_stats_log 200 "$2" > /dev/null &
+  local s=$!
+  sleep 25
+  cmd_upgrade "$1" 2>&1 | scrub | tee "$PHASE_DIR/evidence/$2.upgrade"
+  wait "$w" "$s" 2>/dev/null || true
+}
+
+# relock-watch SECS ROW: office, twice a second: whether the Mac reads locked, relock_armed, viewers, own_viewers.
+# Prints only changes (with the office clock), then the new audit events and loginwindow's lock-screen lines.
+cmd_relock_watch() {
+  [ $# -eq 2 ] || die "usage: relock-watch SECS ROW"
+  mkdir -p "$PHASE_DIR/evidence"
+  local t0 ac
+  t0=$(cmd_office_now)
+  ac=$(vm 'wc -l < "$HOME/Library/Application Support/portty/desktop-audit.jsonl" 2>/dev/null || echo 0' | tr -d ' ')
+  {
+    echo "relock-watch $2: office-start=$t0 audit-lines-before=$ac"
+    vmsh "$1" <<'EOF' | scrub
+SOCK="$HOME/Library/Application Support/portty/daemon.sock"
+prev=""
+for i in $(seq 1 $(( $1 * 2 ))); do
+  s=$(curl -s -m 3 --unix-socket "$SOCK" http://localhost/desktop/stats | jq -c '{viewers, own_viewers, relock_armed: .unlock.relock_armed, unlock: .unlock.state}')
+  l=$(curl -s -m 3 --unix-socket "$SOCK" http://localhost/desktop | jq -r .locked)
+  cur="locked=$l $s"
+  [ "$cur" != "$prev" ] && echo "t=$(echo "$i" | awk '{printf "%.1f", ($1-1)/2}') $(date +%H:%M:%S) $cur"
+  prev=$cur
+  sleep 0.5
+done
+exit 0
+EOF
+    echo "audit events since the start:"
+    vm "tail -n +$((ac + 1)) \"\$HOME/Library/Application Support/portty/desktop-audit.jsonl\" 2>/dev/null | jq -c '{ts, event, mode, reason}'" | scrub
+    echo "loginwindow:"; cmd_lw_log "$t0"
+    echo "daemon.log lines about the re-lock:"
+    vm "grep -E 'relock|locked again|re-lock' \"\$HOME/Library/Application Support/portty/daemon.log\" | tail -n 6 | cut -c1-220" | scrub
+  } 2>&1 | tee "$PHASE_DIR/evidence/$2.txt"
+}
+
+# soak SAMPLES INTERVAL ROW: copy scripts/desktop-soak.sh into the office and start it there in the background, the
+# CSV in ~/p23/ROW.csv. soak-collect ROW copies the CSV into evidence/ROW.csv (counts and states only).
+cmd_soak() {
+  [ $# -eq 3 ] || die "usage: soak SAMPLES INTERVAL ROW"
+  vm 'mkdir -p ~/p23 && cat > ~/p23/desktop-soak.sh && chmod +x ~/p23/desktop-soak.sh' < "$ROOT/scripts/desktop-soak.sh"
+  vmsh "$1" "$2" "$3" <<'EOF'
+nohup ~/p23/desktop-soak.sh --samples "$1" --interval "$2" --out ~/p23/$3.csv </dev/null > ~/p23/$3.log 2>&1 &
+echo "soak: sampler pid $! started at $(date -u +%Y-%m-%dT%H:%M:%SZ), $1 samples every $2 s"
+exit 0
+EOF
+}
+cmd_soak_collect() {
+  [ $# -eq 1 ] || die "usage: soak-collect ROW"
+  mkdir -p "$PHASE_DIR/evidence"
+  vm "cat ~/p23/$1.csv" | scrub > "$PHASE_DIR/evidence/$1.csv"
+  vm "cat ~/p23/$1.log; pgrep -f desktop-soak.sh | wc -l" || true
+  echo "soak-collect: $(($(wc -l < "$PHASE_DIR/evidence/$1.csv") - 1)) data lines in evidence/$1.csv"
+}
+
+# soak-motion CYCLES ON_S OFF_S: the H-03 motion schedule, run from the host: CYCLES times, motion on for ON_S s then
+# off for OFF_S s (each phase's start is printed with the office epoch).
+cmd_soak_motion() {
+  [ $# -eq 3 ] || die "usage: soak-motion CYCLES ON_S OFF_S"
+  local c
+  for c in $(seq 1 "$1"); do
+    echo "soak-motion: cycle $c motion on at office epoch $(cmd_clock)"; cmd_motion on > /dev/null
+    sleep "$2"
+    echo "soak-motion: cycle $c motion off at office epoch $(cmd_clock)"; cmd_motion off > /dev/null
+    sleep "$3"
+  done
+  echo "soak-motion: done at office epoch $(cmd_clock)"
+}
+
+# soak-verdict ROW [WARM_FROM WARM_TO]: H-03's pass rule on evidence/ROW.csv (samples one minute apart; sample k is
+# minute k-1). Warm-up window = minutes WARM_FROM..WARM_TO (default 5..15). Checked on every sample from minute
+# WARM_FROM on: same pid, state streaming, RSS and footprint at most 1.15 x the window median, open files within 5
+# and goroutines within 10 of the window's range.
+cmd_soak_verdict() {
+  [ $# -ge 1 ] || die "usage: soak-verdict ROW [WARM_FROM WARM_TO]"
+  local f="$PHASE_DIR/evidence/$1.csv" from=${2:-5} to=${3:-15}
+  [ -s "$f" ] || die "no $f"
+  awk -F, -v from="$from" -v to="$to" '
+    function med(a, n,   i, j, t, b) { for (i = 1; i <= n; i++) b[i] = a[i]; for (i = 2; i <= n; i++) { t = b[i]; for (j = i - 1; j >= 1 && b[j] > t; j--) b[j + 1] = b[j]; b[j + 1] = t } return (n % 2) ? b[(n + 1) / 2] : (b[n / 2] + b[n / 2 + 1]) / 2 }
+    NR == 1 { next }
+    { k = NR - 1; ts[k] = $1; pid[k] = $2; rss[k] = $3; fp[k] = $4; fds[k] = $5; gor[k] = $7; vw[k] = $8; st[k] = $9; n = k }
+    END {
+      nw = 0
+      for (k = 1; k <= n; k++) if (k - 1 >= from && k - 1 <= to) { nw++; wr[nw] = rss[k]; wf[nw] = fp[k]; if (nw == 1 || fds[k] < fmin) fmin = fds[k]; if (nw == 1 || fds[k] > fmax) fmax = fds[k]; if (nw == 1 || gor[k] < gmin) gmin = gor[k]; if (nw == 1 || gor[k] > gmax) gmax = gor[k] }
+      mr = med(wr, nw); mf = med(wf, nw)
+      badpid = 0; badst = 0; badvw = 0; maxr = 0; maxf = 0; badfd = 0; badg = 0; na = 0
+      for (k = 1; k <= n; k++) {
+        if (pid[k] != pid[1]) badpid++
+        if (st[k] != "streaming") badst++
+        if (vw[k] < 1) badvw++
+        if (k - 1 >= from) { na++; if (rss[k] / mr > maxr) maxr = rss[k] / mr; if (fp[k] / mf > maxf) maxf = fp[k] / mf; if (fds[k] < fmin - 5 || fds[k] > fmax + 5) badfd++; if (gor[k] < gmin - 10 || gor[k] > gmax + 10) badg++ }
+      }
+      printf "samples=%d first=%s last=%s\n", n, ts[1], ts[n]
+      printf "pid: %s throughout, samples with another pid: %d\n", pid[1], badpid
+      printf "state: samples not streaming: %d, samples with no viewer: %d\n", badst, badvw
+      printf "warm-up minutes %d..%d (%d samples): rss median %d kB, footprint median %d B, fds %d..%d, goroutines %d..%d\n", from, to, nw, mr, mf, fmin, fmax, gmin, gmax
+      printf "from minute %d (%d samples): max rss ratio %.3f (limit 1.15), max footprint ratio %.3f (limit 1.15), fds outside +-5: %d, goroutines outside +-10: %d\n", from, na, maxr, maxf, badfd, badg
+      ok = (badpid == 0 && badst == 0 && maxr <= 1.15 && maxf <= 1.15 && badfd == 0 && badg == 0)
+      print ok ? "VERDICT: PASS" : "VERDICT: FAIL"
+    }' "$f"
+}
+
 sub=${1:-}
 [ $# -gt 0 ] && shift
 case "$sub" in
+  soak-verdict) cmd_soak_verdict "$@" ;;
+  build-pair) cmd_build_pair "$@" ;;
+  tick-start) cmd_tick_start ;;
+  term-open) cmd_term_open ;;
+  state-h) cmd_state_h "$@" ;;
+  h01-watch) cmd_h01_watch "$@" ;;
+  upgrade) cmd_upgrade "$@" ;;
+  h01-run) cmd_h01_run "$@" ;;
+  relock-watch) cmd_relock_watch "$@" ;;
+  soak) cmd_soak "$@" ;;
+  soak-collect) cmd_soak_collect "$@" ;;
+  soak-motion) cmd_soak_motion "$@" ;;
   build) cmd_build "$@" ;;
   deploy) cmd_deploy "$@" ;;
   deploy-home) cmd_deploy_home "$@" ;;
