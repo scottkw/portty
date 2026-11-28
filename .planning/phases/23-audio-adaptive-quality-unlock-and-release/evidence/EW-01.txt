@@ -1,0 +1,146 @@
+EW-01 (M-222) build 23.10.4, office daemon pid 17724. Run stopped when the office VM fell off the tailnet (see the end).
+
+== responsible-pid check (after the Q-03-lone3 office viewer had streamed; office clock 2026-11-28 04:11)
+VTEncoderXPCService pids: [17907]
+daemon pid: 17724
+program path = /System/Library/Frameworks/VideoToolbox.framework/Versions/A/XPCServices/VTEncoderXPCService.xpc/Contents/MacOS/VTEncoderXPCService
+	pid = 17907
+	ppid = 1
+responsible pid = 17724
+responsible path = /Applications/Portty.app/Contents/MacOS/Portty
+
+== load: rig motion on (Terminal yes) plus two 'yes > /dev/null' loops from about 04:50:30 (one loop stopped at about 04:53:40 at load 220); lock/unlock cycles from 04:50:53 with the home Safari viewer streaming; all yes stopped at 04:55:01
+== cycles.log
+base -12902 start failures: 0
+== cycle 1 2026-11-28 04:50:53 load={ 54.05 14.50 7.20 }
+lock: locked after about 4 s
+viewers=1
+still locked (true): unlock-admin
+unlock-admin: unlocked
+2026/11/28 04:52:02.124973 INFO desktop: viewer joined viewer=c44dbe18 viewers=1
+2026/11/28 04:52:31.646092 INFO desktop: wake, restarting the stream once the display is awake
+2026/11/28 04:53:03.934752 WARN desktop: still refresh failed err="screencap: refining the picture failed (code -19092)"
+2026/11/28 04:53:55.280531 WARN desktop: capture error err="screencap: encoder output callback failed (code -19092)"
+== cycle 2 2026-11-28 04:53:59 load={ 233.08 111.10 49.11 }
+lock: locked after about 6 s
+viewers=0
+still locked (true): unlock-admin
+unlock-admin: unlocked
+2026/11/28 04:54:08.142752 INFO desktop: viewer left viewer=c44dbe18 viewers=0
+2026/11/28 04:54:09.373100 WARN desktop: encoder failed err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 04:54:09.373192 WARN desktop: capture start failed err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 04:54:09.373240 INFO desktop: wake, restarting the stream once the display is awake
+== cycle 3 2026-11-28 04:54:53 load={ 95.02 92.96 46.24 }
+WEDGE: start failure with -12902 seen
+
+== daemon.log from 04:50:00 to 04:57:40 (every line in the window)
+2026/11/28 04:50:31.990731 WARN desktop: probe failed err="perm-probe: signal: killed"
+2026/11/28 04:50:32.244317 WARN desktop: Accessibility is off: a still screen cannot be told from a frozen stream, so awaiting approval is never classified
+2026/11/28 04:51:45.343869 INFO desktop: viewer left viewer=5804c43a viewers=0
+2026/11/28 04:51:48.139796 INFO desktop: wake, restarting the stream once the display is awake
+2026/11/28 04:52:02.124973 INFO desktop: viewer joined viewer=c44dbe18 viewers=1
+2026/11/28 04:52:31.646092 INFO desktop: wake, restarting the stream once the display is awake
+2026/11/28 04:53:03.934752 WARN desktop: still refresh failed err="screencap: refining the picture failed (code -19092)"
+2026/11/28 04:53:55.280531 WARN desktop: capture error err="screencap: encoder output callback failed (code -19092)"
+2026/11/28 04:54:08.142752 INFO desktop: viewer left viewer=c44dbe18 viewers=0
+2026/11/28 04:54:09.373100 WARN desktop: encoder failed err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 04:54:09.373192 WARN desktop: capture start failed err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 04:54:09.373240 INFO desktop: wake, restarting the stream once the display is awake
+
+== office monitor every ~5 s (empty desktop/stats = the daemon did not answer within 4 s under load)
+04:50:50 epoch=1795841450 load=[{ 47.27 12.52 6.47 }] desktop={"locked":false,"state":"streaming","reason":"probe: perm-probe: signal: killed"} stats={"viewers":1,"own_viewers":1,"goroutines":63,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+31869
+04:51:02 epoch=1795841462 load=[{ 81.46 21.65 9.82 }] desktop= stats= vt=[17907 ] daemon=17724
+31923
+04:51:14 epoch=1795841474 load=[{ 112.89 30.34 13.04 }] desktop= stats= vt=[17907 ] daemon=17724
+31923
+04:51:27 epoch=1795841487 load=[{ 153.28 43.31 17.97 }] desktop= stats= vt=[17907 ] daemon=17724
+31923
+04:51:39 epoch=1795841499 load=[{ 174.93 51.56 21.20 }] desktop= stats= vt=[17907 ] daemon=17724
+31923
+04:51:45 epoch=1795841505 load=[{ 185.02 55.70 22.84 }] desktop={"locked":false,"state":"streaming","reason":"probe: perm-probe: signal: killed"} stats={"viewers":1,"own_viewers":1,"goroutines":109,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:51:49 epoch=1795841509 load=[{ 192.07 59.31 24.30 }] desktop={"locked":true,"state":"locked","reason":null} stats={"viewers":0,"own_viewers":0,"goroutines":36,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:51:53 epoch=1795841513 load=[{ 177.57 58.51 24.22 }] desktop={"locked":true,"state":"locked","reason":null} stats={"viewers":0,"own_viewers":0,"goroutines":34,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:51:57 epoch=1795841517 load=[{ 169.68 58.85 24.54 }] desktop={"locked":true,"state":"locked","reason":null} stats={"viewers":0,"own_viewers":0,"goroutines":34,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:52:01 epoch=1795841521 load=[{ 163.06 59.31 24.91 }] desktop={"locked":true,"state":"locked","reason":null} stats={"viewers":1,"own_viewers":0,"goroutines":52,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+32314
+04:52:06 epoch=1795841526 load=[{ 163.06 59.31 24.91 }] desktop={"locked":true,"state":"locked","reason":null} stats={"viewers":1,"own_viewers":1,"goroutines":66,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:52:10 epoch=1795841530 load=[{ 150.24 58.38 24.78 }] desktop={"locked":true,"state":"locked","reason":null} stats={"viewers":1,"own_viewers":1,"goroutines":67,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:52:14 epoch=1795841534 load=[{ 138.69 57.51 24.67 }] desktop={"locked":true,"state":"locked","reason":null} stats={"viewers":1,"own_viewers":1,"goroutines":66,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:52:18 epoch=1795841538 load=[{ 128.14 56.67 24.57 }] desktop={"locked":true,"state":"locked","reason":null} stats={"viewers":1,"own_viewers":1,"goroutines":66,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:52:24 epoch=1795841544 load=[{ 118.12 55.78 24.44 }] desktop={"locked":true,"state":"locked","reason":null} stats={"viewers":1,"own_viewers":1,"goroutines":69,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:52:36 epoch=1795841556 load=[{ 141.47 63.95 27.90 }] desktop= stats= vt=[17907 ] daemon=17724
+32725
+04:52:48 epoch=1795841568 load=[{ 157.49 69.93 30.44 }] desktop= stats= vt=[17907 ] daemon=17724
+32725
+04:53:00 epoch=1795841580 load=[{ 172.93 76.12 33.10 }] desktop= stats= vt=[17907 ] daemon=17724
+04:53:13 epoch=1795841593 load=[{ 192.33 85.14 37.07 }] desktop= stats= vt=[17907 ] daemon=17724
+04:53:25 epoch=1795841605 load=[{ 204.43 91.26 39.80 }] desktop= stats= vt=[17907 ] daemon=17724
+04:53:37 epoch=1795841617 load=[{ 220.20 100.29 43.92 }] desktop= stats= vt=[17907 ] daemon=17724
+04:53:49 epoch=1795841629 load=[{ 229.71 106.28 46.71 }] desktop= stats= vt=[17907 ] daemon=17724
+04:53:55 epoch=1795841635 load=[{ 234.22 109.26 48.11 }] desktop={"locked":false,"state":"streaming","reason":null} stats={"viewers":1,"own_viewers":1,"goroutines":62,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:53:59 epoch=1795841639 load=[{ 233.08 111.10 49.11 }] desktop={"locked":false,"state":"streaming","reason":null} stats={"viewers":1,"own_viewers":1,"goroutines":33,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:54:04 epoch=1795841644 load=[{ 214.74 109.32 48.85 }] desktop={"locked":false,"state":"streaming","reason":null} stats={"viewers":1,"own_viewers":1,"goroutines":30,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:54:08 epoch=1795841648 load=[{ 197.78 107.56 48.58 }] desktop={"locked":false,"state":"idle","reason":null} stats={"viewers":0,"own_viewers":0,"goroutines":28,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:54:12 epoch=1795841652 load=[{ 182.18 105.82 48.31 }] desktop={"locked":true,"state":"locked","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":28,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:54:16 epoch=1795841656 load=[{ 167.83 104.11 48.05 }] desktop={"locked":true,"state":"locked","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":28,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:54:20 epoch=1795841660 load=[{ 167.83 104.11 48.05 }] desktop={"locked":true,"state":"locked","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:54:25 epoch=1795841665 load=[{ 154.72 102.45 47.79 }] desktop={"locked":true,"state":"locked","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":28,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:54:29 epoch=1795841669 load=[{ 142.57 100.80 47.53 }] desktop={"locked":true,"state":"locked","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:54:33 epoch=1795841673 load=[{ 131.39 99.17 47.27 }] desktop={"locked":true,"state":"locked","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:54:37 epoch=1795841677 load=[{ 121.11 97.58 47.01 }] desktop={"locked":true,"state":"locked","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:54:41 epoch=1795841681 load=[{ 111.65 96.01 46.75 }] desktop={"locked":true,"state":"display_asleep","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:54:45 epoch=1795841685 load=[{ 111.65 96.01 46.75 }] desktop={"locked":true,"state":"display_asleep","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:54:50 epoch=1795841690 load=[{ 103.03 94.48 46.50 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:54:54 epoch=1795841694 load=[{ 95.02 92.96 46.24 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:54:58 epoch=1795841698 load=[{ 87.65 91.47 45.99 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:55:02 epoch=1795841702 load=[{ 80.63 89.95 45.72 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:55:06 epoch=1795841706 load=[{ 74.25 88.47 45.46 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:55:10 epoch=1795841710 load=[{ 74.25 88.47 45.46 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:55:15 epoch=1795841715 load=[{ 68.39 87.02 45.20 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:55:19 epoch=1795841719 load=[{ 63.07 85.61 44.94 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:55:23 epoch=1795841723 load=[{ 58.10 84.20 44.69 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:55:27 epoch=1795841727 load=[{ 53.45 82.80 44.42 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:55:31 epoch=1795841731 load=[{ 53.45 82.80 44.42 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:55:35 epoch=1795841735 load=[{ 49.33 81.46 44.17 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:55:40 epoch=1795841740 load=[{ 45.38 80.11 43.91 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:55:44 epoch=1795841744 load=[{ 41.74 78.78 43.66 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:55:48 epoch=1795841748 load=[{ 38.48 77.49 43.41 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:55:52 epoch=1795841752 load=[{ 35.48 76.22 43.16 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:55:56 epoch=1795841756 load=[{ 35.48 76.22 43.16 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:56:00 epoch=1795841760 load=[{ 32.80 74.99 42.92 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:56:05 epoch=1795841765 load=[{ 30.41 73.79 42.68 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:56:09 epoch=1795841769 load=[{ 28.14 72.60 42.44 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:56:13 epoch=1795841773 load=[{ 25.96 71.41 42.20 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:56:17 epoch=1795841777 load=[{ 23.88 70.22 41.95 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:56:21 epoch=1795841781 load=[{ 23.88 70.22 41.95 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:56:25 epoch=1795841785 load=[{ 22.13 69.09 41.72 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:56:29 epoch=1795841789 load=[{ 20.52 67.98 41.49 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:56:34 epoch=1795841794 load=[{ 18.96 66.87 41.25 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:56:38 epoch=1795841798 load=[{ 17.52 65.77 41.01 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:56:42 epoch=1795841802 load=[{ 17.52 65.77 41.01 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:56:46 epoch=1795841806 load=[{ 16.11 64.68 40.77 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:56:50 epoch=1795841810 load=[{ 14.82 63.60 40.53 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:56:54 epoch=1795841814 load=[{ 13.64 62.55 40.30 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:56:59 epoch=1795841819 load=[{ 12.70 61.54 40.07 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:57:03 epoch=1795841823 load=[{ 11.69 60.52 39.84 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:57:07 epoch=1795841827 load=[{ 11.69 60.52 39.84 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:57:11 epoch=1795841831 load=[{ 10.75 59.52 39.60 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:57:15 epoch=1795841835 load=[{ 9.97 58.54 39.38 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:57:19 epoch=1795841839 load=[{ 9.25 57.59 39.15 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:57:24 epoch=1795841844 load=[{ 8.51 56.63 38.92 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:57:28 epoch=1795841848 load=[{ 7.83 55.69 38.69 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+04:57:32 epoch=1795841852 load=[{ 7.83 55.69 38.69 }] desktop={"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)"} stats={"viewers":0,"own_viewers":0,"goroutines":27,"unlock":{"state":"idle","failures":0,"relock_armed":false}} vt=[17907 ] daemon=17724
+
+== tailscaled in the office (read only, 04:57)
+launchctl print system/com.tailscale.tailscaled: state = not running, runs = 1, last exit code = 1, job state = exited
+unified log: 04:53:56.166 tailscaled:303 TCP connection to :443 closed (RST out); 04:53:56.167 mDNSResponder DNSServiceCreateConnection STOP PID[303](tailscaled); 04:53:56.191 launchd: service inactive: com.tailscale.tailscaled
+no tailscale process in the office; `tailscale status`: "failed to connect to local Tailscale service; is Tailscale running?"
+GET /desktop: {"tailscale":"off"}
+
+== final office state (04:57:43): load { 6.33 53.01 38.03 }, /health v23.10.4 pid 17724 (unchanged), permissions {"sr":true,"ax":true},
+GET /desktop {"locked":false,"state":"idle","reason":"encoder: screencap: starting the encoder failed (code -12902)","tailscale":"off","viewers":0},
+stats {"goroutines":27,"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":false}}, 0 yes processes, VTEncoderXPCService pid 17907 (the same instance).
+home VM: tailscale BackendState Running, Self.Online true. Home page status `unreachable` ("Can't reach this Mac ... This page keeps trying.").
+No join attempt reached the daemon after 04:54:09, so the recovery policy (three consecutive encoder start failures, then the reset) was never exercised.
+Nothing was killed by hand; tailscaled was not restarted (stop-and-report rule).
