@@ -116,3 +116,4 @@ verification:
   not_verified: "no VM or browser run (not allowed here); production exposure of the zombie needs a page that closes its pc but not its socket (real pages close both)"
   guardrail_verdict: accepted
 files_changed: [internal/desktop/manager.go, internal/desktop/revoke.go, internal/desktop/goroutine_leak_test.go, internal/desktop/revoke_test.go]
+vm_result: "2026-11-28, build 23.10.3 (5ea587fe), Z-01 RESULT=PARTIAL. Only window.__pc.close() was run on a home Safari viewer, with the page and its socket left open. Stats read viewers 0 at the next 0.25 s poll change; the daemon logged `viewer left` about 0.6 s after the close; the audit leave reason is viewer_closed. The page then reconnected as a new viewer 1.6 s later. The G-04 half (Stop with an unresponsive guest) was not run: the rig has no procedure for an unresponsive guest. Evidence (phase 23 evidence folder): Z-01.txt"
