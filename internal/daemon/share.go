@@ -17,7 +17,6 @@ import (
 	"github.com/scottkw/portty/internal/relay"
 	"github.com/scottkw/portty/internal/tailnet"
 	"github.com/scottkw/portty/internal/webserver"
-	"tailscale.com/client/local"
 )
 
 // shareRecord is one shared session: the grant registered on the share server
@@ -42,8 +41,7 @@ var (
 		if !tailnet.LiveAllowed() {
 			return tailnet.ErrLiveTailnetInTest
 		}
-		var lc local.Client
-		_, _, err := lc.CertPair(ctx, domain)
+		_, _, err := tailnet.LocalAPI.CertPair(ctx, domain)
 		return err
 	}
 )
