@@ -46,6 +46,17 @@ func TestFanout_JoinLeaveCyclesLeaveNoGoroutines(t *testing.T) {
 			gone(t, env)
 			_ = v.lc.pc.Close()
 		}},
+		// pion closes the daemon's pc by itself on the viewer's DTLS close
+		// notice; the socket stays up, so the daemon must end the session.
+		{"media_closed_socket_open", func(t *testing.T, env *tracerEnv, v *fanViewer, _ *hole) {
+			_ = v.lc.pc.Close()
+			eventually(t, 3*time.Second, "viewer gone after its media closed", func() bool { return env.mgr.Viewers() == 0 })
+			select {
+			case <-v.closed:
+			case <-time.After(3 * time.Second):
+				t.Fatal("socket still open 3 s after the viewer's media closed")
+			}
+		}},
 	}
 	for _, md := range modes {
 		t.Run(md.name, func(t *testing.T) {
