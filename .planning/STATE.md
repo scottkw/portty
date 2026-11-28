@@ -565,3 +565,4 @@ Resume file: None
 
 - Discuss and plan Phase 17 (Desktop Feasibility Spike): /gsd-discuss-phase 17, then /gsd-plan-phase 17
 - Phase 18 (Self-Installing Updates) is independent of the spike and can be planned alongside it
+- Before the v2.0 publish (23-16): re-read README.md against the shipped build
