@@ -13,7 +13,7 @@ return JSON.stringify({
   labelled_mac_password: document.querySelectorAll('[aria-label="Mac password"]').length,
   locked_chip: (t.match(/Locked[^.]*\.?/) || [''])[0].slice(0, 80),
   ask_chip: /Ask the person at the Mac to unlock it/.test(t),
-  blocked_notice: (t.match(/Clicks and typing are off[^.]*\./) || [''])[0].slice(0, 120),
+  blocked_notice: t.indexOf('Clicks and typing are off') < 0 ? '' : t.slice(t.indexOf('Clicks and typing are off'), t.indexOf('Clicks and typing are off') + 130),
   mac_unlocked_notice: (t.match(/Mac unlocked[^.]*\.?/) || [''])[0].slice(0, 80),
   status_page: (window.__desktopStats || {}).status || null,
 })

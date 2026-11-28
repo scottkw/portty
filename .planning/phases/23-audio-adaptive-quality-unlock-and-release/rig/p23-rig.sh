@@ -374,6 +374,8 @@ EOF
 cmd_lock() {
   vmsh <<'EOF'
 SOCK="$HOME/Library/Application Support/portty/daemon.sock"
+# Finder frontmost first: with the Portty window in front the shortcut does not lock (seen in 23-10)
+open -a Finder; sleep 1
 ~/ptest/click2 key 12 cmd ctrl
 for i in $(seq 1 40); do
   [ "$(curl -s -m 3 --unix-socket "$SOCK" http://localhost/desktop | jq -r .locked)" = true ] && { echo "lock: locked after about $((i / 4)) s"; exit 0; }
@@ -512,6 +514,126 @@ EOF
   rm -rf "$tmp"
 }
 
+# unlock-seq ROW STEP...: a run of submits on the home viewer, each STEP being a password KIND (pw_for) or wait:SECS.
+# After a submit the panel is read until its status line changed and reached a settled state (a failure, a rate-limit
+# or pause line, a refusal, or the panel gone), then the next step starts at once. Per step the panel's transitions
+# are printed with the office clock beside them; afterwards loginwindow's lines, the stats transitions and the new
+# audit lines. Saved as evidence/ROW.txt.
+cmd_unlock_seq() {
+  [ $# -ge 2 ] || die "usage: unlock-seq ROW STEP..."
+  local row=$1 s dur=20 tmp t0 ac
+  shift
+  local steps=()
+  for s in "$@"; do
+    case "$s" in
+      wait:*) steps+=("W:${s#wait:}"); dur=$((dur + ${s#wait:})) ;;
+      *) steps+=("P:$s:$(pw_for "$s")"); dur=$((dur + 28)) ;;
+    esac
+  done
+  mkdir -p "$PHASE_DIR/evidence"
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/p23-seq.XXXXXX")
+  t0=$(cmd_office_now)
+  ac=$(vm 'wc -l < "$HOME/Library/Application Support/portty/desktop-audit.jsonl" 2>/dev/null || echo 0' | tr -d ' ')
+  {
+    echo "unlock-seq $row: steps=$* office-start=$t0"
+    echo "office before: $(cmd_lockstate)"
+    ( vmsh "$dur" <<'EOF' > "$tmp/office.txt"
+SOCK="$HOME/Library/Application Support/portty/daemon.sock"
+prev=""
+for i in $(seq 1 $(( $1 * 2 ))); do
+  s=$(curl -s -m 3 --unix-socket "$SOCK" http://localhost/desktop/stats | jq -c '{unlock, viewers}')
+  l=$(curl -s -m 3 --unix-socket "$SOCK" http://localhost/desktop | jq -r .locked)
+  cur="locked=$l $s"
+  [ "$cur" != "$prev" ] && echo "$(date +%H:%M:%S) $cur"
+  prev=$cur
+  sleep 0.5
+done
+EOF
+    ) &
+    local bg=$!
+    vm2sh "${steps[@]}" <<'EOF' | scrub
+D=http://127.0.0.1:4444; SID=$(cat ~/p19/safari.sid)
+find_el() { curl -s -m 20 -X POST $D/session/$SID/element -d "$(jq -nc --arg x "$1" '{using:"xpath",value:$x}')" | jq -r '.value|objects|to_entries[]|select(.key|startswith("element-"))|.value'; }
+now() { perl -MTime::HiRes=time -e 'printf q(%.2f), time'; }
+PANEL='const g=[...document.querySelectorAll("[role=group]")].find(e=>/Unlock This Mac/.test(e.innerText||"")); if(!g) return "panel absent; notice: "+((document.body.innerText.replace(/\s+/g," ").match(/Mac unlocked[^.]*\.?/)||["none"])[0]); const st=g.querySelector(".desktop-unlock__status"); return st?st.innerText.replace(/\s+/g," "):"no status"'
+PBODY=$(jq -nc --arg s "$PANEL" '{script:$s,args:[]}')
+panel() { curl -s -m 8 -X POST $D/session/$SID/execute/sync -d "$PBODY" | jq -r '.value|tostring'; }
+for step in "$@"; do
+  case "$step" in
+    W:*) echo "step wait ${step#W:} s"; sleep "${step#W:}"; continue ;;
+  esac
+  rest=${step#P:}; kind=${rest%%:*}; PW=${rest#*:}
+  pre=$(panel)
+  echo "step submit $kind (office clock check: panel before: $pre)"
+  eid=$(find_el '//input[@aria-label="Mac password"]')
+  [ -n "$eid" ] || { echo "home: no Mac password field in the page"; exit 3; }
+  FILL=$(jq -nc --arg id "$eid" --arg pw "$PW" '{script:"const el=arguments[0]; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,\"value\").set.call(el,arguments[1]); el.dispatchEvent(new Event(\"input\",{bubbles:true})); return \"set\"",args:[{"element-6066-11e4-a52e-4f735466cecf":$id},$pw]}')
+  curl -s -m 15 -X POST $D/session/$SID/execute/sync -d "$FILL" | jq -c '.value' | sed 's/^/  fill: /'
+  unset FILL PW
+  bid=$(find_el '//button[normalize-space()="Unlock"]')
+  [ -n "$bid" ] || { echo "home: no Unlock button"; exit 3; }
+  tc=$(now)
+  curl -s -m 20 -X POST $D/session/$SID/element/$bid/click -d '{}' | jq -c '.value' | sed 's/^/  click: /'
+  prev=""; settled=0
+  end=$(perl -e "print $tc + 30")
+  while [ "$(perl -e "print (($(now) < $end) ? 1 : 0)")" = 1 ]; do
+    cur=$(panel)
+    if [ "$cur" != "$prev" ]; then
+      echo "  t=+$(perl -e "printf q(%.2f), $(now) - $tc") panel: $cur"
+      if [ "$cur" != "$pre" ] && ! printf '%s' "$cur" | grep -qE 'Unlocking|Trying once more' && printf '%s' "$cur" | grep -qE "didn.t work|Try again in|paused|panel absent|can.t type|Caps Lock|Couldn.t unlock|needs Accessibility"; then settled=1; fi
+    fi
+    prev=$cur
+    [ "$settled" = 1 ] && break
+    sleep 0.2
+  done
+done
+echo "end: $(panel)"
+exit 0
+EOF
+    wait "$bg" 2>/dev/null || true
+    echo "office transitions (office clock):"; cat "$tmp/office.txt" | scrub
+    echo "loginwindow:"; cmd_lw_log "$t0"
+    echo "new audit lines:"
+    vm "tail -n +$((ac + 1)) \"\$HOME/Library/Application Support/portty/desktop-audit.jsonl\" 2>/dev/null | jq -c '{ts, event, mode, reason, keys: keys}'" | scrub
+    echo "office after: $(cmd_lockstate)"
+  } 2>&1 | tee "$PHASE_DIR/evidence/$row.txt"
+  rm -rf "$tmp"
+}
+
+# sentinel-hits ROW: U-12. In the office, count the wrong sentinels (the files in SECRETS, passed as arguments and never
+# printed) in daemon.log, desktop-audit.jsonl and the unified log: the Portty process, then every process. Also the audit
+# lines' key sets for unlocked and unlock_failed, and the lines' modes. Counts only; saved as evidence/ROW.txt.
+cmd_sentinel_hits() {
+  [ $# -eq 1 ] || die "usage: sentinel-hits ROW"
+  local f s=() n=0
+  for f in "$SECRETS"/s*; do [ -s "$f" ] && { s+=("$(cat "$f")"); n=$((n + 1)); }; done
+  [ "$n" -gt 0 ] || die "no sentinel was ever created"
+  mkdir -p "$PHASE_DIR/evidence"
+  vmsh "${s[@]}" <<'EOF' | scrub | tee "$PHASE_DIR/evidence/$1.txt"
+D="$HOME/Library/Application Support/portty"
+echo "sentinels checked: $#"
+i=0
+for s in "$@"; do
+  i=$((i + 1))
+  # grep -F reads the sentinel as data; only counts are printed
+  d=$(grep -cF -- "$s" "$D/daemon.log" 2>/dev/null); a=$(grep -cF -- "$s" "$D/desktop-audit.jsonl" 2>/dev/null)
+  # the older rotated log, if any
+  r=$(cat "$D"/daemon.log.* 2>/dev/null | grep -cF -- "$s")
+  p=$(/usr/bin/log show --last 3h --predicate 'process == "Portty"' --style compact 2>/dev/null | grep -cF -- "$s")
+  e=$(/usr/bin/log show --last 3h --predicate "eventMessage CONTAINS \"$s\"" --style compact 2>/dev/null | grep -F -- "$s" | grep -vcE "^[^ ]+ [^ ]+ +[A-Za-z]+ +log\[")
+  echo "sentinel $i: daemon.log=$d rotated-daemon-logs=$r desktop-audit.jsonl=$a unified-log(Portty process)=$p unified-log(any process, message text)=$e"
+done
+F="$D/desktop-audit.jsonl"
+echo "audit file: mode=$(stat -f %Lp "$F") lines=$(wc -l < "$F" | tr -d ' ')"
+echo "events unlocked / unlock_failed / relocked: $(jq -r 'select(.event=="unlocked" or .event=="unlock_failed" or .event=="relocked") | .event' "$F" | sort | uniq -c | awk '{printf "%s=%s ", $2, $1}')"
+echo "modes on those lines: $(jq -r 'select(.event=="unlocked" or .event=="unlock_failed" or .event=="relocked") | .mode' "$F" | sort | uniq -c | awk '{printf "%s=%s ", $2, $1}')"
+echo "key sets on those lines:"
+jq -c 'select(.event=="unlocked" or .event=="unlock_failed" or .event=="relocked") | {event, keys: (keys)}' "$F" | sort | uniq -c
+echo "any line with a key naming length, password or secret: $(jq -r 'select(.event=="unlocked" or .event=="unlock_failed") | keys[] | select(test("len|pass|secret|pw"; "i"))' "$F" | wc -l | tr -d ' ')"
+exit 0
+EOF
+}
+
 sub=${1:-}
 [ $# -gt 0 ] && shift
 case "$sub" in
@@ -554,6 +676,8 @@ case "$sub" in
   u01-tight) cmd_u01_tight "$@" ;;
   office-now) cmd_office_now ;;
   unlock-try) cmd_unlock_try "$@" ;;
+  unlock-seq) cmd_unlock_seq "$@" ;;
+  sentinel-hits) cmd_sentinel_hits "$@" ;;
   panel) cmd_js "${1:-home}" unlockpanel ;;
   audit-dump) bash "$P22" audit-dump "$@" ;;
   guest-open) bash "$P22" guest-open ;;

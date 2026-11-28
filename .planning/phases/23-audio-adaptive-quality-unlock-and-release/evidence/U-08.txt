@@ -1,0 +1,11 @@
+U-08 guest page on the locked Mac (portty-test-2 is a guest of portty-test, view only)
+office clock: 2026-11-28 01:11:30
+lock: locked after about 0 s
+lockstate: lockstate: locked=true {"viewers":1,"own_viewers":0,"goroutines":65,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+panel script on the guest page:
+{"panel":false,"status":null,"button_aria_disabled":null,"password_inputs":0,"labelled_mac_password":0,"locked_chip":"Locked.","ask_chip":true,"blocked_notice":"","mac_unlocked_notice":"","status_page":"streaming"}
+page title and text:
+{"title":"Portty Desktop (debug fd=105 fw=2560 csp=0 st=streaming)","text":"While this has focus, your keyboard and pointer control the Mac. To give the keyboard back, press Control, Option, Command and Return together. Locked. Ask the person at the Mac to unlock it."}
+Safari accessibility tree, lines naming a password, secure field, Unlock or Locked:
+(the AX tree dump of Safari holds only the window chrome, not the web content; the searches that walk the web area are in U-08.ax-find.txt)
+lockstate after: lockstate: locked=true {"viewers":1,"own_viewers":0,"goroutines":65,"unlock":{"state":"idle","failures":0,"relock_armed":false}}

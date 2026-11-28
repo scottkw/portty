@@ -1,0 +1,16 @@
+U-08 Safari accessibility search (axp22 find walks the web area too), guest page on the locked Mac, portty-test-2
+lockstate: lockstate: locked=true {"viewers":1,"own_viewers":0,"goroutines":65,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+find [Locked]:
+hit role=AXStaticText title=[] desc=[] value=[Locked. Ask the person at the Mac to unlock it.] mark=[] enabled=1 @427,143 284x16
+find [Mac password]:
+no match
+find [Unlock This Mac]:
+no match
+find [Unlock]:
+no match
+find [password]:
+no match
+find [secure]:
+no match
+find [Portty never saves]:
+no match

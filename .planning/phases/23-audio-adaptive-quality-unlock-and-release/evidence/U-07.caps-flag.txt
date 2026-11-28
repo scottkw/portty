@@ -1,0 +1,9 @@
+U-07 caps lock attempts inside portty-test (rig/capsset.swift reads and sets the HID system Caps Lock flag, the same flag the daemon reads):
+a. (this run started with the Mac already locked; an earlier run from an unlocked Mac read: set on and read on, locked with Ctrl+Cmd+Q, read off 2 s later and 5 s later) set on, lock key, read 2 s later:
+capsset: caps lock flag now off
+capsset: caps lock flag now off
+b. while locked, set on, read 2 s later:
+capsset: caps lock flag now off
+capsset: caps lock flag now off
+c. a synthetic Caps Lock key (key code 57) posted at the lock screen, then a daemon unlock with the public password went through (U-07.caps.txt): the flag was not set
+d. with the flag set before the lock and the lock taken, the daemon unlock went through as well (U-07.caps-refused.txt)

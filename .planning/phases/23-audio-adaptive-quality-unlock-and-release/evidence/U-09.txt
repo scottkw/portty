@@ -1,0 +1,18 @@
+U-09 own-account viewer (portty-test-2 Safari) with the Mac locked: a click on the picture, then typed keys
+unlock-admin: unlocked
+lock: locked after about 0 s
+office clock at start: 2026-11-28 01:16:36
+page before: {"panel":true,"blocked_notice":""}
+viewer click on the picture:
+safari-click viewport=400,255
+after the click: notice seen at read 1: [Clicks and typing are off while this Mac is locked. Use Unlock This Mac to enter the password. Unlock This Mac Unlock Portty never]
+viewer types qwe:
+after the keys: notice seen at read 1: [Clicks and typing are off while this Mac is locked. Use Unlock This Mac to enter the password. Unlock This Mac Unlock Portty never]
+(wait 12 s)
+page: {"blocked_notice":""}
+viewer types r:
+after r: notice seen at read 1: [Clicks and typing are off while this Mac is locked. Use Unlock This Mac to enter the password. Unlock This Mac Unlock Portty never]
+loginwindow since the start (a key that reached the lock screen would show keyPressed):
+01:17:02.788 -[LWDefaultScreenLockUI handleTimeOutTimer:] | enter. timeout timer fired
+lw-log: end
+stats: lockstate: locked=true {"viewers":1,"own_viewers":1,"goroutines":75,"unlock":{"state":"idle","failures":0,"relock_armed":false}}

@@ -1,0 +1,15 @@
+unlock-seq U-07.emoji: steps=emoji office-start=2026-11-28 01:05:54
+office before: lockstate: locked=true {"viewers":1,"own_viewers":1,"goroutines":66,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+step submit emoji (office clock check: panel before: Portty never saves it. Wrong tries count toward the Mac's own limit.)
+  fill: "set"
+  click: null
+  t=+0.12 panel: Unlocking…
+  t=+0.39 panel: This password has a character Portty can't type. Unlock it at the Mac instead.
+end: This password has a character Portty can't type. Unlock it at the Mac instead.
+office transitions (office clock):
+01:05:55 locked=true {"unlock":{"state":"idle","failures":0,"relock_armed":false},"viewers":1}
+loginwindow:
+01:06:22.230 -[LWDefaultScreenLockUI handleTimeOutTimer:] | enter. timeout timer fired
+lw-log: end
+new audit lines:
+office after: lockstate: locked=true {"viewers":1,"own_viewers":1,"goroutines":64,"unlock":{"state":"idle","failures":0,"relock_armed":false}}

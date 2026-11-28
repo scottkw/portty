@@ -1,0 +1,21 @@
+U-08 again with the guest holding control (the guest was granted control in the share sheet while the Mac was unlocked, then the Mac was locked)
+unlock-admin: unlocked
+share: {"active":true,"viewers":[{"mode":"guest","control":true}]}
+guest page before lock: {"text":"While this has focus, your keyboard and pointer control the Mac. To give the keyboard back, press Control, Option, Command and Return together. Slow connection. The picture may freeze. View Only Control"}
+lock: locked after about 0 s
+lockstate: lockstate: locked=true {"viewers":1,"own_viewers":0,"goroutines":65,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+share while locked: {"active":true,"viewers":[{"mode":"guest","control":true}]}
+panel script on the guest page:
+{"panel":false,"status":null,"button_aria_disabled":null,"password_inputs":0,"labelled_mac_password":0,"locked_chip":"Locked.","ask_chip":true,"blocked_notice":"","mac_unlocked_notice":"","status_page":"streaming"}
+page text:
+{"title":"Portty Desktop (debug fd=781 fw=1280 csp=0 st=streaming)","text":"While this has focus, your keyboard and pointer control the Mac. To give the keyboard back, press Control, Option, Command and Return together. Locked. Ask the person at the Mac to unlock it. View Only Control LockedLocked"}
+AX find [Locked]:
+hit role=AXStaticText title=[] desc=[] value=[Locked. Ask the person at the Mac to unlock it.] mark=[] enabled=1 @427,143 284x16
+hit role=AXStaticText title=[] desc=[] value=[Locked] mark=[] enabled=1 @385,99 53x19
+hit role=AXStaticText title=[] desc=[] value=[Locked] mark=[] enabled=1 @385,99 53x19
+AX find [Mac password]:
+no match
+AX find [Unlock This Mac]:
+no match
+AX find [password]:
+no match

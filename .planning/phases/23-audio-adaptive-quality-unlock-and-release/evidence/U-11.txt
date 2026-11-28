@@ -1,0 +1,74 @@
+U-11 someone at the Mac: an untagged stand-in click (~/ptest/click, a software stand-in for the physical mouse) inside the 30 s window
+p19-safari t=3 stats={"status":"connecting","state":"locked","viewers":1,"framesDecoded":0,"frameWidth":0,"frameHeight":
+t=+0.29 panel: Unlocking…
+t=+9.05 panel: panel absent; notice: Mac unlocked.
+01:20:02.445 -[LWDefaultScreenLockUI loginPressed:] | enter
+01:20:03.529 -[LWScreenLockAuthentication _authCopyRightsWithUsername:password:continuityHints:localAuthenticationHints:] | Screensaver authorization succeeded
+office after: lockstate: locked=false {"viewers":1,"own_viewers":1,"goroutines":63,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+closing the viewer, click 8 s later, timing the lock state inside the office:
+close-viewer: done
+viewer closed at about loop t=4.5
+stand-in click at office clock 2026-11-28 01:20:41 (about 10 s after the viewer left): 
+office loop start epoch 1795828830.181 (UTC 01:20:30)
+t=0.1 locked=false viewers=1 armed=true
+t=1.0 locked=false viewers=1 armed=true
+t=1.9 locked=false viewers=1 armed=true
+t=2.8 locked=false viewers=1 armed=true
+t=3.8 locked=false viewers=1 armed=true
+t=4.7 locked=false viewers=1 armed=true
+t=5.6 locked=false viewers=0 armed=true
+t=6.7 locked=false viewers=0 armed=true
+t=7.7 locked=false viewers=0 armed=true
+t=8.6 locked=false viewers=0 armed=true
+t=9.4 locked=false viewers=0 armed=true
+t=10.4 locked=false viewers=0 armed=true
+t=11.2 locked=false viewers=0 armed=true
+t=12.1 locked=false viewers=0 armed=true
+t=13.0 locked=false viewers=0 armed=true
+t=13.8 locked=false viewers=0 armed=true
+t=14.7 locked=false viewers=0 armed=true
+t=15.6 locked=false viewers=0 armed=true
+t=16.5 locked=false viewers=0 armed=true
+t=17.3 locked=false viewers=0 armed=true
+t=18.2 locked=false viewers=0 armed=true
+t=19.1 locked=false viewers=0 armed=true
+t=20.0 locked=false viewers=0 armed=true
+t=20.8 locked=false viewers=0 armed=true
+t=21.7 locked=false viewers=0 armed=true
+t=22.6 locked=false viewers=0 armed=true
+t=23.4 locked=false viewers=0 armed=true
+t=24.3 locked=false viewers=0 armed=true
+t=25.2 locked=false viewers=0 armed=true
+t=26.0 locked=false viewers=0 armed=true
+t=26.9 locked=false viewers=0 armed=true
+t=27.7 locked=false viewers=0 armed=true
+t=28.6 locked=false viewers=0 armed=true
+t=29.5 locked=false viewers=0 armed=true
+t=30.3 locked=false viewers=0 armed=true
+t=31.2 locked=false viewers=0 armed=true
+t=32.1 locked=false viewers=0 armed=true
+t=32.9 locked=false viewers=0 armed=true
+t=33.8 locked=false viewers=0 armed=true
+t=34.7 locked=false viewers=0 armed=true
+t=35.6 locked=false viewers=0 armed=true
+t=36.4 locked=false viewers=0 armed=false
+t=37.3 locked=false viewers=0 armed=false
+t=38.2 locked=false viewers=0 armed=false
+t=39.0 locked=false viewers=0 armed=false
+t=39.9 locked=false viewers=0 armed=false
+t=40.7 locked=false viewers=0 armed=false
+t=41.6 locked=false viewers=0 armed=false
+t=42.5 locked=false viewers=0 armed=false
+t=43.3 locked=false viewers=0 armed=false
+t=44.2 locked=false viewers=0 armed=false
+t=45.1 locked=false viewers=0 armed=false
+t=45.9 locked=false viewers=0 armed=false
+t=46.8 locked=false viewers=0 armed=false
+t=47.6 locked=false viewers=0 armed=false
+audit tail:
+2026-11-28T01:17:48Z unlocked own  0 HOME
+2026-11-28T01:18:02Z leave own viewer_closed 0 HOME
+2026-11-28T01:18:33Z relocked own  0 HOME
+2026-11-28T01:19:51Z join own  0 HOME
+2026-11-28T01:20:06Z unlocked own  0 HOME
+2026-11-28T01:20:35Z leave own viewer_closed 0 HOME

@@ -1,0 +1,25 @@
+P-01 Safari (portty-test-2): save-password prompt after a submit
+p19-safari t=3 stats={"status":"streaming","state":"streaming","viewers":1,"framesDecoded":15,"frameWidth":256
+lock: locked after about 0 s
+panel before: {"panel":true,"status":"Portty never saves it. Wrong tries count toward the Mac's own limit."}
+typed with real key events: null
+clicked Unlock: null
+AX searches right after the submit:
+  find [Save Password]: no match 
+  find [Save Passcode]: no match 
+  find [Passwords]: hit role=AXMenuItem title=[Passwords…] desc=[] value=[] mark=[] enabled=0 @0,720 0x0 
+  find [Keychain]: no match 
+  find [Strong Password]: no match 
+  find [Not Now]: no match 
+  find [AutoFill]: hit role=AXMenuItem title=[AutoFill Form] desc=[] value=[] mark=[] enabled=0 @0,720 0x0 hit role=AXMenuItem title=[AutoFill] desc=[] value=[] mark=[] enabled=1 @0,720 0x0 
+  find [iCloud]: hit role=AXMenuItem title=[iCloud] desc=[] value=[] mark=[] enabled=1 @0,720 0x0 
+  find [Never for This Website]: no match 
+panel 4.5 s after: {"panel":false,"mac_unlocked_notice":""}
+AX searches again:
+  find [Save Password]: no match 
+  find [Passwords]: hit role=AXMenuItem title=[Passwords…] desc=[] value=[] mark=[] enabled=0 @0,720 0x0 
+  find [Keychain]: no match 
+  find [Not Now]: no match 
+Safari AX tree lines mentioning password, keychain, passkey or save:
+0
+stats: lockstate: locked=false {"viewers":1,"own_viewers":1,"goroutines":69,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
