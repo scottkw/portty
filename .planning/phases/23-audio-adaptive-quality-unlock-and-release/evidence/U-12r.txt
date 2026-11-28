@@ -1,0 +1,10 @@
+sentinels checked: 1
+sentinel 1: daemon.log=0 rotated-daemon-logs=0 desktop-audit.jsonl=0 unified-log(Portty process)=0 unified-log(any process, message text)=0
+audit file: mode=600 lines=356
+events unlocked / unlock_failed / relocked: relocked=5 unlock_failed=5 unlocked=30 
+modes on those lines: own=40 
+key sets on those lines:
+   5 {"event":"relocked","keys":["display_name","event","login_name","mode","node_name","node_stable_id","share_id","tailnet_ip","ts","user_id","v"]}
+   5 {"event":"unlock_failed","keys":["display_name","event","login_name","mode","node_name","node_stable_id","reason","share_id","tailnet_ip","ts","user_id","v"]}
+  30 {"event":"unlocked","keys":["display_name","event","login_name","mode","node_name","node_stable_id","share_id","tailnet_ip","ts","user_id","v"]}
+any line with a key naming length, password or secret: 0

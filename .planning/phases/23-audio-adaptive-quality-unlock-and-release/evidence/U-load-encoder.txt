@@ -1,0 +1,205 @@
+office epoch 1795835757 03:15:57
+{ 13.73 81.96 70.19 }
+2026/11/28 03:00:30.681519 WARN desktop: probe failed err="perm-probe: signal: killed"
+2026/11/28 03:00:30.745208 WARN desktop: Accessibility is off: a still screen cannot be told from a frozen stream, so awaiting approval is never classified
+2026/11/28 03:00:41.940972 INFO desktop: stall recovered
+2026/11/28 03:00:41.948780 INFO desktop: unlock finished viewer=67a63071 outcome=unlocked
+2026/11/28 03:01:38.808274 INFO desktop: wake, restarting the stream once the display is awake
+2026/11/28 03:01:46.417510 INFO desktop: viewer left viewer=67a63071 viewers=0
+2026/11/28 03:01:48.570416 INFO desktop: viewer joined viewer=aabfcd7c viewers=1
+2026/11/28 03:02:49.311667 INFO desktop: unlock finished viewer=aabfcd7c outcome=unlocked
+2026/11/28 03:03:31.258185 INFO desktop: unlock finished viewer=aabfcd7c outcome=unlocked
+2026/11/28 03:04:16.633257 INFO desktop: unlock finished viewer=aabfcd7c outcome=unlocked
+2026/11/28 03:05:00.353232 INFO desktop: unlock finished viewer=aabfcd7c outcome=unlocked
+2026/11/28 03:05:59.790829 INFO desktop: wake, restarting the stream once the display is awake
+2026/11/28 03:06:00.092551 INFO desktop: viewer slow state changed viewer=aabfcd7c slow=true
+2026/11/28 03:06:06.589409 INFO desktop: viewer slow state changed viewer=aabfcd7c slow=false
+2026/11/28 03:06:23.256484 INFO desktop: wake, restarting the stream once the display is awake
+2026/11/28 03:06:30.409856 INFO desktop: viewer left viewer=aabfcd7c viewers=0
+2026/11/28 03:06:30.594716 http: TLS handshake error from 100.x.x.N:49341: EOF
+2026/11/28 03:06:36.491093 INFO desktop: viewer joined viewer=80c9c411 viewers=1
+2026/11/28 03:07:23.961686 INFO desktop: unlock finished viewer=80c9c411 outcome=unlocked
+2026/11/28 03:08:33.040849 INFO desktop: wake, restarting the stream once the display is awake
+2026/11/28 03:08:36.309121 WARN desktop: picture size change failed err="screencap: rebuilding the encoder failed (code -12902)"
+2026/11/28 03:08:39.078904 INFO desktop: viewer left viewer=80c9c411 viewers=0
+2026/11/28 03:08:45.120992 http: TLS handshake error from 100.x.x.N:49388: EOF
+2026/11/28 03:08:45.409324 http: TLS handshake error from 100.x.x.N:49387: EOF
+2026/11/28 03:09:02.554674 http: TLS handshake error from 100.x.x.N:49389: EOF
+2026/11/28 03:09:04.075716 INFO desktop: wake, restarting the stream once the display is awake
+2026/11/28 03:09:30.410443 INFO desktop: viewer joined viewer=2f01b719 viewers=1
+2026/11/28 03:09:38.956336 INFO desktop: stall recovered
+2026/11/28 03:09:58.793512 WARN desktop: frame rate change failed err="screencap: changing the frame rate failed (code -90004)"
+2026/11/28 03:10:09.730237 INFO desktop: wake, restarting the stream once the display is awake
+2026/11/28 03:10:10.988973 INFO desktop: viewer left viewer=2f01b719 viewers=0
+2026/11/28 03:10:17.599113 INFO desktop: viewer joined viewer=c9c5731f viewers=1
+2026/11/28 03:10:25.757797 INFO desktop: unlock finished viewer=c9c5731f outcome=unlocked
+2026/11/28 03:10:48.185158 WARN desktop: still refresh failed err="screencap: refining the picture failed (code -19092)"
+2026/11/28 03:10:58.455569 WARN desktop: capture error err="screencap: encoder output callback failed (code -19092)"
+2026/11/28 03:10:59.634519 WARN desktop: bitrate change failed err="screencap: changing the bitrate failed (code -19092)"
+2026/11/28 03:11:09.694917 WARN desktop: capture error err="screencap: encoder output callback failed (code -19092)"
+2026/11/28 03:11:21.367911 WARN desktop: capture error err="screencap: encoder output callback failed (code -19092)"
+2026/11/28 03:11:41.792814 WARN desktop: capture error err="screencap: encoder output callback failed (code -19092)"
+2026/11/28 03:11:57.390160 INFO desktop: wake, restarting the stream once the display is awake
+2026/11/28 03:11:57.835264 WARN desktop: capture error err="screencap: encoder output callback failed (code -19092)"
+2026/11/28 03:11:58.225168 INFO desktop: wake, restarting the stream once the display is awake
+2026/11/28 03:11:59.523244 WARN desktop: frame rate change failed err="screencap: changing the frame rate failed (code -19092)"
+2026/11/28 03:12:11.543833 WARN desktop: capture error err="screencap: encoder output callback failed (code -19092)"
+2026/11/28 03:12:25.513261 INFO desktop: viewer left viewer=c9c5731f viewers=0
+2026/11/28 03:12:33.797013 WARN desktop: capture start failed err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:12:33.895761 INFO desktop: viewer left viewer=d1308117 viewers=0
+2026/11/28 03:12:33.898028 WARN desktop: join failed viewer=d1308117 err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:13:05.631604 WARN desktop: capture start failed err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:13:05.673173 INFO desktop: viewer left viewer=ab71d7e2 viewers=0
+2026/11/28 03:13:05.673336 WARN desktop: join failed viewer=ab71d7e2 err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:13:08.526379 WARN desktop: capture start failed err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:13:08.539783 INFO desktop: viewer left viewer=fd38d236 viewers=0
+2026/11/28 03:13:08.539841 WARN desktop: join failed viewer=fd38d236 err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:13:15.540359 WARN desktop: capture start failed err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:13:15.557079 INFO desktop: viewer left viewer=e40639ca viewers=0
+2026/11/28 03:13:15.557240 WARN desktop: join failed viewer=e40639ca err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:13:21.813438 WARN desktop: capture start failed err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:13:21.892840 INFO desktop: viewer left viewer=ca001944 viewers=0
+2026/11/28 03:13:21.892953 WARN desktop: join failed viewer=ca001944 err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:13:32.684995 WARN desktop: capture start failed err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:13:32.707921 INFO desktop: viewer left viewer=14f08d8d viewers=0
+2026/11/28 03:13:32.708003 WARN desktop: join failed viewer=14f08d8d err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:13:44.471389 WARN desktop: capture start failed err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:13:44.482028 INFO desktop: viewer left viewer=1e875dbc viewers=0
+2026/11/28 03:13:44.482144 WARN desktop: join failed viewer=1e875dbc err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:13:56.391093 WARN desktop: capture start failed err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:13:56.457244 INFO desktop: viewer left viewer=e2221726 viewers=0
+2026/11/28 03:13:56.457495 WARN desktop: join failed viewer=e2221726 err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:14:08.602272 WARN desktop: capture start failed err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:14:08.624731 INFO desktop: viewer left viewer=663ee0e9 viewers=0
+2026/11/28 03:14:08.624950 WARN desktop: join failed viewer=663ee0e9 err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:14:20.304528 WARN desktop: capture start failed err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:14:20.330210 INFO desktop: viewer left viewer=5b26e40f viewers=0
+2026/11/28 03:14:20.330265 WARN desktop: join failed viewer=5b26e40f err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:14:32.037624 WARN desktop: capture start failed err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:14:32.075568 INFO desktop: viewer left viewer=6e6156e8 viewers=0
+2026/11/28 03:14:32.075657 WARN desktop: join failed viewer=6e6156e8 err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:14:43.765480 WARN desktop: capture start failed err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:14:43.775118 INFO desktop: viewer left viewer=6583c9ef viewers=0
+2026/11/28 03:14:43.775190 WARN desktop: join failed viewer=6583c9ef err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:14:55.974214 WARN desktop: capture start failed err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:14:56.473764 INFO desktop: viewer left viewer=13e03b15 viewers=0
+2026/11/28 03:14:56.473933 WARN desktop: join failed viewer=13e03b15 err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:15:08.208023 WARN desktop: capture start failed err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:15:08.224104 INFO desktop: viewer left viewer=23e420c1 viewers=0
+2026/11/28 03:15:08.224259 WARN desktop: join failed viewer=23e420c1 err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:15:34.389968 WARN desktop: capture start failed err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:15:34.406473 INFO desktop: viewer left viewer=e50df6c4 viewers=0
+2026/11/28 03:15:34.406564 WARN desktop: join failed viewer=e50df6c4 err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:15:37.077888 WARN desktop: capture start failed err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:15:37.093154 INFO desktop: viewer left viewer=3c684104 viewers=0
+2026/11/28 03:15:37.093245 WARN desktop: join failed viewer=3c684104 err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:15:41.360954 WARN desktop: capture start failed err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:15:41.382137 INFO desktop: viewer left viewer=7202ce55 viewers=0
+2026/11/28 03:15:41.382304 WARN desktop: join failed viewer=7202ce55 err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:15:47.227542 WARN desktop: capture start failed err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:15:47.249656 INFO desktop: viewer left viewer=98aa36d3 viewers=0
+2026/11/28 03:15:47.249991 WARN desktop: join failed viewer=98aa36d3 err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:15:56.946379 WARN desktop: capture start failed err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:15:56.960095 INFO desktop: viewer left viewer=8837ca7f viewers=0
+2026/11/28 03:15:56.960219 WARN desktop: join failed viewer=8837ca7f err="screencap: starting the encoder failed (code -12902)"
+VT processes:
+  163 03-00:29:01   0.0 /System/Library/Frameworks/CoreMediaIO.framework/Versions/A/Resources/com.apple.cmio.registerassistantservice
+  324 03-00:28:54   0.0 /System/Library/Frameworks/CoreMediaIO.framework/Versions/A/Resources/UVCAssistant.systemextension/Contents/MacOS/UVCAssistant
+69084 01-05:36:43   0.0 /usr/libexec/replayd
+91894       47:22   0.0 /System/Library/Frameworks/VideoToolbox.framework/Versions/A/XPCServices/VTEncoderXPCService.xpc/Contents/MacOS/VTEncoderXPCService
+audit tail:
+{"ts":"2026-11-28T03:06:35Z","event":"join","reason":null}
+{"ts":"2026-11-28T03:07:23Z","event":"unlocked","reason":null}
+{"ts":"2026-11-28T03:08:39Z","event":"leave","reason":"viewer_closed"}
+{"ts":"2026-11-28T03:09:28Z","event":"join","reason":null}
+{"ts":"2026-11-28T03:10:10Z","event":"leave","reason":"viewer_closed"}
+{"ts":"2026-11-28T03:10:17Z","event":"join","reason":null}
+{"ts":"2026-11-28T03:10:25Z","event":"unlocked","reason":null}
+{"ts":"2026-11-28T03:12:25Z","event":"leave","reason":"viewer_closed"}
+
+######## follow-up diagnostics (orchestrator steps 1-3; guest epochs and UTC shown)
+== step 1: home page closed (close-viewer, then Safari quit in the home VM) so no join attempts; poll every 5 s for 70 s
+close-viewer: done
+home Safari running: 0
+epoch=1795835883 03:18:03 load=[{ 2.45 54.23 60.72 }] locked=false {"viewers":0,"state":"idle","unlock":{"state":"idle","failures":0,"relock_armed":true}}
+epoch=1795835888 03:18:08 load=[{ 2.33 53.35 60.37 }] locked=false {"viewers":0,"state":"idle","unlock":{"state":"idle","failures":0,"relock_armed":true}}
+epoch=1795835893 03:18:13 load=[{ 2.15 52.47 60.01 }] locked=false {"viewers":0,"state":"idle","unlock":{"state":"idle","failures":0,"relock_armed":true}}
+epoch=1795835898 03:18:18 load=[{ 2.22 51.64 59.68 }] locked=false {"viewers":0,"state":"idle","unlock":{"state":"idle","failures":0,"relock_armed":true}}
+epoch=1795835903 03:18:23 load=[{ 2.12 50.80 59.33 }] locked=false {"viewers":0,"state":"idle","unlock":{"state":"idle","failures":0,"relock_armed":true}}
+epoch=1795835908 03:18:28 load=[{ 2.03 49.98 58.99 }] locked=false {"viewers":0,"state":"idle","unlock":{"state":"idle","failures":0,"relock_armed":false}}
+epoch=1795835913 03:18:33 load=[{ 2.03 49.18 58.66 }] locked=false {"viewers":0,"state":"idle","unlock":{"state":"idle","failures":0,"relock_armed":false}}
+epoch=1795835919 03:18:39 load=[{ 1.94 48.38 58.32 }] locked=true {"viewers":0,"state":"locked","unlock":{"state":"idle","failures":0,"relock_armed":false}}
+epoch=1795835924 03:18:44 load=[{ 1.87 47.59 57.98 }] locked=true {"viewers":0,"state":"locked","unlock":{"state":"idle","failures":0,"relock_armed":false}}
+epoch=1795835929 03:18:49 load=[{ 1.80 46.82 57.65 }] locked=true {"viewers":0,"state":"locked","unlock":{"state":"idle","failures":0,"relock_armed":false}}
+epoch=1795835934 03:18:54 load=[{ 2.05 46.12 57.34 }] locked=true {"viewers":0,"state":"locked","unlock":{"state":"idle","failures":0,"relock_armed":false}}
+epoch=1795835939 03:18:59 load=[{ 2.05 45.39 57.02 }] locked=true {"viewers":0,"state":"locked","unlock":{"state":"idle","failures":0,"relock_armed":false}}
+epoch=1795835944 03:19:04 load=[{ 2.05 44.67 56.69 }] locked=true {"viewers":0,"state":"locked","unlock":{"state":"idle","failures":0,"relock_armed":false}}
+epoch=1795835949 03:19:09 load=[{ 2.12 43.98 56.38 }] locked=true {"viewers":0,"state":"display_asleep","unlock":{"state":"idle","failures":0,"relock_armed":false}}
+epoch=1795835954 03:19:14 load=[{ 1.95 43.25 56.05 }] locked=true {"viewers":0,"state":"display_asleep","unlock":{"state":"idle","failures":0,"relock_armed":false}}
+daemon.log lines in the window:
+2026/11/28 03:18:27.604884 INFO desktop: the Mac was locked again after the last own-account viewer left
+audit tail:
+{"ts":"2026-11-28T03:10:17Z","event":"join","reason":null}
+{"ts":"2026-11-28T03:10:25Z","event":"unlocked","reason":null}
+{"ts":"2026-11-28T03:12:25Z","event":"leave","reason":"viewer_closed"}
+{"ts":"2026-11-28T03:18:27Z","event":"relocked","reason":null}
+== step 2: one join attempt, wedged state, load off
+join attempt at office epoch 1795835978 03:19:38 
+p19-safari t=3 stats={"status":"connecting","state":"locked","viewers":1,"framesDecoded":0,"frameWidth":0,"frameHeight":0,"bytesReceived":0,"cspViolations":0} title=Portty Desktop (debug fd=0 fw=0 csp=0 st=connecting)
+page: {"status":"reconnecting","framesDecoded":0,"frameWidth":0}
+stats: {"viewers":0,"state":"locked","audio":"ok","quality":{"target_bps":550000,"fps":30,"long_edge":2560,"step":0,"slow":0,"no_feedback":0}}
+close-viewer: done
+daemon.log lines for the attempt (first 25):
+2026/11/28 03:20:22.554747 WARN desktop: capture start failed err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:20:22.576323 INFO desktop: viewer left viewer=75ac5eae viewers=0
+2026/11/28 03:20:22.576374 WARN desktop: join failed viewer=75ac5eae err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:20:25.421166 WARN desktop: capture start failed err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:20:25.501494 INFO desktop: viewer left viewer=9ac43a58 viewers=0
+2026/11/28 03:20:25.501605 WARN desktop: join failed viewer=9ac43a58 err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:20:29.410914 WARN desktop: capture start failed err="screencap: starting the encoder failed (code -12902)"
+2026/11/28 03:20:29.438887 INFO desktop: viewer left viewer=51a21ec6 viewers=0
+2026/11/28 03:20:29.438979 WARN desktop: join failed viewer=51a21ec6 err="screencap: starting the encoder failed (code -12902)"
+unified log, VTEncoderXPCService or videotoolbox, last 1 min (errors and faults first 25, then a count of all lines):
+2026-11-28 03:20:22.539 E  VTEncoderXPCService[91894:28dc56] [com.apple.coremedia:VTCompression] <private>
+2026-11-28 03:20:22.541 E  VTEncoderXPCService[91894:28dc56] [com.apple.coremedia:] <private>
+2026-11-28 03:20:22.542 E  VTEncoderXPCService[91894:28e5eb] [com.apple.coremedia:] <private>
+2026-11-28 03:20:25.396 E  VTEncoderXPCService[91894:28e5dc] [com.apple.coremedia:VTCompression] <private>
+2026-11-28 03:20:25.399 E  VTEncoderXPCService[91894:28dc56] [com.apple.coremedia:] <private>
+2026-11-28 03:20:25.407 E  VTEncoderXPCService[91894:28e5eb] [com.apple.coremedia:] <private>
+2026-11-28 03:20:29.395 E  VTEncoderXPCService[91894:28e5dc] [com.apple.coremedia:VTCompression] <private>
+2026-11-28 03:20:29.396 E  VTEncoderXPCService[91894:28dc56] [com.apple.coremedia:] <private>
+2026-11-28 03:20:29.398 E  VTEncoderXPCService[91894:28e60e] [com.apple.coremedia:] <private>
+all lines:       67
+2026-11-28 03:20:29.396 Df VTEncoderXPCService[91894:28dc56] [com.apple.libsystem.libdispatch:] DEPRECATED USE in libdispatch client: Changing the target of a source after it has been activated; set a breakpoint on _disp
+2026-11-28 03:20:29.396 Df VTEncoderXPCService[91894:28dc56] [com.apple.xpc:connection] [0x157e09300] activating connection: mach=false listener=false peer=false name=(anonymous)
+2026-11-28 03:20:29.396 E  VTEncoderXPCService[91894:28dc56] [com.apple.coremedia:] <private>
+2026-11-28 03:20:29.397 Df VTEncoderXPCService[91894:28e60e] [com.apple.libsystem.libdispatch:] DEPRECATED USE in libdispatch client: Changing target queue hierarchy after xpc connection was activated; set a breakpoint o
+2026-11-28 03:20:29.398 E  VTEncoderXPCService[91894:28e60e] [com.apple.coremedia:] <private>
+2026-11-28 03:20:29.400 Df VTEncoderXPCService[91894:28dc56] [com.apple.xpc:connection] [0x157e09300] Re-initialization successful; calling out to event handler with XPC_ERROR_CONNECTION_INTERRUPTED
+2026-11-28 03:20:29.400 Df VTEncoderXPCService[91894:28e5eb] [com.apple.xpc:connection] [0x157e091e0] invalidated because the client process (pid 91582) either cancelled the connection or exited
+2026-11-28 03:20:29.400 Df VTEncoderXPCService[91894:28e5eb] [com.apple.xpc:connection] [0x157e09300] invalidated because the current process cancelled the connection by calling xpc_connection_cancel()
+VTEncoderXPCService pid(s): 91894 
+== step 3: sudo pkill -9 VTEncoderXPCService in the office
+before: 91894  at epoch 1795836051 03:20:51
+after: [] (launchd relaunches on demand)
+== step 3b: one join attempt after the service kill
+join attempt at office epoch 1795836058 03:20:58 
+p19-safari t=3 stats={"status":"connecting","state":"locked","viewers":1,"framesDecoded":0,"frameWidth":0,"frameHeight":0,"bytesReceived":0,"cspViolations":0} title=Portty Desktop (debug fd=0 fw=0 csp=0 st=connecting)
+page: {"status":"streaming","framesDecoded":70,"frameWidth":2560}
+stats: {"viewers":1,"state":"locked","audio":"ok","quality":{"target_bps":8000000,"fps":30,"long_edge":2560,"step":0,"slow":0,"no_feedback":0}}
+close-viewer: done
+daemon.log lines for the attempt (first 25):
+2026/11/28 03:21:36.314411 INFO desktop: viewer joined viewer=1fbd3b05 viewers=1
+2026/11/28 03:21:47.453835 INFO desktop: viewer left viewer=1fbd3b05 viewers=0
+unified log, VTEncoderXPCService or videotoolbox, last 1 min (errors and faults first 25, then a count of all lines):
+all lines:       36
+2026-11-28 03:21:35.107 Df VTEncoderXPCService[10381:28e981] [com.apple.xpc:connection] [0x12fa07260] activating connection: mach=false listener=false peer=false name=(anonymous)
+2026-11-28 03:21:35.108 Df VTEncoderXPCService[10381:28e981] [com.apple.xpc:connection] [0x12f80cd20] activating connection: mach=false listener=false peer=false name=(anonymous)
+2026-11-28 03:21:35.585 Df VTEncoderXPCService[10381:28e981] (CoreVideo) Pixel format registry initialized. Constant classes enabled.
+2026-11-28 03:21:35.781 Df VTEncoderXPCService[10381:28e980] [com.apple.coremedia:playback-memory] <<< FigOSTransactionsUtilities >>> FigOSTransactionCreateWithProcessName: [Fig Transaction] Added transaction weak refere
+2026-11-28 03:21:47.426 Df VTEncoderXPCService[10381:28e9ee] [com.apple.xpc:connection] [0x12ee06130] invalidated because the client process (pid 91582) either cancelled the connection or exited
+2026-11-28 03:21:47.427 Df VTEncoderXPCService[10381:28e978] [com.apple.xpc:connection] [0x12f8052a0] Re-initialization successful; calling out to event handler with XPC_ERROR_CONNECTION_INTERRUPTED
+2026-11-28 03:21:47.427 Df VTEncoderXPCService[10381:28e9ee] [com.apple.coremedia:] <<<< ParavirtualizedVideoEncoder >>>> ParavirtualizedVideoEncoder_Finalize: encoder 0x600001aa02c0
+2026-11-28 03:21:47.434 Df VTEncoderXPCService[10381:28e9ee] [com.apple.xpc:connection] [0x12f8052a0] invalidated because the current process cancelled the connection by calling xpc_connection_cancel()
+VTEncoderXPCService pid(s): 10381 
+== step 4: daemon restart skipped. The join after the service kill streamed (framesDecoded 70, 2560 wide, target 8000000) on the SAME daemon pid 91582, so no daemon state needed clearing.

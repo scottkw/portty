@@ -1,0 +1,17 @@
+Z-01: build 23.10.3; home Safari viewer streaming, hook loaded; only window.__pc.close() run in the page (page and socket stay open)
+page before: {"status":"streaming","state":"streaming","viewers":1,"framesDecoded":37}
+home epoch at close call: 1795834126.19
+pc.close(): {"closed_at_ms":1795834126388,"pc_state":"closed","page_open":"visible"}
+office stats transitions (office epoch, 0.25 s poll):
+1795834124.02 {"viewers":1,"state":"streaming"}
+1795834127.05 {"viewers":0,"state":"idle"}
+1795834128.49 {"viewers":1,"state":"streaming"}
+page after: {"status":"streaming","state":"streaming","viewers":1,"framesDecoded":27}
+page text after: {"title":"Portty Desktop (debug fd=27 fw=2560 csp=0 st=streaming)","text":"While this has focus, your keyboard and pointer control the Mac. To give the keyboard back, press Control, Option, Command an
+daemon.log lines (UTC, guest clock = office epoch):
+2026/11/28 02:48:46.955355 INFO desktop: viewer left viewer=83154771 viewers=0
+2026/11/28 02:48:48.542487 INFO desktop: viewer joined viewer=f2e13bc3 viewers=1
+audit leave lines:
+{"ts":"2026-11-28T02:48:34Z","event":"join","reason":null}
+{"ts":"2026-11-28T02:48:46Z","event":"leave","reason":"viewer_closed"}
+{"ts":"2026-11-28T02:48:48Z","event":"join","reason":null}

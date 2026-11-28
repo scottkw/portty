@@ -1,0 +1,36 @@
+G-cycles: build 23.10.3; goroutines from GET /desktop/stats; baseline with no viewer, 10 join/leave cycles of the home Safari viewer (open-viewer home, about 10 s streaming, close-viewer home), then 2 min idle
+baseline:
+epoch=1795834147 {"goroutines":36,"viewers":0,"state":"idle"} daemon_pid=91582
+epoch=1795834157 {"goroutines":32,"viewers":0,"state":"idle"} daemon_pid=91582
+epoch=1795834167 {"goroutines":32,"viewers":0,"state":"idle"} daemon_pid=91582
+cycle 1 joined: epoch=1795834202 {"goroutines":68,"viewers":1,"state":"streaming"} daemon_pid=91582
+cycle 1 left:   epoch=1795834207 {"goroutines":39,"viewers":0,"state":"idle"} daemon_pid=91582
+cycle 2 joined: epoch=1795834232 {"goroutines":68,"viewers":1,"state":"streaming"} daemon_pid=91582
+cycle 2 left:   epoch=1795834236 {"goroutines":39,"viewers":0,"state":"idle"} daemon_pid=91582
+cycle 3 joined: epoch=1795834263 {"goroutines":68,"viewers":1,"state":"streaming"} daemon_pid=91582
+cycle 3 left:   epoch=1795834268 {"goroutines":39,"viewers":0,"state":"idle"} daemon_pid=91582
+cycle 4 joined: epoch=1795834293 {"goroutines":68,"viewers":1,"state":"streaming"} daemon_pid=91582
+cycle 4 left:   epoch=1795834297 {"goroutines":39,"viewers":0,"state":"idle"} daemon_pid=91582
+cycle 5 joined: epoch=1795834322 {"goroutines":68,"viewers":1,"state":"streaming"} daemon_pid=91582
+cycle 5 left:   epoch=1795834326 {"goroutines":40,"viewers":0,"state":"idle"} daemon_pid=91582
+cycle 6 joined: epoch=1795834351 {"goroutines":75,"viewers":1,"state":"streaming"} daemon_pid=91582
+cycle 6 left:   epoch=1795834356 {"goroutines":40,"viewers":0,"state":"idle"} daemon_pid=91582
+cycle 7 joined: epoch=1795834380 {"goroutines":68,"viewers":1,"state":"streaming"} daemon_pid=91582
+cycle 7 left:   epoch=1795834385 {"goroutines":39,"viewers":0,"state":"idle"} daemon_pid=91582
+cycle 8 joined: epoch=1795834410 {"goroutines":68,"viewers":1,"state":"streaming"} daemon_pid=91582
+cycle 8 left:   epoch=1795834415 {"goroutines":39,"viewers":0,"state":"idle"} daemon_pid=91582
+cycle 9 joined: epoch=1795834440 {"goroutines":68,"viewers":1,"state":"streaming"} daemon_pid=91582
+cycle 9 left:   epoch=1795834445 {"goroutines":39,"viewers":0,"state":"idle"} daemon_pid=91582
+cycle 10 joined: epoch=1795834470 {"goroutines":68,"viewers":1,"state":"streaming"} daemon_pid=91582
+cycle 10 left:   epoch=1795834474 {"goroutines":39,"viewers":0,"state":"idle"} daemon_pid=91582
+idle after the cycles (every 15 s for 2 min):
+epoch=1795834474 {"goroutines":39,"viewers":0,"state":"idle"} daemon_pid=91582
+epoch=1795834490 {"goroutines":33,"viewers":0,"state":"idle"} daemon_pid=91582
+epoch=1795834505 {"goroutines":33,"viewers":0,"state":"idle"} daemon_pid=91582
+epoch=1795834520 {"goroutines":33,"viewers":0,"state":"idle"} daemon_pid=91582
+epoch=1795834535 {"goroutines":33,"viewers":0,"state":"idle"} daemon_pid=91582
+epoch=1795834550 {"goroutines":33,"viewers":0,"state":"idle"} daemon_pid=91582
+epoch=1795834565 {"goroutines":35,"viewers":0,"state":"idle"} daemon_pid=91582
+epoch=1795834580 {"goroutines":33,"viewers":0,"state":"idle"} daemon_pid=91582
+epoch=1795834596 {"goroutines":33,"viewers":0,"state":"idle"} daemon_pid=91582
+timed log (clock steps) in the last 10 min:

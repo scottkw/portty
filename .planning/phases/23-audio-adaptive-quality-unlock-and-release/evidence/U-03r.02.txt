@@ -1,0 +1,18 @@
+unlock-try U-03r.02: kind=admin dur=14s office-start=2026-11-28 03:01:41
+office before: lockstate: locked=true {"viewers":1,"own_viewers":1,"goroutines":62,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+home before: Reconnecting…
+home fill: "set"
+home click: null
+t=+0.37 panel: Reconnecting…
+t=+4.94 panel: Portty never saves it. Wrong tries count toward the Mac's own limit.
+office transitions:
+t=0.0 locked=true {"unlock":{"state":"idle","failures":0,"relock_armed":false},"viewers":1}
+t=1.5 locked=true {"unlock":{"state":"idle","failures":0,"relock_armed":false},"viewers":0}
+t=2.0 locked=true {"unlock":{"state":"idle","failures":0,"relock_armed":false},"viewers":1}
+loginwindow:
+03:02:06.206 -[LWDefaultScreenLockUI handleTimeOutTimer:] | enter. timeout timer fired
+lw-log: end
+new audit lines:
+{"ts":"2026-11-28T03:01:46Z","event":"leave","mode":"own","reason":"viewer_closed","keys":["display_name","event","login_name","mode","node_name","node_stable_id","reason","share_id","tailnet_ip","ts","user_id","v"]}
+{"ts":"2026-11-28T03:01:48Z","event":"join","mode":"own","reason":null,"keys":["display_name","event","login_name","mode","node_name","node_stable_id","share_id","tailnet_ip","ts","user_id","v"]}
+office after: lockstate: locked=true {"viewers":1,"own_viewers":1,"goroutines":65,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
