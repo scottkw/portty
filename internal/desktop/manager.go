@@ -793,7 +793,11 @@ func (m *Manager) serveAdmitted(ctx context.Context, c *websocket.Conn, v *viewe
 		return
 	}
 	v.pc = pc
-	defer func() { _ = pc.Close() }()
+	var ended atomic.Bool // set before our own pc.Close, so its Closed is not taken for the viewer's
+	defer func() {
+		ended.Store(true)
+		_ = pc.Close()
+	}()
 	// answer registered the viewer's estimator; whatever way this returns, it goes.
 	defer m.q.unregister(v.ID)
 	pc.OnConnectionStateChange(func(st webrtc.PeerConnectionState) {
@@ -809,10 +813,14 @@ func (m *Manager) serveAdmitted(ctx context.Context, c *websocket.Conn, v *viewe
 			if v.Mode == ModeGuest {
 				m.checkSelectedPair(v)
 			}
-		case webrtc.PeerConnectionStateFailed:
-			// Close the socket so the viewer rebuilds from scratch, not a zombie
-			// that keeps capture running.
-			go func() { _ = c.Close(websocket.StatusGoingAway, "media failed") }()
+		case webrtc.PeerConnectionStateFailed, webrtc.PeerConnectionStateClosed:
+			// End the session so the viewer rebuilds from scratch, not a zombie
+			// that keeps capture running. pion closes pc by itself on the
+			// viewer's DTLS close notice, often with the socket still open. A
+			// cut's own pc.Close is a no-op here (cutViewer runs once).
+			if !ended.Load() {
+				m.cutViewer(v, websocket.StatusGoingAway, "media failed")
+			}
 		}
 	})
 
