@@ -1,0 +1,66 @@
+p19-state row=- vm_utc=2026-11-28T07:16:41Z epoch=1795850201
+installed_version=23.11.1
+--- launchd app.portty.Portty.daemon
+plist_exists=yes
+{   "AbandonProcessGroup" => true   "KeepAlive" => {     "SuccessfulExit" => false   }   "Label" => "app.portty.Portty.daemon"   "ProgramArguments" => [     0 => "/Applications/Portty.app/Contents/MacOS/Portty"     1 => "daemon"   ]   "RunAtLoad" => true } 
+	state = running
+	runs = 49
+	pid = 61856
+	last exit code = 0
+		state = active
+		state = active
+--- launchd portty-daemon
+plist_exists=no
+Could not find service "portty-daemon" in domain for user gui: 501
+--- launchctl print-disabled (portty labels)
+		"app.portty.Portty.daemon" => enabled
+		"portty-daemon" => enabled
+--- processes (pid ppid etime args)
+61811     1       03:16 /Applications/Portty.app/Contents/MacOS/Portty
+61856     1       03:14 /Applications/Portty.app/Contents/MacOS/Portty daemon
+--- health
+{"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+
+daemon_pids=61856
+daemon 61856 ppid=1 xpc_service_name=app.portty.Portty.daemon
+--- sessions (id, shell pid, alive, ticks, last file tick age, max gap s, last pty tick age)
+session adfc31401e91be653d99263b284765a2 shell_pid=61124 alive=yes ticks=275 last_age=0 max_gap=2 pty_last_tick="TICK 275 1795850201" pty_age=0
+session 8cc20e8b906b1d976e0cb8012437a2d0 shell_pid=61153 alive=yes ticks=268 last_age=1 max_gap=2 pty_last_tick="TICK 268 1795850200" pty_age=1
+--- daemon.log.1 / daemon.log (mtime, size) and daemon.log tail
+daemon.log 886 bytes mtime 07:13:32
+daemon.log.1 1821 bytes mtime 07:13:29
+daemon: desktop not started: port_in_use
+2026/11/28 07:13:30.675761 viewer-diag: join session=8cc20e8b conn=1 origin=local from= client="" viewers=1 web=0
+2026/11/28 07:13:30.676023 viewer-diag: replay session=8cc20e8b conn=1 mode=delta bytes=21 resume=true
+2026/11/28 07:13:31.024291 viewer-diag: join session=adfc3140 conn=1 origin=local from= client="" viewers=1 web=0
+2026/11/28 07:13:31.024467 viewer-diag: replay session=adfc3140 conn=1 mode=delta bytes=21 resume=true
+2026/11/28 07:13:31.667027 INFO desktop: viewer joined viewer=9d331ed0 viewers=1
+2026/11/28 07:13:32.101760 viewer-diag: join session=adfc3140 conn=2 origin=web from=100.x.x.N client="" viewers=2 web=1
+2026/11/28 07:13:32.102159 viewer-diag: replay session=adfc3140 conn=2 mode=delta bytes=42 resume=true
+2026/11/28 07:13:32.158648 viewer-diag: web resize session=adfc3140 conn=2 cols=56 rows=8 claim=false
+--- gui.log tail (open --stderr, from start-gui; update-check noise dropped)
+2026-11-28 06:35:22.039 Portty[39186:2842516] Portty: notification delivery accepted for identifier portty.desktop-leave
+2026/11/28 06:36:18 notification: dispatching native notification for identifier portty.desktop-join
+2026-11-28 06:36:18.571 Portty[39186:2785779] Portty: dispatching native notification for identifier portty.desktop-join (main queue: 1)
+2026-11-28 06:36:18.705 Portty[39186:2843211] Portty: notification delivery accepted for identifier portty.desktop-join
+2026/11/28 06:40:45 notification: dispatching native notification for identifier portty.desktop-leave
+2026-11-28 06:40:45.320 Portty[39186:2785779] Portty: dispatching native notification for identifier portty.desktop-leave (main queue: 1)
+2026-11-28 06:40:45.387 Portty[39186:2842516] Portty: notification delivery accepted for identifier portty.desktop-leave
+2026/11/28 06:54:06 daemon: launchd agent: ready (state 0)
+2026/11/28 06:54:16 update: up to date
+2026/11/28 06:54:27 notification: dispatching native notification for identifier portty.desktop-join
+2026-11-28 06:54:27.294 Portty[60541:2857013] Portty: dispatching native notification for identifier portty.desktop-join (main queue: 1)
+2026-11-28 06:54:27.309 Portty[60541:2857156] Portty: notification delivery accepted for identifier portty.desktop-join
+2026/11/28 07:13:26 daemon: launchd agent: ready (state 0)
+2026/11/28 07:13:27 daemon: re-home requested
+2026/11/28 07:13:29 notification: dispatching native notification for identifier portty.desktop-join
+2026-11-28 07:13:29.258 Portty[61811:2861553] Portty: dispatching native notification for identifier portty.desktop-join (main queue: 1)
+2026-11-28 07:13:29.274 Portty[61811:2861631] Portty: notification delivery accepted for identifier portty.desktop-join
+2026/11/28 07:13:29 notification: dispatching native notification for identifier portty.desktop-leave
+2026-11-28 07:13:29.958 Portty[61811:2861553] Portty: dispatching native notification for identifier portty.desktop-leave (main queue: 1)
+2026-11-28 07:13:29.963 Portty[61811:2861631] Portty: notification delivery accepted for identifier portty.desktop-leave
+2026/11/28 07:13:29 desktop share: events stream ended: read stream: unexpected EOF
+2026/11/28 07:13:31 notification: dispatching native notification for identifier portty.desktop-join
+2026-11-28 07:13:31.644 Portty[61811:2861553] Portty: dispatching native notification for identifier portty.desktop-join (main queue: 1)
+2026-11-28 07:13:31.647 Portty[61811:2861647] Portty: notification delivery accepted for identifier portty.desktop-join
+2026/11/28 07:13:37 update: up to date

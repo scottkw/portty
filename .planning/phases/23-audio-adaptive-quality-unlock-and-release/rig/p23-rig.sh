@@ -838,9 +838,43 @@ cmd_soak_motion() {
   echo "soak-motion: done at office epoch $(cmd_clock)"
 }
 
+# soak-verdict ROW [WARM_FROM WARM_TO]: H-03's pass rule on evidence/ROW.csv (samples one minute apart; sample k is
+# minute k-1). Warm-up window = minutes WARM_FROM..WARM_TO (default 5..15). Checked on every sample from minute
+# WARM_FROM on: same pid, state streaming, RSS and footprint at most 1.15 x the window median, open files within 5
+# and goroutines within 10 of the window's range.
+cmd_soak_verdict() {
+  [ $# -ge 1 ] || die "usage: soak-verdict ROW [WARM_FROM WARM_TO]"
+  local f="$PHASE_DIR/evidence/$1.csv" from=${2:-5} to=${3:-15}
+  [ -s "$f" ] || die "no $f"
+  awk -F, -v from="$from" -v to="$to" '
+    function med(a, n,   i, j, t, b) { for (i = 1; i <= n; i++) b[i] = a[i]; for (i = 2; i <= n; i++) { t = b[i]; for (j = i - 1; j >= 1 && b[j] > t; j--) b[j + 1] = b[j]; b[j + 1] = t } return (n % 2) ? b[(n + 1) / 2] : (b[n / 2] + b[n / 2 + 1]) / 2 }
+    NR == 1 { next }
+    { k = NR - 1; m = k - 1; pid[k] = $2; rss[k] = $3; fp[k] = $4; fds[k] = $5; gor[k] = $7; vw[k] = $8; st[k] = $9; n = k }
+    END {
+      nw = 0
+      for (k = 1; k <= n; k++) if (k - 1 >= from && k - 1 <= to) { nw++; wr[nw] = rss[k]; wf[nw] = fp[k]; if (nw == 1 || fds[k] < fmin) fmin = fds[k]; if (nw == 1 || fds[k] > fmax) fmax = fds[k]; if (nw == 1 || gor[k] < gmin) gmin = gor[k]; if (nw == 1 || gor[k] > gmax) gmax = gor[k] }
+      mr = med(wr, nw); mf = med(wf, nw)
+      badpid = 0; badst = 0; badvw = 0; maxr = 0; maxf = 0; badfd = 0; badg = 0; na = 0
+      for (k = 1; k <= n; k++) {
+        if (pid[k] != pid[1]) badpid++
+        if (st[k] != "streaming") badst++
+        if (vw[k] < 1) badvw++
+        if (k - 1 >= from) { na++; if (rss[k] / mr > maxr) maxr = rss[k] / mr; if (fp[k] / mf > maxf) maxf = fp[k] / mf; if (fds[k] < fmin - 5 || fds[k] > fmax + 5) badfd++; if (gor[k] < gmin - 10 || gor[k] > gmax + 10) badg++ }
+      }
+      printf "samples=%d first=%s last=%s\n", n, "-", "-"
+      printf "pid: %s throughout, samples with another pid: %d\n", pid[1], badpid
+      printf "state: samples not streaming: %d, samples with no viewer: %d\n", badst, badvw
+      printf "warm-up minutes %d..%d (%d samples): rss median %d kB, footprint median %d B, fds %d..%d, goroutines %d..%d\n", from, to, nw, mr, mf, fmin, fmax, gmin, gmax
+      printf "from minute %d (%d samples): max rss ratio %.3f (limit 1.15), max footprint ratio %.3f (limit 1.15), fds outside +-5: %d, goroutines outside +-10: %d\n", from, na, maxr, maxf, badfd, badg
+      ok = (badpid == 0 && badst == 0 && maxr <= 1.15 && maxf <= 1.15 && badfd == 0 && badg == 0)
+      print ok ? "VERDICT: PASS" : "VERDICT: FAIL"
+    }' "$f"
+}
+
 sub=${1:-}
 [ $# -gt 0 ] && shift
 case "$sub" in
+  soak-verdict) cmd_soak_verdict "$@" ;;
   build-pair) cmd_build_pair "$@" ;;
   tick-start) cmd_tick_start ;;
   term-open) cmd_term_open ;;

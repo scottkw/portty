@@ -1,0 +1,36 @@
+upgrade: start office epoch 1795849996.33 health before: {"status":"ok","version":"v23.11.0","api":5,"handoff":1,"launchd":true,"pid":60566}
+sent SIGTERM to: 60541
+23.11.1
+upgrade: app replaced, office epoch 1795850002.51
+
+upgrade: GUI started, office epoch 1795850006.15
+upgrade: health epoch=1795850006 {"status":"ok","version":"v23.11.0","api":5,"handoff":1,"launchd":true,"pid":60566}
+upgrade: health epoch=1795850009 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"pid":61839}
+upgrade: health epoch=1795850012 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+upgrade: health epoch=1795850015 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+upgrade: health epoch=1795850018 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+upgrade: health epoch=1795850021 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+upgrade: health epoch=1795850024 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+upgrade: health epoch=1795850027 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+upgrade: health epoch=1795850030 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+upgrade: health epoch=1795850033 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+upgrade: health epoch=1795850036 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+upgrade: health epoch=1795850039 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+upgrade: health epoch=1795850042 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+upgrade: health epoch=1795850045 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+upgrade: health epoch=1795850048 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+upgrade: health epoch=1795850051 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+upgrade: health epoch=1795850054 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+upgrade: health epoch=1795850057 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+upgrade: health epoch=1795850060 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+upgrade: health epoch=1795850063 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+upgrade: health epoch=1795850066 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+upgrade: health epoch=1795850069 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+upgrade: health epoch=1795850072 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+upgrade: health epoch=1795850075 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+upgrade: health epoch=1795850078 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+upgrade: health epoch=1795850081 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+upgrade: health epoch=1795850085 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+upgrade: health epoch=1795850088 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+upgrade: health epoch=1795850091 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
+upgrade: health epoch=1795850094 {"status":"ok","version":"v23.11.1","api":5,"handoff":1,"launchd":true,"pid":61856}
