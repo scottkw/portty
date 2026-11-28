@@ -401,7 +401,7 @@ Plans:
 - [x] 23-08-PLAN.md — Slow connection chip, iPhone Sound item, app-tab playing indicator, phone locked-state bar rules (gated on 21-08, 21-10)
 
 **Wave 6** *(blocked on Wave 5 completion)*
-- [ ] 23-09-PLAN.md — VM proof of audio and adaptive quality (checkpoint: VM permission clicks)
+- [x] 23-09-PLAN.md — VM proof of audio and adaptive quality (checkpoint: VM permission clicks)
 
 **Wave 7** *(blocked on Wave 6 completion)*
 - [ ] 23-10-PLAN.md — VM proof of remote unlock (VM admin password only)

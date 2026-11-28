@@ -30,8 +30,9 @@ See: .planning/PROJECT.md (updated 2026-11-24)
 ## Current Position
 
 Phase: 23 (Audio, Adaptive Quality, Unlock and Release) — EXECUTING
+Plan: 23-09 complete (partial: Q-03 FAIL, A-02/A-03/Q-01 PARTIAL); next 23-10 (wave 7)
 Status: Phase 22 complete 2026-11-27 (verification human_needed 5/7, live two-account and real-Mac items deferred; see Deferred Verification); Phase 23 executing
-Last activity: 2026-11-27 -- Phase 22 shipped as PR #15
+Last activity: 2026-11-27 -- 23-09 VM rows recorded (S-00, A-01, Q-02, Q-04, T-01 PASS; Q-03 FAIL carried to 23-15; goroutine leak per viewer join found, under debug)
 
 ## Performance Metrics
 
