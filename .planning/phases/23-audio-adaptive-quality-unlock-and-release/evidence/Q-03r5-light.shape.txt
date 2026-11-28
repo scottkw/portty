@@ -1,0 +1,14 @@
+pfctl: Use of -f option, could result in flushing of rules
+present in the main ruleset added by the system at startup.
+See /etc/pf.conf for further details.
+pfctl: Use of -f option, could result in flushing of rules
+present in the main ruleset added by the system at startup.
+See /etc/pf.conf for further details.
+shape: pipe of 200 kbit/s at guest epoch 1795845481
+shape: dnctl list: [00001: 200.000 Kbit/s   20 ms   30 sl. 1 queues (1 buckets) droptail     mask: 0x00 0x00000000/0x0000 -> 0x00000000/0x0000 BKT Prot ___Source IP/port____ ____Dest. IP/port____ Tot_pkt/bytes Pkt/Byte Drp     mask: 0x00 0x00000000/0x0000 -> 0x00000000/0x0000 BKT Prot ___Source IP/port____ ____Dest. IP/port____ Tot_pkt/bytes Pkt/Byte Drp   0 udp    100.x.x.N/7444    100.x.x.N/56116    1       61  0    0   0 ]
+shape: anchor dummynet rules: 1
+shape: Status: Enabled for 0 days 00:00:00           Debug: Urgent
+shape: off at guest epoch 1795845557
+shape: dnctl list: []
+shape: anchor dummynet rules: 0
+shape: Status: Disabled for 0 days 00:00:00          Debug: Urgent

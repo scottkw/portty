@@ -1,0 +1,174 @@
+Q-03-lone4-light: build 23.10.5, the same viewer continuing, yes stopped, Terminal printing the date once a second.
+start office epoch 1795846596 (stats-log t=1 starts here)
+epoch=1795846596 load=[{ 2.89 2.28 2.54 }] target=[8000000,0,0,false]
+WindowServer 16.5;kernel_task 7.9;Portty 4.1;top 3.6;com.apple.WebKit 2.9;com.apple.WebKit 2.9;
+CPU usage: 15.38% user, 46.15% sys, 38.46% idle 
+recv={"audio":{"recv":9789,"lost":0},"video":{"recv":5651,"fd":5650,"dropped":0,"lost":0,"jb_ms":24,"dec_ms":4,"fw":2560}}
+epoch=1795846600 load=[{ 2.82 2.28 2.54 }] target=[8000000,0,0,false]
+WindowServer 17.6;kernel_task 11.0;Safari 6.3;Portty 4.8;top 3.9;nsattributedstri 3.8;
+CPU usage: 27.27% user, 63.63% sys, 9.9% idle 
+recv={"audio":{"recv":9968,"lost":0},"video":{"recv":5754,"fd":5753,"dropped":0,"lost":0,"jb_ms":24,"dec_ms":4,"fw":2560}}
+epoch=1795846603 load=[{ 2.76 2.27 2.53 }] target=[8000000,0,0,false]
+WindowServer 15.6;triald 7.9;kernel_task 6.0;mobileassetd 4.1;Portty 4.0;top 3.7;
+CPU usage: 13.33% user, 63.33% sys, 23.33% idle 
+recv={"audio":{"recv":10144,"lost":0},"video":{"recv":5856,"fd":5855,"dropped":0,"lost":0,"jb_ms":24,"dec_ms":4,"fw":2560}}
+epoch=1795846607 load=[{ 2.62 2.25 2.52 }] target=[8000000,0,0,false]
+WindowServer 15.9;triald 7.8;kernel_task 5.8;top 4.1;mobileassetd 4.0;Portty 4.0;
+CPU usage: 9.9% user, 36.36% sys, 54.54% idle 
+recv={"audio":{"recv":10322,"lost":0},"video":{"recv":5957,"fd":5956,"dropped":0,"lost":0,"jb_ms":24,"dec_ms":4,"fw":2560}}
+epoch=1795846610 load=[{ 2.62 2.25 2.52 }] target=[8000000,0,0,false]
+WindowServer 15.6;kernel_task 6.2;Portty 4.1;top 3.2;com.apple.WebKit 2.9;com.apple.WebKit 2.5;
+CPU usage: 12.50% user, 37.50% sys, 50.0% idle 
+recv={"audio":{"recv":10494,"lost":0},"video":{"recv":6055,"fd":6054,"dropped":0,"lost":0,"jb_ms":24,"dec_ms":4,"fw":2560}}
+epoch=1795846614 load=[{ 2.49 2.23 2.52 }] target=[8000000,0,0,false]
+WindowServer 14.7;kernel_task 4.9;Portty 3.9;top 3.3;com.apple.WebKit 2.9;com.apple.WebKit 2.5;
+CPU usage: 12.50% user, 37.50% sys, 50.0% idle 
+recv={"audio":{"recv":10670,"lost":0},"video":{"recv":6155,"fd":6154,"dropped":0,"lost":0,"jb_ms":24,"dec_ms":4,"fw":2560}}
+epoch=1795846617 load=[{ 2.29 2.19 2.50 }] target=[8000000,0,0,false]
+WindowServer 15.1;kernel_task 5.6;Portty 3.8;top 3.6;com.apple.WebKit 2.9;com.apple.WebKit 2.5;
+CPU usage: 13.4% user, 34.78% sys, 52.17% idle 
+recv={"audio":{"recv":10844,"lost":0},"video":{"recv":6256,"fd":6255,"dropped":0,"lost":0,"jb_ms":24,"dec_ms":4,"fw":2560}}
+epoch=1795846621 load=[{ 2.29 2.19 2.50 }] target=[8000000,0,0,false]
+WindowServer 15.2;kernel_task 5.2;Portty 4.3;top 3.2;com.apple.WebKit 3.0;com.apple.WebKit 2.8;
+CPU usage: 12.0% user, 36.0% sys, 52.0% idle 
+recv={"audio":{"recv":11018,"lost":0},"video":{"recv":6355,"fd":6354,"dropped":0,"lost":0,"jb_ms":24,"dec_ms":4,"fw":2560}}
+epoch=1795846624 load=[{ 2.18 2.17 2.49 }] target=[8000000,0,0,false]
+WindowServer 14.8;kernel_task 4.8;Portty 4.4;top 3.3;com.apple.WebKit 2.8;com.apple.WebKit 2.6;
+CPU usage: 8.69% user, 34.78% sys, 56.52% idle 
+recv={"audio":{"recv":11191,"lost":0},"video":{"recv":6455,"fd":6454,"dropped":0,"lost":0,"jb_ms":25,"dec_ms":4,"fw":2560}}
+epoch=1795846628 load=[{ 2.17 2.17 2.49 }] target=[8000000,0,0,false]
+WindowServer 14.7;kernel_task 4.8;top 4.5;Portty 3.9;com.apple.WebKit 3.0;com.apple.WebKit 2.8;
+CPU usage: 12.50% user, 37.50% sys, 50.0% idle 
+recv={"audio":{"recv":11365,"lost":0},"video":{"recv":6555,"fd":6554,"dropped":0,"lost":0,"jb_ms":25,"dec_ms":4,"fw":2560}}
+epoch=1795846631 load=[{ 2.17 2.17 2.49 }] target=[8000000,0,0,false]
+siriinferenced 46.2;WindowServer 16.4;kernel_task 7.7;Portty 4.5;top 3.4;com.apple.WebKit 3.0;
+CPU usage: 16.0% user, 64.0% sys, 20.0% idle 
+recv={"audio":{"recv":11539,"lost":0},"video":{"recv":6654,"fd":6653,"dropped":0,"lost":0,"jb_ms":25,"dec_ms":4,"fw":2560}}
+epoch=1795846635 load=[{ 2.07 2.15 2.48 }] target=[8000000,0,0,false]
+WindowServer 14.9;kernel_task 5.5;Portty 3.9;top 3.4;com.apple.WebKit 2.9;com.apple.WebKit 2.4;
+CPU usage: 13.63% user, 40.90% sys, 45.45% idle 
+recv={"audio":{"recv":11713,"lost":0},"video":{"recv":6753,"fd":6752,"dropped":0,"lost":0,"jb_ms":25,"dec_ms":4,"fw":2560}}
+epoch=1795846638 load=[{ 1.99 2.13 2.47 }] target=[8000000,0,0,false]
+WindowServer 14.4;kernel_task 4.9;Portty 3.9;top 3.4;com.apple.WebKit 2.7;com.apple.WebKit 2.3;
+CPU usage: 9.52% user, 33.33% sys, 57.14% idle 
+recv={"audio":{"recv":11886,"lost":0},"video":{"recv":6852,"fd":6851,"dropped":0,"lost":0,"jb_ms":25,"dec_ms":4,"fw":2560}}
+epoch=1795846642 load=[{ 1.99 2.13 2.47 }] target=[8000000,0,0,false]
+WindowServer 14.4;kernel_task 4.8;Portty 4.1;top 3.2;com.apple.WebKit 2.8;com.apple.WebKit 2.4;
+CPU usage: 15.0% user, 30.0% sys, 55.0% idle 
+recv={"audio":{"recv":12058,"lost":0},"video":{"recv":6951,"fd":6950,"dropped":0,"lost":0,"jb_ms":25,"dec_ms":4,"fw":2560}}
+epoch=1795846645 load=[{ 2.31 2.19 2.49 }] target=[8000000,0,0,false]
+WindowServer 14.4;kernel_task 4.9;Portty 3.8;top 3.0;com.apple.WebKit 2.8;com.apple.WebKit 2.4;
+CPU usage: 13.4% user, 34.78% sys, 52.17% idle 
+recv={"audio":{"recv":12232,"lost":0},"video":{"recv":7051,"fd":7050,"dropped":0,"lost":0,"jb_ms":25,"dec_ms":4,"fw":2560}}
+epoch=1795846649 load=[{ 2.12 2.16 2.48 }] target=[8000000,0,0,false]
+WindowServer 14.8;kernel_task 5.1;Portty 4.0;top 3.3;com.apple.WebKit 2.9;com.apple.WebKit 2.6;
+CPU usage: 9.52% user, 38.9% sys, 52.38% idle 
+recv={"audio":{"recv":12405,"lost":0},"video":{"recv":7149,"fd":7149,"dropped":0,"lost":0,"jb_ms":25,"dec_ms":4,"fw":2560}}
+epoch=1795846652 load=[{ 2.11 2.15 2.47 }] target=[8000000,0,0,false]
+WindowServer 14.9;kernel_task 5.0;Portty 4.4;top 3.4;com.apple.WebKit 2.9;com.apple.WebKit 2.6;
+CPU usage: 10.0% user, 35.0% sys, 55.0% idle 
+recv={"audio":{"recv":12578,"lost":0},"video":{"recv":7249,"fd":7248,"dropped":0,"lost":0,"jb_ms":25,"dec_ms":4,"fw":2560}}
+epoch=1795846655 load=[{ 2.11 2.15 2.47 }] target=[8000000,0,0,false]
+WindowServer 14.9;kernel_task 5.3;Portty 3.9;top 3.1;com.apple.WebKit 2.8;com.apple.WebKit 2.4;
+CPU usage: 13.63% user, 36.36% sys, 50.0% idle 
+recv={"audio":{"recv":12751,"lost":0},"video":{"recv":7348,"fd":7347,"dropped":0,"lost":0,"jb_ms":25,"dec_ms":4,"fw":2560}}
+epoch=1795846659 load=[{ 2.02 2.14 2.46 }] target=[8000000,0,0,false]
+WindowServer 19.1;kernel_task 8.3;mediaanalysisd 6.5;Portty 5.4;com.apple.WebKit 4.5;com.apple.WebKit 3.6;
+CPU usage: 13.4% user, 34.78% sys, 52.17% idle 
+recv={"audio":{"recv":12924,"lost":0},"video":{"recv":7446,"fd":7445,"dropped":0,"lost":0,"jb_ms":25,"dec_ms":4,"fw":2560}}
+epoch=1795846662 load=[{ 1.94 2.12 2.46 }] target=[8000000,0,0,false]
+WindowServer 14.9;kernel_task 4.9;Portty 3.8;top 3.1;com.apple.WebKit 2.8;com.apple.WebKit 2.5;
+CPU usage: 14.28% user, 38.9% sys, 47.61% idle 
+recv={"audio":{"recv":13097,"lost":0},"video":{"recv":7544,"fd":7543,"dropped":0,"lost":0,"jb_ms":25,"dec_ms":4,"fw":2560}}
+epoch=1795846666 load=[{ 1.94 2.12 2.46 }] target=[8000000,0,0,false]
+WindowServer 14.7;kernel_task 4.6;Portty 3.9;top 3.5;com.apple.WebKit 2.9;com.apple.WebKit 2.4;
+CPU usage: 5.26% user, 36.84% sys, 57.89% idle 
+recv={"audio":{"recv":13270,"lost":0},"video":{"recv":7643,"fd":7642,"dropped":0,"lost":0,"jb_ms":25,"dec_ms":4,"fw":2560}}
+epoch=1795846669 load=[{ 1.87 2.10 2.45 }] target=[500000,0,0,false]
+WindowServer 16.4;kernel_task 6.1;Portty 3.9;top 3.4;com.apple.WebKit 3.0;com.apple.WebKit 2.4;
+CPU usage: 16.66% user, 33.33% sys, 50.0% idle 
+recv={"audio":{"recv":13446,"lost":0},"video":{"recv":7744,"fd":7743,"dropped":0,"lost":0,"jb_ms":25,"dec_ms":4,"fw":2560}}
+epoch=1795846673 load=[{ 1.96 2.11 2.45 }] target=[500000,1,0,false]
+WindowServer 15.9;kernel_task 4.9;top 3.7;Portty 3.5;com.apple.WebKit 2.4;com.apple.WebKit 1.9;
+CPU usage: 13.4% user, 39.13% sys, 47.82% idle 
+recv={"audio":{"recv":13623,"lost":0},"video":{"recv":7799,"fd":7798,"dropped":0,"lost":0,"jb_ms":25,"dec_ms":4,"fw":2560}}
+epoch=1795846676 load=[{ 1.96 2.11 2.45 }] target=[550000,1,0,false]
+WindowServer 15.2;kernel_task 5.0;Portty 3.5;top 3.1;com.apple.WebKit 2.3;com.apple.WebKit 1.8;
+CPU usage: 17.39% user, 43.47% sys, 39.13% idle 
+recv={"audio":{"recv":13795,"lost":0},"video":{"recv":7849,"fd":7849,"dropped":0,"lost":0,"jb_ms":26,"dec_ms":4,"fw":2560}}
+epoch=1795846680 load=[{ 1.96 2.11 2.45 }] target=[665500,1,0,false]
+WindowServer 14.7;kernel_task 4.7;Portty 3.6;top 3.1;com.apple.WebKit 2.3;com.apple.WebKit 1.7;
+CPU usage: 22.72% user, 36.36% sys, 40.90% idle 
+recv={"audio":{"recv":13970,"lost":0},"video":{"recv":7900,"fd":7899,"dropped":0,"lost":0,"jb_ms":26,"dec_ms":4,"fw":1920}}
+epoch=1795846683 load=[{ 1.80 2.08 2.43 }] target=[805255,2,0,false]
+WindowServer 14.8;kernel_task 5.1;Portty 3.3;top 3.0;com.apple.WebKit 2.0;com.apple.WebKit 1.7;
+CPU usage: 14.28% user, 33.33% sys, 52.38% idle 
+recv={"audio":{"recv":14142,"lost":0},"video":{"recv":7950,"fd":7949,"dropped":0,"lost":0,"jb_ms":26,"dec_ms":4,"fw":1920}}
+epoch=1795846687 load=[{ 1.80 2.08 2.43 }] target=[885780,2,0,false]
+WindowServer 15.0;kernel_task 4.7;Portty 3.2;top 3.2;com.apple.WebKit 2.0;com.apple.WebKit 1.7;
+CPU usage: 10.0% user, 35.0% sys, 55.0% idle 
+recv={"audio":{"recv":14315,"lost":0},"video":{"recv":8001,"fd":8000,"dropped":0,"lost":0,"jb_ms":26,"dec_ms":4,"fw":1920}}
+epoch=1795846690 load=[{ 1.82 2.07 2.43 }] target=[1071793,2,0,false]
+WindowServer 14.7;kernel_task 4.7;Portty 3.7;top 2.9;com.apple.WebKit 2.2;com.apple.WebKit 2.0;
+CPU usage: 5.26% user, 36.84% sys, 57.89% idle 
+recv={"audio":{"recv":14488,"lost":0},"video":{"recv":8051,"fd":8050,"dropped":0,"lost":0,"jb_ms":26,"dec_ms":4,"fw":1280}}
+epoch=1795846694 load=[{ 1.75 2.06 2.42 }] target=[1178972,3,0,false]
+WindowServer 15.0;kernel_task 4.4;Portty 3.3;top 3.0;com.apple.WebKit 2.0;com.apple.WebKit 1.7;
+CPU usage: 14.28% user, 38.9% sys, 47.61% idle 
+recv={"audio":{"recv":14660,"lost":0},"video":{"recv":8101,"fd":8100,"dropped":0,"lost":0,"jb_ms":27,"dec_ms":4,"fw":1280}}
+epoch=1795846697 load=[{ 1.69 2.04 2.41 }] target=[1426555,3,0,false]
+spotlightknowled 15.1;WindowServer 14.1;kernel_task 4.6;cfprefsd 4.2;Portty 3.2;top 3.1;
+CPU usage: 14.28% user, 28.57% sys, 57.14% idle 
+recv={"audio":{"recv":14832,"lost":0},"video":{"recv":8152,"fd":8151,"dropped":0,"lost":0,"jb_ms":27,"dec_ms":4,"fw":1280}}
+epoch=1795846701 load=[{ 1.69 2.04 2.41 }] target=[1726131,3,0,false]
+WindowServer 14.6;kernel_task 5.2;top 3.6;Portty 3.3;com.apple.WebKit 2.1;com.apple.WebKit 1.9;
+CPU usage: 15.78% user, 36.84% sys, 47.36% idle 
+recv={"audio":{"recv":15009,"lost":0},"video":{"recv":8204,"fd":8203,"dropped":0,"lost":0,"jb_ms":27,"dec_ms":4,"fw":1280}}
+epoch=1795846704 load=[{ 1.72 2.04 2.41 }] target=[1898744,3,0,false]
+WindowServer 17.7;kernel_task 5.9;top 4.2;Portty 3.5;com.apple.WebKit 2.2;com.apple.WebKit 1.9;
+CPU usage: 13.4% user, 39.13% sys, 47.82% idle 
+recv={"audio":{"recv":15182,"lost":0},"video":{"recv":8255,"fd":8254,"dropped":0,"lost":0,"jb_ms":27,"dec_ms":4,"fw":1280}}
+epoch=1795846708 load=[{ 1.98 2.09 2.42 }] target=[2297479,3,0,false]
+WindowServer 16.0;kernel_task 4.6;top 3.8;Portty 3.6;com.apple.WebKit 2.1;com.apple.WebKit 1.9;
+CPU usage: 10.0% user, 35.0% sys, 55.0% idle 
+recv={"audio":{"recv":15360,"lost":0},"video":{"recv":8306,"fd":8305,"dropped":0,"lost":0,"jb_ms":27,"dec_ms":4,"fw":1280}}
+epoch=1795846711 load=[{ 1.98 2.09 2.42 }] target=[2527226,3,0,false]
+WindowServer 16.9;kernel_task 5.2;Portty 3.9;top 3.8;com.apple.WebKit 2.4;replayd 2.0;
+CPU usage: 10.0% user, 40.0% sys, 50.0% idle 
+recv={"audio":{"recv":15533,"lost":0},"video":{"recv":8357,"fd":8356,"dropped":0,"lost":0,"jb_ms":28,"dec_ms":4,"fw":1280}}
+epoch=1795846715 load=[{ 2.30 2.15 2.45 }] target=[3057942,3,0,false]
+WindowServer 17.4;kernel_task 5.1;Portty 3.7;top 3.4;com.apple.WebKit 2.2;com.apple.WebKit 1.9;
+CPU usage: 14.28% user, 28.57% sys, 57.14% idle 
+recv={"audio":{"recv":15709,"lost":0},"video":{"recv":8408,"fd":8407,"dropped":0,"lost":0,"jb_ms":28,"dec_ms":4,"fw":1280}}
+epoch=1795846718 load=[{ 2.36 2.16 2.45 }] target=[3700109,3,0,false]
+WindowServer 17.4;kernel_task 5.6;Portty 3.9;top 3.8;com.apple.WebKit 2.3;replayd 2.1;
+CPU usage: 13.63% user, 45.45% sys, 40.90% idle 
+recv={"audio":{"recv":15884,"lost":0},"video":{"recv":8458,"fd":8457,"dropped":0,"lost":0,"jb_ms":28,"dec_ms":4,"fw":1920}}
+epoch=1795846722 load=[{ 2.36 2.16 2.45 }] target=[4070119,2,0,false]
+WindowServer 16.6;kernel_task 5.1;Portty 3.8;top 3.8;com.apple.WebKit 2.2;com.apple.WebKit 1.9;
+CPU usage: 5.26% user, 31.57% sys, 63.15% idle 
+recv={"audio":{"recv":16060,"lost":0},"video":{"recv":8509,"fd":8508,"dropped":0,"lost":0,"jb_ms":28,"dec_ms":4,"fw":1920}}
+epoch=1795846725 load=[{ 2.25 2.15 2.44 }] target=[4924843,2,0,false]
+WindowServer 16.9;kernel_task 4.9;top 3.8;Portty 3.7;com.apple.WebKit 2.3;com.apple.WebKit 2.0;
+CPU usage: 14.28% user, 33.33% sys, 52.38% idle 
+recv={"audio":{"recv":16234,"lost":0},"video":{"recv":8559,"fd":8558,"dropped":0,"lost":0,"jb_ms":29,"dec_ms":4,"fw":1920}}
+epoch=1795846729 load=[{ 2.23 2.14 2.44 }] target=[5417327,2,0,false]
+WindowServer 19.8;kernel_task 8.6;Portty 5.4;com.apple.WebKit 3.5;top 3.5;com.apple.WebKit 3.0;
+CPU usage: 10.52% user, 31.57% sys, 57.89% idle 
+recv={"audio":{"recv":16408,"lost":0},"video":{"recv":8609,"fd":8608,"dropped":0,"lost":0,"jb_ms":29,"dec_ms":4,"fw":2560}}
+epoch=1795846732 load=[{ 2.13 2.12 2.43 }] target=[6554964,1,0,false]
+WindowServer 17.0;kernel_task 5.3;Portty 3.8;top 3.6;com.apple.WebKit 2.3;com.apple.WebKit 2.1;
+CPU usage: 14.28% user, 38.9% sys, 47.61% idle 
+recv={"audio":{"recv":16582,"lost":0},"video":{"recv":8660,"fd":8659,"dropped":0,"lost":0,"jb_ms":29,"dec_ms":4,"fw":2560}}
+epoch=1795846736 load=[{ 2.13 2.12 2.43 }] target=[7931506,1,0,false]
+WindowServer 17.1;kernel_task 5.0;top 3.8;Portty 3.6;com.apple.WebKit 2.3;com.apple.WebKit 1.9;
+CPU usage: 13.63% user, 31.81% sys, 54.54% idle 
+recv={"audio":{"recv":16757,"lost":0},"video":{"recv":8711,"fd":8710,"dropped":0,"lost":0,"jb_ms":29,"dec_ms":4,"fw":2560}}
+epoch=1795846739 load=[{ 2.04 2.10 2.42 }] target=[8000000,1,0,false]
+WindowServer 18.5;kernel_task 5.4;Portty 5.2;top 4.6;com.apple.WebKit 4.4;replayd 3.3;
+CPU usage: 15.38% user, 38.46% sys, 46.15% idle 
+recv={"audio":{"recv":16934,"lost":0},"video":{"recv":8771,"fd":8769,"dropped":0,"lost":0,"jb_ms":29,"dec_ms":4,"fw":2560}}
+epoch=1795846743 load=[{ 2.03 2.10 2.42 }] target=[8000000,0,0,false]
+WindowServer 18.5;kernel_task 5.6;Portty 4.9;top 3.9;com.apple.WebKit 3.5;com.apple.WebKit 3.0;
+CPU usage: 13.4% user, 43.47% sys, 43.47% idle 
+recv={"audio":{"recv":17110,"lost":0},"video":{"recv":8871,"fd":8869,"dropped":0,"lost":0,"jb_ms":30,"dec_ms":4,"fw":2560}}

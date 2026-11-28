@@ -1,0 +1,30 @@
+Viewer id: home (relay, shaped, alone) 4467a931. Pipe on 06:04:03 (epoch 1795845843), off 06:05:23 (1795845923).
+== Q-02r2 build 23.10.5 pipe 300 kbit/s content=light viewers=home
+light content on (date once a second)
+open home: p19-safari t=3 stats={"status":"streaming","state":"streaming","viewers":1,"framesDecoded":18,"frameWidth":2560,"frameHeight":1440,"bytesReceived":232408,"cspViolations":0} title=Portty Desktop (debug fd=18 fw=2560 csp=0 st=streaming)
+hook home: hooked
+office start epoch 1795845824 (stats-log t=1 starts here)
+recv before pipe: home {"audio":{"recv":855,"lost":0},"video":{"recv":67,"fd":67,"dropped":0,"lost":0,"jb_ms":15,"dec_ms":6,"fw":2560}}
+shape: pipe of 300 kbit/s at guest epoch 1795845843
+shape: dnctl list: [00001: 300.000 Kbit/s   20 ms   30 sl. 0 queues (1 buckets) droptail     mask: 0x00 0x00000000/0x0000 -> 0x00000000/0x0000 ]
+shape: anchor dummynet rules: 1
+shape: Status: Enabled for 0 days 00:00:00           Debug: Urgent
+recv mid pipe: home {"audio":{"recv":2617,"lost":256},"video":{"recv":163,"fd":163,"dropped":0,"lost":32,"jb_ms":434,"dec_ms":6,"fw":1280}}
+office load: { 1.43 2.31 3.29 }
+CPU usage: 4.76% user, 28.57% sys, 66.66% idle 
+shape: off at guest epoch 1795845923
+shape: dnctl list: []
+shape: anchor dummynet rules: 0
+shape: Status: Disabled for 0 days 00:00:00          Debug: Urgent
+recv after pipe: home {"audio":{"recv":5657,"lost":756},"video":{"recv":321,"fd":321,"dropped":0,"lost":94,"jb_ms":827,"dec_ms":6,"fw":1280}}
+office load: { 1.37 2.10 3.13 }
+CPU usage: 4.16% user, 29.16% sys, 66.66% idle 
+daemon.log since the run start (joins, leaves, slow state, encoder):
+2026/11/28 06:04:12.116495 INFO desktop: viewer slow state changed viewer=4467a931 slow=true
+2026/11/28 06:05:32.117609 INFO desktop: viewer slow state changed viewer=4467a931 slow=false
+target lines:       39
+shape: dnctl list: []
+shape: anchor dummynet rules: 0
+shape: Status: Disabled for 0 days 00:02:59          Debug: Urgent
+close-viewer: done
+motion off

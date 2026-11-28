@@ -1,0 +1,29 @@
+unlock-try EW-01r.unlock: kind=admin dur=14s office-start=2026-11-28 06:21:32
+office before: lockstate: locked=true {"viewers":1,"own_viewers":1,"goroutines":73,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+home before: Portty never saves it. Wrong tries count toward the Mac's own limit.
+home fill: "set"
+home click: null
+t=+0.11 panel: Unlocking…
+t=+3.16 panel: panel absent; notice: Mac unlocked.
+t=+8.34 panel: panel absent; notice: none
+office transitions:
+t=0.0 locked=true {"unlock":{"state":"idle","failures":0,"relock_armed":false},"viewers":1}
+t=0.5 locked=true {"unlock":{"state":"unlocking","failures":0,"relock_armed":false},"viewers":1}
+t=3.0 locked=false {"unlock":{"state":"idle","failures":0,"relock_armed":true},"viewers":1}
+loginwindow:
+06:21:34.130 -[LWDefaultScreenLockUI keyPressed:] | 	 View is hidden password field length = 0
+06:21:34.131 -[LWDefaultScreenLockUI showPasswordFieldMakingFirstResponder:] | 	  showing password field, shouldMakeFirstResponder: 0
+06:21:34.131 -[LWDefaultScreenLockUI showPasswordFieldMakingFirstResponder:] | 	  showing password field, shouldMakeFirstResponder: 1
+06:21:34.966 -[LWDefaultScreenLockUI loginPressed:] | enter
+06:21:34.966 -[LWDefaultScreenLockUI loginPressed:] | 	 loginPressed, set _windowControllerActionInProgress = YES
+06:21:34.966 -[LWDefaultScreenLockUI loginPressed:] | 	 setEnabled:NO
+06:21:34.967 -[LWDefaultScreenLockUI loginPressed:] | 	 Attempt #: 1
+06:21:34.967 -[LWDefaultScreenLockUI loginPressed:] | 	 Detaching thread - checkAuth
+06:21:35.186 -[LWScreenLockAuthentication _authCopyRightsWithUsername:password:continuityHints:localAuthenticationHints:] | Screensaver authorization succeeded
+06:21:35.295 -[LWDefaultScreenLockUI showPasswordFieldMakingFirstResponder:] | 	  showing password field, shouldMakeFirstResponder: 1
+06:21:35.296 -[LWDefaultScreenLockUI showPasswordFieldMakingFirstResponder:] | 	  showing password field, shouldMakeFirstResponder: 1
+06:21:35.296 -[LWDefaultScreenLockUI showPasswordFieldMakingFirstResponder:] | 	  showing password field, shouldMakeFirstResponder: 1
+lw-log: end
+new audit lines:
+{"ts":"2026-11-28T06:21:35Z","event":"unlocked","mode":"own","reason":null,"keys":["display_name","event","login_name","mode","node_name","node_stable_id","share_id","tailnet_ip","ts","user_id","v"]}
+office after: lockstate: locked=false {"viewers":1,"own_viewers":1,"goroutines":69,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
