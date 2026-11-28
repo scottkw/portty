@@ -1,0 +1,35 @@
+Viewer ids: home (relay, shaped) 8fb667c1, office (loopback) 2e446424. Pipe on 05:58:01 (epoch 1795845481), off 05:59:17 (1795845557).
+== Q-03r5-light build 23.10.5 pipe 200 kbit/s content=light viewers=two
+light content on (date once a second)
+open home: p19-safari t=3 stats={"status":"streaming","state":"streaming","viewers":1,"framesDecoded":12,"frameWidth":2560,"frameHeight":1440,"bytesReceived":157539,"cspViolations":0} title=Portty Desktop (debug fd=12 fw=2560 csp=0 st=streaming)
+open office: p19-safari t=3 stats={"status":"streaming","state":"streaming","viewers":2,"framesDecoded":22,"frameWidth":2560,"frameHeight":1440,"bytesReceived":147419,"cspViolations":0} title=Portty Desktop (debug fd=22 fw=2560 csp=0 st=streaming)
+hook home: hooked
+hook office: hooked
+office start epoch 1795845463 (stats-log t=1 starts here)
+recv before pipe: home {"audio":{"recv":1741,"lost":0},"video":{"recv":374,"fd":371,"dropped":0,"lost":0,"jb_ms":210,"dec_ms":4,"fw":1280}} office {"audio":{"recv":1021,"lost":0},"video":{"recv":300,"fd":299,"dropped":0,"lost":0,"jb_ms":21,"dec_ms":3,"fw":1280}}
+shape: pipe of 200 kbit/s at guest epoch 1795845481
+shape: dnctl list: [00001: 200.000 Kbit/s   20 ms   30 sl. 1 queues (1 buckets) droptail     mask: 0x00 0x00000000/0x0000 -> 0x00000000/0x0000 BKT Prot ___Source IP/port____ ____Dest. IP/port____ Tot_pkt/bytes Pkt/Byte Drp     mask: 0x00 0x00000000/0x0000 -> 0x00000000/0x0000 BKT Prot ___Source IP/port____ ____Dest. IP/port____ Tot_pkt/bytes Pkt/Byte Drp   0 udp    100.x.x.N/7444    100.x.x.N/56116    1       61  0    0   0 ]
+shape: anchor dummynet rules: 1
+shape: Status: Enabled for 0 days 00:00:00           Debug: Urgent
+recv mid pipe: home {"audio":{"recv":3349,"lost":415},"video":{"recv":765,"fd":763,"dropped":2,"lost":265,"jb_ms":210,"dec_ms":4,"fw":1920}} office {"audio":{"recv":3053,"lost":0},"video":{"recv":897,"fd":896,"dropped":0,"lost":0,"jb_ms":38,"dec_ms":3,"fw":1280}}
+office load: { 2.04 4.49 4.32 }
+CPU usage: 11.11% user, 37.3% sys, 51.85% idle 
+shape: off at guest epoch 1795845557
+shape: dnctl list: []
+shape: anchor dummynet rules: 0
+shape: Status: Disabled for 0 days 00:00:00          Debug: Urgent
+recv after pipe: home {"audio":{"recv":6182,"lost":881},"video":{"recv":1617,"fd":1590,"dropped":2,"lost":416,"jb_ms":494,"dec_ms":3,"fw":1280}} office {"audio":{"recv":6344,"lost":0},"video":{"recv":1864,"fd":1863,"dropped":0,"lost":0,"jb_ms":43,"dec_ms":3,"fw":1280}}
+office load: { 1.50 3.85 4.09 }
+CPU usage: 14.28% user, 32.14% sys, 53.57% idle 
+daemon.log since the run start (joins, leaves, slow state, encoder):
+2026/11/28 05:58:23.231819 INFO desktop: viewer slow state changed viewer=8fb667c1 slow=true
+2026/11/28 05:58:39.731892 INFO desktop: viewer slow state changed viewer=8fb667c1 slow=false
+2026/11/28 05:59:16.981340 INFO desktop: viewer slow state changed viewer=8fb667c1 slow=true
+2026/11/28 05:59:30.481324 INFO desktop: viewer slow state changed viewer=8fb667c1 slow=false
+target lines:       86
+shape: dnctl list: []
+shape: anchor dummynet rules: 0
+shape: Status: Disabled for 0 days 00:01:51          Debug: Urgent
+close-viewer: done
+close-viewer: done
+motion off

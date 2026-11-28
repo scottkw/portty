@@ -1,0 +1,202 @@
+Q-03-lone4-heavy: build 23.10.5, lone office loopback Safari viewer, no pipe. Heavy motion: Terminal running yes (rig motion on).
+start office epoch 1795846411 (stats-log t=1 starts here)
+epoch=1795846411 load=[{ 2.93 1.85 2.49 }] target=[8000000,0,0,false]
+Terminal 85.2;WindowServer 16.1;yes 10.2;kernel_task 7.5;Portty 5.3;top 4.2;
+CPU usage: 32.14% user, 46.42% sys, 21.42% idle 
+recv={"audio":{"recv":549,"lost":0},"video":{"recv":318,"fd":318,"dropped":0,"lost":0,"jb_ms":16,"dec_ms":4,"fw":2560}}
+epoch=1795846415 load=[{ 2.86 1.85 2.49 }] target=[8000000,0,0,false]
+Terminal 85.2;WindowServer 15.5;yes 10.3;kernel_task 6.0;Portty 4.8;top 4.0;
+CPU usage: 33.33% user, 51.51% sys, 15.15% idle 
+recv={"audio":{"recv":729,"lost":0},"video":{"recv":422,"fd":421,"dropped":0,"lost":0,"jb_ms":16,"dec_ms":4,"fw":2560}}
+epoch=1795846419 load=[{ 2.79 1.85 2.49 }] target=[8000000,0,0,false]
+Terminal 87.9;WindowServer 19.5;yes 10.4;kernel_task 8.2;Portty 6.2;top 4.3;
+CPU usage: 29.41% user, 52.94% sys, 17.64% idle 
+recv={"audio":{"recv":912,"lost":0},"video":{"recv":525,"fd":524,"dropped":0,"lost":0,"jb_ms":16,"dec_ms":4,"fw":2560}}
+epoch=1795846422 load=[{ 2.81 1.87 2.49 }] target=[8000000,0,0,false]
+Terminal 87.6;WindowServer 20.3;yes 10.2;kernel_task 7.5;Portty 5.5;top 4.9;
+CPU usage: 34.21% user, 47.36% sys, 18.42% idle 
+recv={"audio":{"recv":1095,"lost":0},"video":{"recv":630,"fd":630,"dropped":0,"lost":0,"jb_ms":16,"dec_ms":4,"fw":2560}}
+epoch=1795846426 load=[{ 2.81 1.87 2.49 }] target=[8000000,0,0,false]
+Terminal 86.2;WindowServer 15.7;yes 10.4;kernel_task 7.0;Portty 4.6;top 3.9;
+CPU usage: 31.3% user, 48.27% sys, 20.68% idle 
+recv={"audio":{"recv":1275,"lost":0},"video":{"recv":734,"fd":733,"dropped":0,"lost":0,"jb_ms":16,"dec_ms":4,"fw":2560}}
+epoch=1795846429 load=[{ 2.82 1.89 2.49 }] target=[8000000,0,0,false]
+Terminal 87.5;WindowServer 15.6;yes 10.0;kernel_task 7.2;Portty 4.7;top 4.0;
+CPU usage: 34.28% user, 48.57% sys, 17.14% idle 
+recv={"audio":{"recv":1458,"lost":0},"video":{"recv":839,"fd":839,"dropped":0,"lost":0,"jb_ms":16,"dec_ms":4,"fw":2560}}
+epoch=1795846433 load=[{ 2.76 1.89 2.49 }] target=[8000000,0,0,false]
+Terminal 85.5;WindowServer 15.8;yes 10.4;kernel_task 6.5;Portty 4.8;top 3.9;
+CPU usage: 33.33% user, 51.51% sys, 15.15% idle 
+recv={"audio":{"recv":1639,"lost":0},"video":{"recv":944,"fd":943,"dropped":0,"lost":0,"jb_ms":16,"dec_ms":4,"fw":2560}}
+epoch=1795846437 load=[{ 2.85 1.93 2.50 }] target=[8000000,0,0,false]
+Terminal 85.9;WindowServer 15.8;yes 10.3;kernel_task 7.2;Portty 4.9;top 4.1;
+CPU usage: 30.0% user, 50.0% sys, 20.0% idle 
+recv={"audio":{"recv":1816,"lost":0},"video":{"recv":1047,"fd":1046,"dropped":0,"lost":0,"jb_ms":16,"dec_ms":4,"fw":2560}}
+epoch=1795846440 load=[{ 2.85 1.93 2.50 }] target=[8000000,0,0,false]
+Terminal 85.7;WindowServer 15.8;yes 10.4;kernel_task 6.5;Portty 4.7;top 4.0;
+CPU usage: 33.33% user, 48.48% sys, 18.18% idle 
+recv={"audio":{"recv":1998,"lost":0},"video":{"recv":1150,"fd":1150,"dropped":0,"lost":0,"jb_ms":16,"dec_ms":4,"fw":2560}}
+epoch=1795846444 load=[{ 3.11 1.99 2.52 }] target=[8000000,0,0,false]
+Terminal 85.4;WindowServer 15.7;yes 10.3;kernel_task 7.1;Portty 4.7;top 3.8;
+CPU usage: 32.25% user, 48.38% sys, 19.35% idle 
+recv={"audio":{"recv":2178,"lost":0},"video":{"recv":1254,"fd":1254,"dropped":0,"lost":0,"jb_ms":16,"dec_ms":4,"fw":2560}}
+epoch=1795846447 load=[{ 3.02 1.99 2.52 }] target=[8000000,0,0,false]
+Terminal 85.5;WindowServer 16.4;yes 10.3;kernel_task 7.1;Portty 6.6;top 4.1;
+CPU usage: 30.0% user, 50.0% sys, 20.0% idle 
+recv={"audio":{"recv":2357,"lost":0},"video":{"recv":1358,"fd":1357,"dropped":0,"lost":0,"jb_ms":16,"dec_ms":4,"fw":2560}}
+epoch=1795846451 load=[{ 3.02 1.99 2.52 }] target=[8000000,0,0,false]
+Terminal 85.3;WindowServer 15.8;yes 10.3;kernel_task 8.2;Portty 5.2;top 4.0;
+CPU usage: 33.33% user, 48.48% sys, 18.18% idle 
+recv={"audio":{"recv":2539,"lost":0},"video":{"recv":1463,"fd":1462,"dropped":0,"lost":0,"jb_ms":16,"dec_ms":4,"fw":2560}}
+epoch=1795846455 load=[{ 3.26 2.06 2.54 }] target=[8000000,0,0,false]
+Terminal 87.0;WindowServer 17.4;yes 10.4;kernel_task 7.6;Portty 5.1;top 4.3;
+CPU usage: 31.42% user, 51.42% sys, 17.14% idle 
+recv={"audio":{"recv":2717,"lost":0},"video":{"recv":1564,"fd":1563,"dropped":0,"lost":0,"jb_ms":16,"dec_ms":4,"fw":2560}}
+epoch=1795846458 load=[{ 3.16 2.06 2.53 }] target=[8000000,0,0,false]
+Terminal 85.9;WindowServer 15.3;yes 10.5;kernel_task 6.6;Portty 4.5;top 3.8;
+CPU usage: 31.25% user, 50.0% sys, 18.75% idle 
+recv={"audio":{"recv":2899,"lost":0},"video":{"recv":1669,"fd":1669,"dropped":0,"lost":0,"jb_ms":16,"dec_ms":4,"fw":2560}}
+epoch=1795846462 load=[{ 3.06 2.06 2.53 }] target=[8000000,0,0,false]
+Terminal 89.0;WindowServer 19.1;yes 10.4;kernel_task 7.6;Portty 6.2;top 4.6;
+CPU usage: 32.35% user, 50.0% sys, 17.64% idle 
+recv={"audio":{"recv":3082,"lost":0},"video":{"recv":1774,"fd":1774,"dropped":0,"lost":0,"jb_ms":16,"dec_ms":4,"fw":2560}}
+epoch=1795846466 load=[{ 3.06 2.06 2.53 }] target=[8000000,0,0,false]
+Terminal 85.9;WindowServer 15.3;yes 10.4;kernel_task 6.6;Portty 4.6;top 3.8;
+CPU usage: 33.33% user, 48.48% sys, 18.18% idle 
+recv={"audio":{"recv":3262,"lost":0},"video":{"recv":1879,"fd":1878,"dropped":0,"lost":0,"jb_ms":16,"dec_ms":4,"fw":2560}}
+epoch=1795846469 load=[{ 2.98 2.06 2.53 }] target=[8000000,0,0,false]
+Terminal 83.2;WindowServer 18.3;yes 9.9;kernel_task 9.7;Portty 5.3;top 4.4;
+CPU usage: 36.58% user, 51.21% sys, 12.19% idle 
+recv={"audio":{"recv":3447,"lost":0},"video":{"recv":1985,"fd":1985,"dropped":0,"lost":0,"jb_ms":16,"dec_ms":4,"fw":2560}}
+epoch=1795846473 load=[{ 2.82 2.04 2.52 }] target=[8000000,0,0,false]
+Terminal 85.8;WindowServer 15.8;yes 10.4;kernel_task 6.8;Portty 4.9;top 3.9;
+CPU usage: 32.43% user, 54.5% sys, 13.51% idle 
+recv={"audio":{"recv":3627,"lost":0},"video":{"recv":2089,"fd":2089,"dropped":0,"lost":0,"jb_ms":16,"dec_ms":4,"fw":2560}}
+epoch=1795846476 load=[{ 2.82 2.04 2.52 }] target=[8000000,0,0,false]
+Terminal 86.1;WindowServer 17.6;yes 10.3;kernel_task 7.0;Portty 5.6;top 4.0;
+CPU usage: 30.0% user, 46.66% sys, 23.33% idle 
+recv={"audio":{"recv":3808,"lost":0},"video":{"recv":2190,"fd":2190,"dropped":0,"lost":0,"jb_ms":16,"dec_ms":4,"fw":2560}}
+epoch=1795846480 load=[{ 2.83 2.06 2.52 }] target=[8000000,0,0,false]
+Terminal 85.8;WindowServer 15.5;yes 10.4;kernel_task 6.8;Portty 4.6;top 3.9;
+CPU usage: 35.29% user, 47.5% sys, 17.64% idle 
+recv={"audio":{"recv":3989,"lost":0},"video":{"recv":2295,"fd":2294,"dropped":0,"lost":0,"jb_ms":16,"dec_ms":4,"fw":2560}}
+epoch=1795846484 load=[{ 2.77 2.05 2.52 }] target=[8000000,0,0,false]
+Terminal 84.5;WindowServer 15.8;yes 10.2;kernel_task 7.1;Portty 4.6;top 3.8;
+CPU usage: 31.42% user, 51.42% sys, 17.14% idle 
+recv={"audio":{"recv":4168,"lost":0},"video":{"recv":2399,"fd":2398,"dropped":0,"lost":0,"jb_ms":16,"dec_ms":4,"fw":2560}}
+epoch=1795846487 load=[{ 2.70 2.05 2.51 }] target=[8000000,0,0,false]
+Terminal 86.2;WindowServer 16.4;yes 10.3;kernel_task 7.7;Portty 4.9;top 4.2;
+CPU usage: 33.33% user, 50.0% sys, 16.66% idle 
+recv={"audio":{"recv":4349,"lost":0},"video":{"recv":2504,"fd":2504,"dropped":0,"lost":0,"jb_ms":17,"dec_ms":4,"fw":2560}}
+epoch=1795846491 load=[{ 2.70 2.05 2.51 }] target=[8000000,0,0,false]
+Terminal 85.7;WindowServer 15.5;yes 10.3;kernel_task 6.7;Portty 5.1;top 4.1;
+CPU usage: 34.48% user, 51.72% sys, 13.79% idle 
+recv={"audio":{"recv":4528,"lost":0},"video":{"recv":2608,"fd":2607,"dropped":0,"lost":0,"jb_ms":17,"dec_ms":4,"fw":2560}}
+epoch=1795846495 load=[{ 2.65 2.05 2.51 }] target=[8000000,0,0,false]
+Terminal 86.0;WindowServer 14.9;yes 10.5;kernel_task 6.7;Portty 4.5;top 3.9;
+CPU usage: 32.25% user, 48.38% sys, 19.35% idle 
+recv={"audio":{"recv":4708,"lost":0},"video":{"recv":2712,"fd":2711,"dropped":0,"lost":0,"jb_ms":18,"dec_ms":4,"fw":2560}}
+epoch=1795846498 load=[{ 2.68 2.07 2.51 }] target=[8000000,0,0,false]
+Terminal 85.4;WindowServer 15.4;yes 10.4;kernel_task 7.4;Portty 4.6;top 4.0;
+CPU usage: 34.28% user, 48.57% sys, 17.14% idle 
+recv={"audio":{"recv":4893,"lost":0},"video":{"recv":2819,"fd":2818,"dropped":0,"lost":0,"jb_ms":18,"dec_ms":4,"fw":2560}}
+epoch=1795846502 load=[{ 2.70 2.08 2.51 }] target=[8000000,0,0,false]
+Terminal 86.0;WindowServer 15.4;yes 10.4;kernel_task 6.8;Portty 5.1;top 3.9;
+CPU usage: 34.37% user, 53.12% sys, 12.50% idle 
+recv={"audio":{"recv":5074,"lost":0},"video":{"recv":2924,"fd":2924,"dropped":0,"lost":0,"jb_ms":19,"dec_ms":4,"fw":2560}}
+epoch=1795846505 load=[{ 2.70 2.08 2.51 }] target=[8000000,0,0,false]
+Terminal 86.1;WindowServer 15.4;yes 10.5;kernel_task 7.5;Portty 4.7;top 4.0;
+CPU usage: 34.37% user, 46.87% sys, 18.75% idle 
+recv={"audio":{"recv":5254,"lost":0},"video":{"recv":3028,"fd":3027,"dropped":0,"lost":0,"jb_ms":19,"dec_ms":4,"fw":2560}}
+epoch=1795846509 load=[{ 2.73 2.10 2.52 }] target=[8000000,0,0,false]
+Terminal 85.1;WindowServer 16.4;yes 10.3;kernel_task 8.2;Portty 4.8;top 4.0;
+CPU usage: 34.28% user, 48.57% sys, 17.14% idle 
+recv={"audio":{"recv":5434,"lost":0},"video":{"recv":3134,"fd":3133,"dropped":0,"lost":0,"jb_ms":19,"dec_ms":4,"fw":2560}}
+epoch=1795846513 load=[{ 2.59 2.08 2.51 }] target=[8000000,0,0,false]
+Terminal 86.1;WindowServer 15.3;yes 10.5;kernel_task 6.8;Portty 5.1;top 3.9;
+CPU usage: 31.3% user, 51.72% sys, 17.24% idle 
+recv={"audio":{"recv":5616,"lost":0},"video":{"recv":3239,"fd":3237,"dropped":0,"lost":0,"jb_ms":20,"dec_ms":4,"fw":2560}}
+epoch=1795846516 load=[{ 2.59 2.08 2.51 }] target=[8000000,0,0,false]
+Terminal 85.1;WindowServer 15.5;yes 10.2;kernel_task 7.2;Portty 4.7;top 3.9;
+CPU usage: 33.33% user, 46.66% sys, 20.0% idle 
+recv={"audio":{"recv":5796,"lost":0},"video":{"recv":3343,"fd":3342,"dropped":0,"lost":0,"jb_ms":20,"dec_ms":4,"fw":2560}}
+epoch=1795846520 load=[{ 2.54 2.08 2.50 }] target=[8000000,0,0,false]
+Terminal 85.6;WindowServer 15.4;yes 10.4;kernel_task 6.9;Portty 4.7;top 4.0;
+CPU usage: 31.3% user, 48.27% sys, 20.68% idle 
+recv={"audio":{"recv":5976,"lost":0},"video":{"recv":3447,"fd":3447,"dropped":0,"lost":0,"jb_ms":20,"dec_ms":4,"fw":2560}}
+epoch=1795846523 load=[{ 2.42 2.06 2.49 }] target=[8000000,0,0,false]
+Terminal 85.7;WindowServer 15.9;yes 10.4;kernel_task 6.8;Portty 4.8;top 3.9;
+CPU usage: 34.37% user, 46.87% sys, 18.75% idle 
+recv={"audio":{"recv":6157,"lost":0},"video":{"recv":3552,"fd":3551,"dropped":0,"lost":0,"jb_ms":21,"dec_ms":4,"fw":2560}}
+epoch=1795846527 load=[{ 2.46 2.08 2.50 }] target=[8000000,0,0,false]
+Terminal 86.0;WindowServer 15.5;yes 10.4;kernel_task 6.8;Portty 4.8;top 3.8;
+CPU usage: 34.28% user, 45.71% sys, 20.0% idle 
+recv={"audio":{"recv":6338,"lost":0},"video":{"recv":3657,"fd":3656,"dropped":0,"lost":0,"jb_ms":21,"dec_ms":4,"fw":2560}}
+epoch=1795846531 load=[{ 2.46 2.08 2.50 }] target=[8000000,0,0,false]
+Terminal 85.9;WindowServer 15.5;yes 10.4;kernel_task 6.4;Portty 4.7;top 3.8;
+CPU usage: 32.35% user, 52.94% sys, 14.70% idle 
+recv={"audio":{"recv":6517,"lost":0},"video":{"recv":3761,"fd":3761,"dropped":0,"lost":0,"jb_ms":21,"dec_ms":4,"fw":2560}}
+epoch=1795846534 load=[{ 2.67 2.12 2.51 }] target=[8000000,0,0,false]
+Terminal 84.9;WindowServer 16.2;yes 10.1;kernel_task 6.9;Portty 4.8;top 3.9;
+CPU usage: 28.94% user, 50.0% sys, 21.5% idle 
+recv={"audio":{"recv":6698,"lost":0},"video":{"recv":3866,"fd":3865,"dropped":0,"lost":0,"jb_ms":21,"dec_ms":4,"fw":2560}}
+epoch=1795846538 load=[{ 2.53 2.10 2.50 }] target=[8000000,0,0,false]
+Terminal 86.8;WindowServer 14.9;yes 10.5;kernel_task 7.0;Portty 4.5;top 4.3;
+CPU usage: 31.42% user, 51.42% sys, 17.14% idle 
+recv={"audio":{"recv":6879,"lost":0},"video":{"recv":3971,"fd":3970,"dropped":0,"lost":0,"jb_ms":21,"dec_ms":4,"fw":2560}}
+epoch=1795846542 load=[{ 2.53 2.10 2.50 }] target=[8000000,0,0,false]
+Terminal 86.0;WindowServer 15.5;yes 10.3;kernel_task 6.8;Portty 5.0;top 3.8;
+CPU usage: 33.33% user, 51.51% sys, 15.15% idle 
+recv={"audio":{"recv":7058,"lost":0},"video":{"recv":4075,"fd":4074,"dropped":0,"lost":0,"jb_ms":22,"dec_ms":4,"fw":2560}}
+epoch=1795846545 load=[{ 2.57 2.12 2.50 }] target=[8000000,0,0,false]
+Terminal 85.9;WindowServer 15.3;yes 10.4;kernel_task 6.7;Portty 4.8;top 4.1;
+CPU usage: 31.25% user, 50.0% sys, 18.75% idle 
+recv={"audio":{"recv":7238,"lost":0},"video":{"recv":4179,"fd":4178,"dropped":0,"lost":0,"jb_ms":22,"dec_ms":4,"fw":2560}}
+epoch=1795846549 load=[{ 2.44 2.10 2.50 }] target=[8000000,0,0,false]
+Terminal 86.7;WindowServer 17.0;yes 10.4;kernel_task 7.5;Portty 5.3;top 4.2;
+CPU usage: 30.55% user, 52.77% sys, 16.66% idle 
+recv={"audio":{"recv":7417,"lost":0},"video":{"recv":4283,"fd":4283,"dropped":0,"lost":0,"jb_ms":22,"dec_ms":4,"fw":2560}}
+epoch=1795846552 load=[{ 2.57 2.13 2.50 }] target=[8000000,0,0,false]
+Terminal 86.0;WindowServer 15.5;yes 10.4;kernel_task 7.4;Portty 6.7;top 4.0;
+CPU usage: 31.25% user, 50.0% sys, 18.75% idle 
+recv={"audio":{"recv":7597,"lost":0},"video":{"recv":4387,"fd":4387,"dropped":0,"lost":0,"jb_ms":22,"dec_ms":4,"fw":2560}}
+epoch=1795846556 load=[{ 2.57 2.13 2.50 }] target=[8000000,0,0,false]
+Terminal 83.2;PerfPowerService 23.5;WindowServer 18.5;kernel_task 12.0;runningboardd 10.3;yes 9.4;
+CPU usage: 43.24% user, 56.75% sys, 0.0% idle 
+recv={"audio":{"recv":7787,"lost":0},"video":{"recv":4496,"fd":4495,"dropped":0,"lost":0,"jb_ms":22,"dec_ms":4,"fw":2560}}
+epoch=1795846560 load=[{ 2.92 2.21 2.53 }] target=[8000000,0,0,false]
+Terminal 86.2;WindowServer 16.8;yes 10.2;kernel_task 7.4;Portty 5.0;top 4.4;
+CPU usage: 36.58% user, 56.9% sys, 7.31% idle 
+recv={"audio":{"recv":7979,"lost":0},"video":{"recv":4604,"fd":4603,"dropped":0,"lost":0,"jb_ms":23,"dec_ms":4,"fw":2560}}
+epoch=1795846564 load=[{ 2.85 2.21 2.53 }] target=[8000000,0,0,false]
+Terminal 85.1;WindowServer 16.4;yes 10.2;kernel_task 10.2;Portty 4.8;com.apple.WebKit 4.3;
+CPU usage: 30.0% user, 50.0% sys, 20.0% idle 
+recv={"audio":{"recv":8159,"lost":0},"video":{"recv":4708,"fd":4707,"dropped":0,"lost":0,"jb_ms":23,"dec_ms":4,"fw":2560}}
+epoch=1795846567 load=[{ 2.78 2.20 2.52 }] target=[8000000,0,0,false]
+Terminal 85.2;WindowServer 15.2;yes 10.5;kernel_task 7.3;Portty 4.6;top 4.0;
+CPU usage: 35.13% user, 51.35% sys, 13.51% idle 
+recv={"audio":{"recv":8341,"lost":0},"video":{"recv":4813,"fd":4812,"dropped":0,"lost":0,"jb_ms":23,"dec_ms":4,"fw":2560}}
+epoch=1795846571 load=[{ 2.78 2.20 2.52 }] target=[8000000,0,0,false]
+Terminal 86.1;WindowServer 15.7;yes 10.3;kernel_task 7.4;Portty 4.8;top 4.0;
+CPU usage: 33.33% user, 51.51% sys, 15.15% idle 
+recv={"audio":{"recv":8521,"lost":0},"video":{"recv":4917,"fd":4916,"dropped":0,"lost":0,"jb_ms":23,"dec_ms":4,"fw":2560}}
+epoch=1795846574 load=[{ 2.96 2.25 2.54 }] target=[8000000,0,0,false]
+Terminal 85.1;WindowServer 15.9;yes 10.3;kernel_task 7.7;Portty 4.8;top 3.9;
+CPU usage: 29.3% user, 48.38% sys, 22.58% idle 
+recv={"audio":{"recv":8701,"lost":0},"video":{"recv":5022,"fd":5021,"dropped":0,"lost":0,"jb_ms":23,"dec_ms":4,"fw":2560}}
+epoch=1795846578 load=[{ 2.88 2.25 2.53 }] target=[8000000,0,0,false]
+Terminal 85.1;WindowServer 15.3;yes 10.2;kernel_task 7.4;Portty 4.5;top 3.7;
+CPU usage: 31.3% user, 48.27% sys, 20.68% idle 
+recv={"audio":{"recv":8881,"lost":0},"video":{"recv":5127,"fd":5126,"dropped":0,"lost":0,"jb_ms":23,"dec_ms":4,"fw":2560}}
+epoch=1795846582 load=[{ 2.88 2.25 2.53 }] target=[8000000,0,0,false]
+Terminal 86.1;WindowServer 15.5;yes 10.5;kernel_task 6.7;Portty 5.1;top 3.9;
+CPU usage: 33.33% user, 46.66% sys, 20.0% idle 
+recv={"audio":{"recv":9061,"lost":0},"video":{"recv":5231,"fd":5230,"dropped":0,"lost":0,"jb_ms":23,"dec_ms":4,"fw":2560}}
+epoch=1795846585 load=[{ 2.97 2.27 2.54 }] target=[8000000,0,0,false]
+Terminal 85.7;WindowServer 15.1;yes 10.4;kernel_task 6.1;Portty 4.6;top 3.7;
+CPU usage: 31.25% user, 50.0% sys, 18.75% idle 
+recv={"audio":{"recv":9243,"lost":0},"video":{"recv":5336,"fd":5335,"dropped":0,"lost":0,"jb_ms":23,"dec_ms":4,"fw":2560}}
+epoch=1795846589 load=[{ 2.97 2.29 2.54 }] target=[8000000,0,0,false]
+Terminal 86.0;WindowServer 15.3;yes 10.4;kernel_task 6.2;Portty 5.2;top 3.7;
+CPU usage: 32.25% user, 51.61% sys, 16.12% idle 
+recv={"audio":{"recv":9424,"lost":0},"video":{"recv":5441,"fd":5440,"dropped":0,"lost":0,"jb_ms":24,"dec_ms":4,"fw":2560}}
