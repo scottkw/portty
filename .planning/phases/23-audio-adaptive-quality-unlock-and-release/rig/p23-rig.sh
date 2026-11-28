@@ -72,7 +72,30 @@ scrub() {
   sed -E -e 's#/Users/[A-Za-z0-9._-]*#~#g' -e 's#100\.[0-9]+\.[0-9]+\.[0-9]+#100.x.x.N#g' \
     -e 's#[A-Za-z0-9.-]+\.ts\.net#TAILNET-NAME#g' -e 's#cap=[^& "]*#CAP-REDACTED#g' \
     -e 's#[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+#LOGIN@REDACTED#g' \
-    -e 's#portty-vm-office#OFFICE#g' -e 's#portty-vm-home#HOME#g'
+    -e 's#portty-vm-office#OFFICE#g' -e 's#portty-vm-home#HOME#g' | redact
+}
+
+# Wrong-password sentinels (23-10): made up per run, kept only in a mode-0700 directory outside the repo
+# (P23_SECRETS, default under TMPDIR), never printed, never committed. redact removes them from any output.
+SECRETS="${P23_SECRETS:-${TMPDIR:-/tmp}/p23-sentinels}"
+sentinel() { # sentinel N: the Nth made-up wrong password, created once
+  mkdir -p "$SECRETS" && chmod 700 "$SECRETS"
+  [ -s "$SECRETS/s$1" ] || { printf 'Zq%s' "$(openssl rand -hex 5)" > "$SECRETS/s$1"; chmod 600 "$SECRETS/s$1"; }
+  cat "$SECRETS/s$1"
+}
+redact() {
+  local f e=()
+  for f in "$SECRETS"/s*; do [ -s "$f" ] && e+=(-e "s#$(cat "$f")#SENTINEL-REDACTED#g"); done
+  if [ ${#e[@]} -gt 0 ]; then sed "${e[@]}"; else cat; fi
+}
+# pw_for KIND: admin (the VM's public password), wrong1..wrong6 (sentinels), emoji (a sentinel holding an emoji).
+pw_for() {
+  case "$1" in
+    admin) printf 'admin' ;;
+    wrong[1-6]) sentinel "${1#wrong}" ;;
+    emoji) [ -s "$SECRETS/s9" ] || { mkdir -p "$SECRETS" && chmod 700 "$SECRETS"; printf 'Zq%s\xf0\x9f\x98\x80' "$(openssl rand -hex 3)" > "$SECRETS/s9"; chmod 600 "$SECRETS/s9"; }; cat "$SECRETS/s9" ;;
+    *) die "password kind is admin, wrong1..wrong6 or emoji" ;;
+  esac
 }
 
 cmd_build() { [ $# -eq 2 ] || die "usage: build VERSION OUTDIR"; GOTOOLCHAIN="${GOTOOLCHAIN:-go1.26.11}" bash "$P22" build22 "$1" "$2"; }
@@ -342,6 +365,153 @@ exit 0
 EOF
 }
 
+# ---- unlock (23-10) -----------------------------------------------------------------------------
+# Everything here runs inside portty-test (office, locked and typed at) or portty-test-2 (home, the viewer);
+# the host only writes scrubbed evidence. Only the VM's public admin password and the made-up sentinels
+# (pw_for) are ever typed.
+
+# lock: Ctrl+Cmd+Q through the click tool (the 17-06 method), then wait up to 10 s for the daemon to read locked.
+cmd_lock() {
+  vmsh <<'EOF'
+SOCK="$HOME/Library/Application Support/portty/daemon.sock"
+~/ptest/click2 key 12 cmd ctrl
+for i in $(seq 1 40); do
+  [ "$(curl -s -m 3 --unix-socket "$SOCK" http://localhost/desktop | jq -r .locked)" = true ] && { echo "lock: locked after about $((i / 4)) s"; exit 0; }
+  sleep 0.25
+done
+echo "lock: NOT locked after 10 s"; exit 1
+EOF
+}
+
+# unlock-admin: the recovery and cycle-end unlock that is NOT the daemon path: a user-activity wake, then the
+# public password as key codes through the click tool (the 19 helper). Waits up to 12 s for unlocked.
+cmd_unlock_admin() {
+  vmsh <<'EOF'
+SOCK="$HOME/Library/Application Support/portty/daemon.sock"
+caffeinate -u -t 2; sleep 1
+for k in 0 2 46 34 45 36; do ~/ptest/click2 key $k; sleep 0.2; done
+for i in $(seq 1 48); do
+  [ "$(curl -s -m 3 --unix-socket "$SOCK" http://localhost/desktop | jq -r .locked)" = false ] && { echo "unlock-admin: unlocked"; exit 0; }
+  sleep 0.25
+done
+echo "unlock-admin: STILL locked after 12 s"; exit 1
+EOF
+}
+
+# lockstate: the daemon's locked reading and the unlock facts of the stats route, compact.
+cmd_lockstate() {
+  vmsh <<'EOF'
+SOCK="$HOME/Library/Application Support/portty/daemon.sock"
+echo "lockstate: locked=$(curl -s -m 3 --unix-socket "$SOCK" http://localhost/desktop | jq -r .locked) $(curl -s -m 3 --unix-socket "$SOCK" http://localhost/desktop/stats | jq -c '{viewers, own_viewers, goroutines, unlock}')"
+EOF
+}
+
+# wake VK: the vmdesktop probe's wake op (the daemon's own Wake step) with virtual key VK.
+cmd_wake() {
+  [ $# -eq 1 ] || die "usage: wake VK"
+  bash "$P20" probe wake "{\"vk\":$1}"
+}
+
+# lw-log SINCE: loginwindow's unified log from SINCE ("YYYY-MM-DD HH:MM:SS", guest time) to now, reduced to the
+# lock-screen lines (field state, Return, the authorization result). The lines carry a length, never a password.
+cmd_lw_log() {
+  [ $# -ge 1 ] || die "usage: lw-log 'YYYY-MM-DD HH:MM:SS' ['YYYY-MM-DD HH:MM:SS' end]"
+  local a=${1// /_} b=${2:-}
+  vmsh "$a" "${b// /_}" <<'EOF' | scrub
+S=${1/_/ }; END=(); [ -n "$2" ] && END=(--end "${2/_/ }")
+/usr/bin/log show --start "$S" "${END[@]}" --predicate 'process == "loginwindow"' --style compact 2>/dev/null |
+  grep -E 'keyPressed:\] \|[[:space:]]+View|loginPressed|Attempt #|uthorization (succeeded|failed)|INCORRECT|return in secure|showPasswordFieldMakingFirstResponder|hidePasswordField\] \||Clearing password field|Event: (Will|Did) (Sleep|Wake)|kAELockScreenEvent|_numFailedAuthAttempts|timeout timer fired' |
+  sed -E 's/^[0-9-]+ ([0-9:.]+) [A-Za-z]+ +loginwindow\[[^]]*\] \[[^]]*\] /\1 /' | cut -c1-170
+echo "lw-log: end"
+EOF
+}
+
+# u01-tight VK DELAY ROW [click]: U-01's measurement (rig/u01tight.sh runs inside the office). Lock, wait DELAY s
+# (3 = display awake; 45 = the lock UI has idled and the display slept), post candidate VK alone through the probe's
+# wake op (or the click tool with "click", or nothing with VK "none" as the control), then 0.8 s later ONE letter key
+# through the click tool as the diagnostic. loginwindow logs "keyPressed ... View is hidden password field length = 0"
+# for a key that reaches its reveal handler and nothing for a key the already-revealed field takes itself, so a
+# candidate reveals the field only if the diagnostic letter leaves no such line. The letter is deleted and is never
+# followed by Return; the public password then unlocks the VM through unlock-admin.
+cmd_u01_tight() {
+  [ $# -ge 3 ] || die "usage: u01-tight VK DELAY ROW [click]"
+  mkdir -p "$PHASE_DIR/evidence"
+  { vmsh "$1" "$2" "${4:-probe}" < "$HERE/u01tight.sh" | scrub; cmd_unlock_admin; } 2>&1 | tee "$PHASE_DIR/evidence/$3.txt"
+}
+
+# office-now: the office's local time as lw-log wants it.
+cmd_office_now() { vm "date '+%Y-%m-%d %H:%M:%S'"; }
+
+# unlock-try KIND DUR ROW: on the home viewer, type the password KIND into the Unlock panel by page script (native
+# setter plus an input event, as typing does), click the Unlock button with a real WebDriver click, then read the
+# panel's status line four times a second for DUR seconds. At the same time the office's stats route is read twice a
+# second. Afterwards loginwindow's lines and the new audit lines are printed. Saved as evidence/ROW.txt.
+cmd_unlock_try() {
+  [ $# -eq 3 ] || die "usage: unlock-try KIND DUR ROW"
+  local kind=$1 dur=$2 row=$3 pw t0 tmp ac
+  pw=$(pw_for "$kind")
+  mkdir -p "$PHASE_DIR/evidence"
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/p23-try.XXXXXX")
+  t0=$(cmd_office_now)
+  ac=$(vm 'wc -l < "$HOME/Library/Application Support/portty/desktop-audit.jsonl" 2>/dev/null || echo 0' | tr -d ' ')
+  {
+    echo "unlock-try $row: kind=$kind dur=${dur}s office-start=$t0"
+    echo "office before: $(cmd_lockstate)"
+    ( vmsh "$dur" <<'EOF' > "$tmp/office.txt"
+SOCK="$HOME/Library/Application Support/portty/daemon.sock"
+prev=""
+for i in $(seq 1 $(( $1 * 2 ))); do
+  s=$(curl -s -m 3 --unix-socket "$SOCK" http://localhost/desktop/stats | jq -c '{unlock, viewers}')
+  l=$(curl -s -m 3 --unix-socket "$SOCK" http://localhost/desktop | jq -r .locked)
+  cur="locked=$l $s"
+  [ "$cur" != "$prev" ] && echo "t=$(echo "$i" | awk '{printf "%.1f", ($1-1)/2}') $cur"
+  prev=$cur
+  sleep 0.5
+done
+EOF
+    ) &
+    local bg=$!
+    vm2sh "$pw" "$dur" <<'EOF' | scrub
+PW=$1; DUR=$2
+D=http://127.0.0.1:4444; SID=$(cat ~/p19/safari.sid)
+find_el() { curl -s -m 20 -X POST $D/session/$SID/element -d "$(jq -nc --arg x "$1" '{using:"xpath",value:$x}')" | jq -r '.value|objects|to_entries[]|select(.key|startswith("element-"))|.value'; }
+now() { perl -MTime::HiRes=time -e 'printf q(%.2f), time'; }
+PANEL='const g=[...document.querySelectorAll("[role=group]")].find(e=>/Unlock This Mac/.test(e.innerText||"")); if(!g) return "panel absent; notice: "+((document.body.innerText.replace(/\s+/g," ").match(/Mac unlocked[^.]*\.?/)||["none"])[0]); const st=g.querySelector(".desktop-unlock__status"); return st?st.innerText.replace(/\s+/g," "):"no status"'
+PBODY=$(jq -nc --arg s "$PANEL" '{script:$s,args:[]}')
+panel() { curl -s -m 8 -X POST $D/session/$SID/execute/sync -d "$PBODY" | jq -r '.value|tostring'; }
+T0=$(now)
+echo "home before: $(panel)"
+eid=$(find_el '//input[@aria-label="Mac password"]')
+[ -n "$eid" ] || { echo "home: no Mac password field in the page"; exit 3; }
+FILL=$(jq -nc --arg id "$eid" --arg pw "$PW" '{script:"const el=arguments[0]; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,\"value\").set.call(el,arguments[1]); el.dispatchEvent(new Event(\"input\",{bubbles:true})); return \"set\"",args:[{"element-6066-11e4-a52e-4f735466cecf":$id},$pw]}')
+curl -s -m 15 -X POST $D/session/$SID/execute/sync -d "$FILL" | jq -c '.value' | sed 's/^/home fill: /'
+unset FILL PW
+bid=$(find_el '//button[normalize-space()="Unlock"]')
+[ -n "$bid" ] || { echo "home: no Unlock button"; exit 3; }
+tc=$(now)
+curl -s -m 20 -X POST $D/session/$SID/element/$bid/click -d '{}' | jq -c '.value' | sed 's/^/home click: /'
+prev=""
+end=$(perl -e "print $tc + $DUR")
+while [ "$(perl -e "print (($(now) < $end) ? 1 : 0)")" = 1 ]; do
+  cur=$(panel)
+  [ "$cur" != "$prev" ] && echo "t=+$(perl -e "printf q(%.2f), $(now) - $tc") panel: $cur"
+  prev=$cur
+  sleep 0.2
+done
+exit 0
+EOF
+    wait "$bg" 2>/dev/null || true
+    echo "office transitions:"; cat "$tmp/office.txt" | scrub
+    echo "loginwindow:"; cmd_lw_log "$t0"
+    echo "new audit lines:"
+    # Only the event, mode, reason and the key names of each line: the lines also name the viewer (a person), which
+    # never goes into evidence.
+    vm "tail -n +$((ac + 1)) \"\$HOME/Library/Application Support/portty/desktop-audit.jsonl\" 2>/dev/null | jq -c '{ts, event, mode, reason, keys: keys}'" | scrub
+    echo "office after: $(cmd_lockstate)"
+  } 2>&1 | tee "$PHASE_DIR/evidence/$row.txt"
+  rm -rf "$tmp"
+}
+
 sub=${1:-}
 [ $# -gt 0 ] && shift
 case "$sub" in
@@ -376,6 +546,20 @@ case "$sub" in
   ax-home) cmd_ax_home "$@" ;;
   ax-safari) cmd_ax_safari "$@" ;;
   shape) cmd_shape "$@" ;;
+  lock) cmd_lock ;;
+  unlock-admin) cmd_unlock_admin ;;
+  lockstate) cmd_lockstate ;;
+  wake) cmd_wake "$@" ;;
+  lw-log) cmd_lw_log "$@" ;;
+  u01-tight) cmd_u01_tight "$@" ;;
+  office-now) cmd_office_now ;;
+  unlock-try) cmd_unlock_try "$@" ;;
+  panel) cmd_js "${1:-home}" unlockpanel ;;
+  audit-dump) bash "$P22" audit-dump "$@" ;;
+  guest-open) bash "$P22" guest-open ;;
+  guest-text) bash "$P22" guest-text ;;
+  guest-close) bash "$P22" guest-close ;;
+  stand-in-input) bash "$P22" stand-in-input "$@" ;;
   p22) bash "$P22" "$@" ;;
   p20) bash "$P20" "$@" ;;
   p19) bash "$P19" "$@" ;;

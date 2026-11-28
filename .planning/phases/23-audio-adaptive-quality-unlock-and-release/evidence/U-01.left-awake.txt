@@ -1,0 +1,5 @@
+window 2026-11-28 00:48:14 .. 2026-11-28 00:48:19 (vk=123 delay=3 how=probe)
+00:48:15.681 -[LWDefaultScreenLockUI keyPressed:] | 	 View is hidden password field length = 0
+00:48:15.681 -[LWDefaultScreenLockUI showPasswordFieldMakingFirstResponder:] | 	  showing password field, shouldMakeFirstResponder: 0
+00:48:15.681 -[LWDefaultScreenLockUI showPasswordFieldMakingFirstResponder:] | 	  showing password field, shouldMakeFirstResponder: 1
+unlock-admin: unlocked
