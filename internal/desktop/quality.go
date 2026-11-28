@@ -90,6 +90,7 @@ type viewerBWE struct {
 	now       func() time.Time
 	firstSent atomic.Int64 // unix nanos of the first outgoing packet; 0 before it
 	feedback  atomic.Bool  // a transport-cc report has come back
+	sent      atomic.Int64 // bytes sent, headers included
 }
 
 func newViewerBWE(e cc.BandwidthEstimator, now func() time.Time) *viewerBWE {
@@ -103,6 +104,7 @@ func (b *viewerBWE) AddStream(info *interceptor.StreamInfo, w interceptor.RTPWri
 		if b.firstSent.Load() == 0 {
 			b.firstSent.CompareAndSwap(0, b.now().UnixNano())
 		}
+		b.sent.Add(int64(h.MarshalSize() + len(p)))
 		return inner.Write(h, p, a)
 	})
 }
@@ -272,6 +274,24 @@ type qViewer struct {
 	slow   slowState
 	loss   float64 // the last receiver-report fraction lost, 0 to 1
 	noFB   bool    // no feedback as of the last tick
+
+	// sentBps is what the viewer was sent over the last whole second, measured
+	// from the byte count mark at markAt.
+	sentBps int
+	mark    int64
+	markAt  time.Time
+}
+
+// sentRate is what v was sent over the last whole second, in bits per second.
+// Until a second has been measured it is the ceiling, so the estimate counts as
+// it is. q.mu held.
+func (v *qViewer) sentRate(now time.Time) int {
+	if d := now.Sub(v.markAt); d >= time.Second {
+		n := v.bwe.sent.Load()
+		v.sentBps = int(float64(n-v.mark) * 8 / d.Seconds())
+		v.mark, v.markAt = n, now
+	}
+	return v.sentBps
 }
 
 // qualityController owns the policy state and applies it to the running source.
@@ -310,8 +330,9 @@ func newQualityController(m *Manager) *qualityController {
 
 // register starts counting viewer v's estimate.
 func (q *qualityController) register(v *viewer, bwe *viewerBWE) {
+	now := q.m.d.Now()
 	q.mu.Lock()
-	q.viewers[v.ID] = &qViewer{ws: v.ws, bwe: bwe, joined: q.m.d.Now()}
+	q.viewers[v.ID] = &qViewer{ws: v.ws, bwe: bwe, joined: now, sentBps: ceilingBps, markAt: now}
 	q.mu.Unlock()
 }
 
@@ -471,6 +492,17 @@ func (q *qualityController) decideLocked(now time.Time, pw, ph int, sized bool) 
 		default:
 			v.noFB = false
 			est = v.bwe.GetTargetBitrate()
+			// GCC learns only from what it is sent: a cut lands at 0.85 times what came
+			// back and a rise stops near 1.5 times it, never under its floor clamp. An
+			// estimate with room over what this viewer was really sent therefore says
+			// the encoder sent less, not that the link can take no more; read as a
+			// limit it held a clean viewer at the floor, told it slow and kept the
+			// target there (VM row Q-03). It counts as the ceiling. When the encoder
+			// fills its target this is decide's room rule, unchanged. Not while the
+			// screen is still: next to nothing is sent then, so estimates hold as they were.
+			if sent := v.sentRate(now); !q.still.still && float64(est) >= upRatio*float64(sent) {
+				est = ceilingBps
+			}
 		}
 		// Heavy loss in the viewer's own receiver reports is bad whatever the
 		// estimate says: GCC keeps only the last 250 packets of history, so a viewer
