@@ -25,7 +25,7 @@ reasoning_checkpoint:
     - "data: encoder output far under its target (VideoToolbox average bitrate, capture fps under CPU load) - evidenced by explore-heavy t=40"
   and_gate: "yes: the clean viewer is flagged only when (1) its sender is app-limited under ~590 kbps (shared target at the floor and/or encoder undershoot) AND (2) a delay transient cuts its GCC. Run b had (1) without a cut in the trap window. The fix removes the code half: an app-limited estimate is never read as a limit."
 
-next_action: VM re-run of Q-03 (three runs) and the explore-heavy-motion lone loopback viewer on a build containing commit 9be32f6a; see Resolution.vm_recheck
+next_action: Q-03 VM re-run PASSED (3 of 3) on 23.10.2; the lone-loopback finding 2 check did not (target sat at 501680 for 118 s); see vm_recheck_result at the end
 
 ## Symptoms
 
@@ -93,3 +93,4 @@ vm_recheck: "Q-03 three runs (200 kbit/s pipe on the relay viewer): office loopb
 prevention_note: "Why not caught: the shaped and policy tests used a source that sends exactly its target (loopback_shaped_test.go loadSource) and stub estimates, so an app-limited sender, where GCC's estimate is pinned to what was sent, was never exercised. Recurrence guard: internal/desktop/quality_policy_test.go TestQuality_CleanViewerNotSlowBesideASlowOne and TestQuality_CleanViewerClimbsBackFromTheFloor (encoder at 60 percent of target, real viewerBWE byte path)."
 oracle_type: derived (DESK-07 contract: only the slow viewer is told slow; the target recovers for the others)
 files_changed: [internal/desktop/quality.go, internal/desktop/quality_policy_test.go]
+vm_recheck_result: "2026-11-28, build 23.10.2 (d11e1811). Q-03 three runs PASS (evidence/Q-03-rerun.txt): office loopback page slow false in every sample (0 of 110 per run), quality.slow never 2, slow-state lines only for the shaped viewer, target left 500000 while the shaped viewer was slow (best 561282 to 2836967 in about 30 s; in two runs climbs were cut back to about 500000 every 20 to 30 s), home chip shown and cleared 13 to 31 s after the pipe was removed. Finding 2 check NOT passed (evidence/Q-03-lone.stats): lone loopback viewer, heavy motion, no pipe: target climbed 1.15 M to 8 M in 47 s, then after two cuts sat at exactly 501680 for 118 s to the end of the run (step 1, slow 0, video lost 0, framesDropped 0, jitter buffer 110 to 174 ms, guest CPU 13 to 33 percent idle). Left open in place: the clean-viewer slow flag is fixed, but a clean lone viewer can still sit at the floor for minutes after a cut without being slow; next step is to read why no increase decision is taken at 501680 (est vs 1.2 x sent while the encoder fills about the floor)."

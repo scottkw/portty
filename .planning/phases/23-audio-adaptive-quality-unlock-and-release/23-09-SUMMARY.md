@@ -118,6 +118,19 @@ None beyond the plan's register: the new route is daemon-socket only (T-23-23), 
 
 portty-test runs build 23.9.0 (commit 98ca0390, daemon pid 11018), always-available desktop on, no viewer connected, Terminal quit, no dummynet pipe, pf disabled. portty-test-2 has build 23.9.0 in /Applications (Portty GUI quit after T-01, not running), `~/p22/axp22` and `~/p22/key` installed, Safari and Chrome closed, pf disabled, `dnctl list` empty. Neither VM was stopped or restarted; coreaudiod in portty-test was restarted once on purpose (A-03). The daemon showed 1171 goroutines with nobody connected at the end (finding 4).
 
+## Re-runs on build 23.10.2 (2026-11-28, HEAD `d11e1811`)
+
+After the fixes for the Q-03 floor trap (`9be32f6a`), the silent audio stall (`4c29e9db`), the goroutine leak (`2e6d4e29`) and the DTLS-closed viewer (`e4eb9f23`, `5fd2cde7`), rows Q-03, Q-04 and A-03 were run again in the VMs and an idle goroutine check was added. Details and evidence are in 23-VM-CHECKS.md (rows and "Re-run findings").
+
+| Check | Result | One line |
+|-------|--------|----------|
+| Q-03 | PASS (was FAIL) | 3 of 3 runs: the loopback page never showed the chip (0 of 110 samples each), quality.slow never 2, slow-state log lines only for the shaped viewer; the target climbed off the floor while it was slow (best 561282 to 2836967) |
+| Q-04 | PASS | 1.13 s on 23.10.2 (poll 4, recorded as longer than 1 s); 0.71 s and 1.01 s on build 23.10.3, which another session installed mid-row |
+| A-03 | PASS (was PARTIAL) | `audio failed` 4.2 s after the coreaudiod kill, audio-only restart, `audio recovered` 0.57 s later; video, viewers 1 and the capture run untouched |
+| G-idle | flat | 21 goroutines at t=0, 19 from 1 to 10 min, no viewer, GUI closed |
+
+Still open: a lone clean loopback viewer sat at exactly 501680 for 118 s after two cuts (no loss, not told slow): finding 2 is narrowed but not gone.
+
 ## Self-Check: PASSED
 
 Verified present: `internal/desktop/stats.go`, `internal/daemon/desktop_stats_test.go`, `rig/p23-rig.sh`, `rig/js/hook.js`, `rig/js/pcstats.js`, `rig/js/levels.js`, `23-VM-CHECKS.md`, the evidence files named in its table; commits `98ca0390`, `e9372876`, `4b3610f5`, `97fb6347` are ancestors of HEAD. `bash tests/check-brand.sh` is clean.
