@@ -51,12 +51,34 @@ func usedAt(idle time.Duration) screencap.PhysicalReading {
 }
 
 // relockRig is an unlockRig with a real audit file and runtime state file under
-// one temp directory, a physical-input fake and tap counters.
+// one temp directory, a physical-input fake, tap counters and an input bridge
+// whose Ctrl+Cmd+Q locks the fake Mac.
 type relockRig struct {
 	*unlockRig
 	dir           string
 	phys          *physFake
+	keys          *macKeys
 	starts, stops atomic.Int32
+}
+
+// macKeys is the relock rig's input bridge: the package's fake bridge, where a
+// Ctrl+Cmd+Q press locks the fake Mac the way macOS does, unless the test made
+// chords get lost (RL-01r: load and a busy app in front) or every post fail.
+type macKeys struct {
+	*fakeInputBridge
+	locked     *atomic.Bool
+	lost, fail atomic.Bool
+}
+
+func (k *macKeys) PostKey(vk uint16, down bool, flags uint64, repeat bool) error {
+	if k.fail.Load() {
+		return errors.New("posting refused")
+	}
+	const both = screencap.FlagControl | screencap.FlagCommand
+	if vk == 0x0C && down && flags&both == both && !k.lost.Load() {
+		k.locked.Store(true)
+	}
+	return k.fakeInputBridge.PostKey(vk, down, flags, repeat)
 }
 
 func newRelockRig(t *testing.T, mod func(*unlockRig, *desktop.Deps)) *relockRig {
@@ -72,6 +94,8 @@ func newRelockRigIn(t *testing.T, dir string, mod func(*unlockRig, *desktop.Deps
 	}
 	t.Cleanup(func() { _ = a.Close() })
 	rr.unlockRig = newUnlockRigWith(t, func(r *unlockRig, d *desktop.Deps) {
+		rr.keys = &macKeys{fakeInputBridge: r.fi, locked: &r.locked}
+		d.Input = rr.keys
 		d.ConfigDir = dir
 		d.Physical = rr.phys.read
 		d.StartTap = func() error { rr.starts.Add(1); return nil }
@@ -223,6 +247,7 @@ func TestRelock_Tracer(t *testing.T) {
 	rr.requireNoChord(t, "29 s after the last viewer left")
 	rr.advanceAndPoll(time.Second)
 	rr.requireChord(t)
+	rr.advanceAndPoll(time.Second) // the next pass reads the Mac locked
 
 	if got := rr.auditEvents(t); !slices.Equal(got, []string{"unlocked", "relocked"}) {
 		t.Fatalf("audit events %v, want unlocked then relocked", got)
@@ -336,6 +361,7 @@ func TestRelock_FailedJoinsDoNotRestartTheGrace(t *testing.T) {
 	}
 	rr.advanceAndPoll(time.Second)
 	rr.requireChord(t)
+	rr.advanceAndPoll(time.Second) // the next pass reads the Mac locked
 	if got := rr.auditEvents(t); !slices.Equal(got, []string{"unlocked", "relocked"}) {
 		t.Fatalf("audit events %v, want unlocked then relocked", got)
 	}
@@ -434,6 +460,7 @@ func TestRelock_UnhealthyTapLocks(t *testing.T) {
 	rr.phys.set(usedAt(time.Second)) // healthy again, and input seen: the missing signal still decides
 	rr.advanceAndPoll(25 * time.Second)
 	rr.requireChord(t)
+	rr.advanceAndPoll(time.Second) // the next pass reads the Mac locked
 	if n := strings.Count(log.String(), "re-locking the Mac without a physical-input signal"); n != 1 {
 		t.Errorf("the no-signal line was logged %d times, want once:\n%s", n, log.String())
 	}
@@ -460,6 +487,7 @@ func TestRelock_TapStaysUpWhileArmed(t *testing.T) {
 	}
 	rr.advanceAndPoll(20 * time.Second)
 	rr.requireChord(t)
+	rr.advanceAndPoll(time.Second) // the next pass reads the Mac locked
 	rr.mgr.PollTapForTest()
 	if rr.stops.Load() != 1 {
 		t.Errorf("the tap was stopped %d times after the rule ended, want 1", rr.stops.Load())
@@ -494,6 +522,7 @@ func TestRelock_RestartResumes(t *testing.T) {
 		rr.requireNoChord(t, "29 s after the start")
 		rr.advanceAndPoll(time.Second)
 		rr.requireChord(t)
+		rr.advanceAndPoll(time.Second) // the next pass reads the Mac locked
 		if rr.persistedArmed(t) {
 			t.Error("the flag was not cleared after the lock")
 		}
@@ -567,30 +596,13 @@ func TestRelock_NotArmedByAnUnlockAtTheMac(t *testing.T) {
 	}
 }
 
-// failingKeys is an input bridge that can refuse every key post.
-type failingKeys struct {
-	*fakeInputBridge
-	fail atomic.Bool
-}
-
-func (f *failingKeys) PostKey(vk uint16, down bool, flags uint64, repeat bool) error {
-	if f.fail.Load() {
-		return errors.New("posting refused")
-	}
-	return f.fakeInputBridge.PostKey(vk, down, flags, repeat)
-}
-
 // TestRelock_ChordFailureStaysArmed: a Lock Screen chord that could not be
 // posted is not a locked Mac; the rule stays armed and tries again.
 func TestRelock_ChordFailureStaysArmed(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	fk := &failingKeys{}
-	rr := newRelockRig(t, func(r *unlockRig, d *desktop.Deps) {
-		fk.fakeInputBridge = r.fi
-		d.Input = fk
-	})
-	fk.fail.Store(true)
+	rr := newRelockRig(t, nil)
+	rr.keys.fail.Store(true)
 	v := rr.unlockAs(ctx, t)
 	rr.leave(t, v)
 
@@ -604,11 +616,169 @@ func TestRelock_ChordFailureStaysArmed(t *testing.T) {
 	if rr.mgr.InputCounters()["relock_failed"] == 0 {
 		t.Error("the failed post was not counted")
 	}
-	fk.fail.Store(false)
+	rr.keys.fail.Store(false)
 	rr.advanceAndPoll(time.Second)
 	rr.requireChord(t)
+	rr.advanceAndPoll(time.Second) // the next pass reads the Mac locked
 	if got := rr.auditEvents(t); !slices.Equal(got, []string{"unlocked", "relocked"}) {
 		t.Errorf("audit events %v after the retry", got)
+	}
+}
+
+// requireOpen fails unless, at when, the rule has posted wantPosts chords, is
+// still armed (in memory and on disk) and has not claimed relocked: the Mac
+// reads unlocked.
+func (rr *relockRig) requireOpen(t *testing.T, when string, wantPosts int) {
+	t.Helper()
+	if got := len(rr.chord()); got != 6*wantPosts {
+		t.Fatalf("%s: %d key events posted, want %d chords (%d)", when, got, wantPosts, 6*wantPosts)
+	}
+	if !rr.mgr.UnlockStats().RelockArmed || !rr.persistedArmed(t) {
+		t.Fatalf("%s: the rule ended on a Mac that reads unlocked", when)
+	}
+	if slices.Contains(rr.auditEvents(t), "relocked") || rr.mgr.InputCounters()["relocked"] != 0 {
+		t.Fatalf("%s: relocked was claimed on a Mac that reads unlocked", when)
+	}
+}
+
+// TestRelock_LostChordIsRetriedNotClaimed (RL-01r): a posted chord that did not
+// lock the Mac is not a re-lock. Nothing claims relocked while the Mac reads
+// unlocked; the chord is posted again 5 s apart, after three unconfirmed posts
+// the failure is logged, counted and audited as relock_failed (once), and the
+// rule keeps posting every 30 s until the Mac reads locked.
+func TestRelock_LostChordIsRetriedNotClaimed(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	log := captureLog(t)
+	rr := newRelockRig(t, nil)
+	v := rr.unlockAs(ctx, t)
+	rr.leave(t, v)
+	rr.keys.lost.Store(true)
+
+	rr.advanceAndPoll(30 * time.Second)
+	rr.requireOpen(t, "the grace's end", 1)
+	rr.advanceAndPoll(4 * time.Second)
+	rr.requireOpen(t, "4 s after the chord", 1)
+	rr.advanceAndPoll(time.Second)
+	rr.requireOpen(t, "5 s after the chord", 2)
+	rr.advanceAndPoll(5 * time.Second)
+	rr.requireOpen(t, "10 s after the chord", 3)
+	if got := rr.auditEvents(t); !slices.Equal(got, []string{"unlocked"}) {
+		t.Fatalf("audit events %v while chords are still being confirmed, want only unlocked", got)
+	}
+	rr.advanceAndPoll(5 * time.Second)
+	rr.requireOpen(t, "three unconfirmed chords", 4)
+	if got := rr.auditEvents(t); !slices.Equal(got, []string{"unlocked", "relock_failed"}) {
+		t.Fatalf("audit events %v, want unlocked then relock_failed", got)
+	}
+	if n := rr.mgr.InputCounters()["relock_failed"]; n != 1 {
+		t.Errorf("relock_failed counted %d times, want 1", n)
+	}
+	if n := strings.Count(log.String(), "the Mac did not lock after the re-lock keys"); n != 1 {
+		t.Errorf("the did-not-lock warning was logged %d times, want once:\n%s", n, log.String())
+	}
+
+	rr.advanceAndPoll(29 * time.Second)
+	rr.requireOpen(t, "29 s into the backoff", 4)
+	rr.advanceAndPoll(time.Second)
+	rr.requireOpen(t, "30 s into the backoff", 5)
+
+	rr.keys.lost.Store(false) // the load is gone: the next chord locks
+	rr.advanceAndPoll(30 * time.Second)
+	if got := len(rr.chord()); got != 36 {
+		t.Fatalf("%d key events, want 6 chords (36)", got)
+	}
+	rr.advanceAndPoll(time.Second)
+	if got := rr.auditEvents(t); !slices.Equal(got, []string{"unlocked", "relock_failed", "relocked"}) {
+		t.Fatalf("audit events %v, want unlocked, relock_failed, relocked", got)
+	}
+	if rr.mgr.UnlockStats().RelockArmed || rr.persistedArmed(t) {
+		t.Error("the rule is still armed on a Mac that reads locked")
+	}
+	rr.advanceAndPoll(time.Minute)
+	if got := len(rr.chord()); got != 36 {
+		t.Errorf("%d key events after the lock was confirmed, want no more chords (36)", got)
+	}
+}
+
+// TestRelock_LockReadErrorIsNotLocked: after the chord, a lock read that fails
+// is not a locked Mac, even when it comes with locked=true: no relocked line,
+// the rule stays armed and posts again; a clean locked read then ends it.
+func TestRelock_LockReadErrorIsNotLocked(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	rr := newRelockRig(t, nil)
+	v := rr.unlockAs(ctx, t)
+	rr.leave(t, v)
+
+	rr.advanceAndPoll(30 * time.Second)
+	rr.requireChord(t)
+	rr.fb.set(func() { rr.fb.lockErr = errors.New("session read failed") })
+	rr.advanceAndPoll(time.Second)
+	rr.requireOpen(t, "a failed lock read", 1)
+	rr.advanceAndPoll(4 * time.Second)
+	rr.requireOpen(t, "5 s of failed lock reads", 2)
+
+	rr.fb.set(func() { rr.fb.lockErr = nil })
+	rr.advanceAndPoll(time.Second)
+	if got := rr.auditEvents(t); !slices.Equal(got, []string{"unlocked", "relocked"}) {
+		t.Fatalf("audit events %v, want unlocked then relocked", got)
+	}
+	if rr.mgr.UnlockStats().RelockArmed {
+		t.Error("the rule is still armed on a Mac that reads locked")
+	}
+}
+
+// TestRelock_ViewerBackPausesTheRetries: an own-account viewer back after a
+// lost chord stops the re-posting; the rule stays armed and that viewer's
+// leaving starts a fresh 30 s grace.
+func TestRelock_ViewerBackPausesTheRetries(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	rr := newRelockRig(t, nil)
+	v := rr.unlockAs(ctx, t)
+	rr.leave(t, v)
+	rr.keys.lost.Store(true)
+
+	rr.advanceAndPoll(30 * time.Second)
+	rr.requireChord(t)
+	back := rr.ownUnlockViewerAs(ctx, t, relockWho)
+	rr.advanceAndPoll(time.Minute)
+	rr.requireOpen(t, "a viewer back on the unlocked Mac", 1)
+
+	rr.keys.lost.Store(false)
+	rr.leave(t, back)
+	rr.advanceAndPoll(29 * time.Second)
+	rr.requireOpen(t, "29 s after the viewer left again", 1)
+	rr.advanceAndPoll(time.Second)
+	rr.requireOpen(t, "30 s after the viewer left again", 2)
+	rr.advanceAndPoll(time.Second)
+	if got := rr.auditEvents(t); !slices.Equal(got, []string{"unlocked", "relocked"}) {
+		t.Fatalf("audit events %v, want unlocked then relocked", got)
+	}
+}
+
+// TestRelock_LockWithAViewerBackIsNotClaimed: after a lost chord, a lock that
+// comes while an own-account viewer is back (its own Lock Screen keys) ends the
+// rule but is not the rule's re-lock: no relocked line.
+func TestRelock_LockWithAViewerBackIsNotClaimed(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	rr := newRelockRig(t, nil)
+	v := rr.unlockAs(ctx, t)
+	rr.leave(t, v)
+	rr.keys.lost.Store(true)
+
+	rr.advanceAndPoll(30 * time.Second)
+	rr.requireChord(t)
+	rr.ownUnlockViewerAs(ctx, t, relockWho)
+	rr.locked.Store(true)
+	rr.advanceAndPoll(time.Second)
+	if got := rr.auditEvents(t); !slices.Equal(got, []string{"unlocked"}) {
+		t.Fatalf("audit events %v, want only unlocked (the viewer locked it, not the rule)", got)
+	}
+	if rr.mgr.UnlockStats().RelockArmed {
+		t.Error("the rule is still armed on a Mac that reads locked")
 	}
 }
 

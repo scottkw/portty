@@ -2754,6 +2754,14 @@ Rig: the owner's office MacBook Air as the shared Mac (Portty GUI and daemon, Sh
   - _Why not automatable:_ the wedge is an OS service state under extreme load (not reproducible on demand), and no test may run the encoder or signal a real process; the policy, its wiring and the lookup's guards are unit-tested (encoder_recovery_test.go, encoder_wedge_test.go, encoder_service_darwin_test.go).
   - _Source:_ .planning/debug/encoder-service-wedge.md, 23-VM-CHECKS.md notes item 9, evidence/U-load-encoder.txt.
 
+- **M-223** The re-lock after a remote unlock is written only once the Mac reads locked; a lost Lock Screen chord is posted again, never claimed (UNLK-01; debug relock-chord-unverified; VM row RL-01 under load or a real Mac).
+  1. On the office VM, unlock it through Portty from the home viewer (stats `relock_armed` true). Put the guest under load (about 100) with a busy Terminal window frontmost, as in RL-01r.
+  2. Close the home viewer and note the leave time. Poll GET /desktop `locked` and GET /desktop/stats `unlock.relock_armed` every 2 to 5 s, and tail daemon.log and desktop-audit.jsonl (on a vmdesktop build the probe's `counters` carry `relocked` and `relock_failed`).
+  PASS when: either the Mac reads `locked` true and only then the `relocked` audit line and `the Mac was locked again` log appear (at or after the first locked read, not before) with `relock_armed` false after; or, if the Mac stays unlocked, there is no `relocked` line, `relock_armed` stays true, the chord is re-posted (5 s apart, then every 30 s), and after three unconfirmed posts one `relock_failed` audit line and `the Mac did not lock after the re-lock keys` warning appear, until a later post locks it (then `relocked`). FAIL on a `relocked` line, or `relock_armed` false, while GET /desktop reads `locked` false.
+  - _Last run:_ not yet run (fix not deployed to a VM).
+  - _Why not automatable:_ whether macOS acts on a posted Ctrl+Cmd+Q depends on WindowServer load and the frontmost app; no test may post input or lock the host. The confirm, retry and audit rules are unit-tested on the fake clock (relock_test.go `TestRelock_LostChordIsRetriedNotClaimed`, `TestRelock_LockReadErrorIsNotLocked`, `TestRelock_ViewerBackPausesTheRetries`, `TestRelock_LockWithAViewerBackIsNotClaimed`).
+  - _Source:_ .planning/debug/relock-chord-unverified.md, 23-VM-CHECKS.md row RL-01r and note 23, evidence/EW-01r.txt.
+
 ---
 
 ## 6. Standing Convention
