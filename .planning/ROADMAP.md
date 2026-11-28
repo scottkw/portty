@@ -404,7 +404,7 @@ Plans:
 - [x] 23-09-PLAN.md — VM proof of audio and adaptive quality (checkpoint: VM permission clicks)
 
 **Wave 7** *(blocked on Wave 6 completion)*
-- [ ] 23-10-PLAN.md — VM proof of remote unlock (VM admin password only)
+- [x] 23-10-PLAN.md — VM proof of remote unlock (VM admin password only)
 
 **Wave 8** *(blocked on Wave 7 completion)*
 - [ ] 23-11-PLAN.md — SC5 VM rehearsal: two-build upgrade with live viewer and sessions, one-hour VM soak
