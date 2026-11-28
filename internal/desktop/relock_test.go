@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -13,6 +16,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/coder/websocket"
 
 	"github.com/scottkw/portty/internal/desktop"
 	"github.com/scottkw/portty/internal/screencap"
@@ -256,6 +261,126 @@ func TestRelock_ReturnCancels(t *testing.T) {
 	rr.requireNoChord(t, "29 s after the second leave")
 	rr.advanceAndPoll(time.Second)
 	rr.requireChord(t)
+}
+
+// dialToOffer connects an own-account viewer as ident through a bare route and
+// returns its socket and its offer message, not yet sent.
+func (rr *relockRig) dialToOffer(ctx context.Context, t *testing.T, ident desktop.Identity) (*websocket.Conn, []byte) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		rr.mgr.ServeDesktopViewerAs(r.Context(), c, func() bool { return true }, ident)
+	}))
+	t.Cleanup(srv.Close)
+	c, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.CloseNow() })
+	writeJSON(ctx, t, c, map[string]any{"type": "hello", "v": 1, "caps": map[string]int{"video": 1, "input": 1}})
+	readType(ctx, t, c, "hello")
+	offer, err := json.Marshal(map[string]any{"type": "offer", "sdp": newLoopbackClient(t).offer(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c, offer
+}
+
+// refused sends the offer and returns nil once the Manager closed the socket as
+// a failed join; by then the Manager has let the viewer go.
+func refused(ctx context.Context, c *websocket.Conn, offer []byte) error {
+	if err := c.Write(ctx, websocket.MessageText, offer); err != nil {
+		return err
+	}
+	for {
+		if _, _, err := c.Read(ctx); err != nil {
+			if st := websocket.CloseStatus(err); st != websocket.StatusInternalError {
+				return fmt.Errorf("the socket ended with %v (status %d), want a failed join", err, st)
+			}
+			return nil
+		}
+	}
+}
+
+// errWedged is the start error of a wedged encoder service (U-load).
+var errWedged = errors.New("screencap: starting the encoder failed (code -12902)")
+
+// TestRelock_FailedJoinsDoNotRestartTheGrace (U-load): with the encoder wedged,
+// own-account joins that fail at once neither restart nor disarm the grace; the
+// Mac locks 30 s after the last viewer that was really connected left, and the
+// relocked line names that viewer, not a device whose joins failed.
+func TestRelock_FailedJoinsDoNotRestartTheGrace(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	src := &sources{}
+	rr := newRelockRig(t, func(_ *unlockRig, d *desktop.Deps) { d.NewSource = src.factory() })
+	v := rr.unlockAs(ctx, t)
+	src.setStartErr(errWedged)
+	rr.leave(t, v)
+
+	phone := desktop.NewIdentity(42, "ken@example.com", "Ken", "home-phone", "nPHONE1", "100.64.0.10")
+	for _, d := range []time.Duration{10 * time.Second, 10 * time.Second, 9 * time.Second} {
+		rr.advanceAndPoll(d)
+		c, offer := rr.dialToOffer(ctx, t, phone)
+		if err := refused(ctx, c, offer); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rr.mgr.RelockPollForTest()
+	rr.requireNoChord(t, "29 s after the last viewer left")
+	if !rr.mgr.UnlockStats().RelockArmed {
+		t.Fatal("failed joins disarmed the re-lock rule")
+	}
+	rr.advanceAndPoll(time.Second)
+	rr.requireChord(t)
+	if got := rr.auditEvents(t); !slices.Equal(got, []string{"unlocked", "relocked"}) {
+		t.Fatalf("audit events %v, want unlocked then relocked", got)
+	}
+	if node := rr.audit(t)[1]["node_name"]; node != "home-air" {
+		t.Errorf("relocked line names node %v, want home-air (the last viewer that was connected)", node)
+	}
+}
+
+// TestRelock_JoinStillStartingDoesNotHoldOffTheLock: an own-account join whose
+// capture start is still in flight when the grace ends is not a viewer yet; the
+// Mac locks on time, and the start's later failure changes nothing.
+func TestRelock_JoinStillStartingDoesNotHoldOffTheLock(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	src := &sources{}
+	rr := newRelockRig(t, func(_ *unlockRig, d *desktop.Deps) { d.NewSource = src.factory() })
+	v := rr.unlockAs(ctx, t)
+	src.setStartErr(errWedged)
+	block := make(chan struct{})
+	entered := src.setBlock(block)
+	rr.leave(t, v)
+
+	rr.advanceAndPoll(25 * time.Second)
+	c, offer := rr.dialToOffer(ctx, t, relockWho)
+	done := make(chan error, 1)
+	go func() { done <- refused(ctx, c, offer) }()
+	select {
+	case <-entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the join's capture start did not begin")
+	}
+	rr.advanceAndPoll(5 * time.Second)
+	rr.requireChord(t)
+
+	close(block)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	rr.advanceAndPoll(time.Minute)
+	if got := len(rr.chord()); got != 6 {
+		t.Errorf("%d key events, want the one chord (6)", got)
+	}
+	if rr.mgr.UnlockStats().RelockArmed {
+		t.Error("the rule is still armed after it locked the Mac")
+	}
 }
 
 // TestRelock_PhysicalInputDisarms: a healthy tap that saw untagged input after

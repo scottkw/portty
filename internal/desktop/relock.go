@@ -46,13 +46,14 @@ type relockState struct {
 	resume  bool      // desktop-state.json said armed when this process started
 }
 
-// ownViewers counts the connected own-account viewers.
+// ownViewers counts the connected own-account viewers whose join worked; one
+// whose capture start is still in flight, or failed, is not a viewer yet.
 func (m *Manager) ownViewers() int {
 	m.vmu.Lock()
 	defer m.vmu.Unlock()
 	n := 0
 	for _, v := range m.viewers {
-		if v.Mode == ModeOwn {
+		if v.Mode == ModeOwn && v.counted {
 			n++
 		}
 	}
@@ -80,10 +81,18 @@ func (m *Manager) armRelock(at time.Time) {
 	_, _ = m.persist(func(rs *runtimeState) { rs.RelockArmed, rs.RelockSince = true, at })
 }
 
-// relockViewer is told when an own-account viewer joins or leaves. A return
-// cancels the grace; the last one leaving starts it.
+// relockViewer is told when an own-account viewer's join worked or it left. A
+// return cancels the grace; the last one leaving starts it. A join that failed
+// was never counted, so its leave neither restarts nor ends the grace (U-load).
 func (m *Manager) relockViewer(joined bool, v *viewer) {
 	if v.Mode != ModeOwn {
+		return
+	}
+	m.vmu.Lock()
+	was := v.counted
+	v.counted = joined
+	m.vmu.Unlock()
+	if !joined && !was {
 		return
 	}
 	now := m.d.Now()
@@ -95,7 +104,7 @@ func (m *Manager) relockViewer(joined bool, v *viewer) {
 		return
 	}
 	switch own := m.ownViewers(); {
-	case own > 0 || joined:
+	case own > 0:
 		rl.graceAt = time.Time{}
 	case rl.graceAt.IsZero():
 		rl.graceAt = now.Add(relockGrace)
