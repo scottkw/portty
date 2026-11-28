@@ -1,0 +1,45 @@
+unlock-seq U-04: steps=wrong1 wrong4 office-start=2026-11-28 01:29:47
+office before: lockstate: locked=true {"viewers":1,"own_viewers":1,"goroutines":66,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+step submit wrong1 (office clock check: panel before: Portty never saves it. Wrong tries count toward the Mac's own limit.)
+  fill: "set"
+  click: null
+  t=+0.10 panel: Unlocking…
+  t=+6.43 panel: Trying once more…
+  t=+11.52 panel: Unlock didn't work. Check the password and try again.
+step submit wrong4 (office clock check: panel before: Unlock didn't work. Check the password and try again.)
+  fill: "set"
+  click: null
+  t=+0.06 panel: Unlocking…
+  t=+0.30 panel: Unlock didn't work. Check the password and try again. Try again in 5 s You can try again in a few seconds
+end: Unlock didn't work. Check the password and try again. Try again in 5 s You can try again in a few seconds
+office transitions (office clock):
+01:29:47 locked=true {"unlock":{"state":"idle","failures":0,"relock_armed":false},"viewers":1}
+01:29:48 locked=true {"unlock":{"state":"unlocking","failures":0,"relock_armed":false},"viewers":1}
+01:29:54 locked=true {"unlock":{"state":"retrying","failures":0,"relock_armed":false},"viewers":1}
+01:29:59 locked=true {"unlock":{"state":"idle","failures":1,"relock_armed":false},"viewers":1}
+loginwindow:
+01:29:48.969 -[LWDefaultScreenLockUI keyPressed:] | 	 View is hidden password field length = 0
+01:29:48.969 -[LWDefaultScreenLockUI showPasswordFieldMakingFirstResponder:] | 	  showing password field, shouldMakeFirstResponder: 0
+01:29:48.969 -[LWDefaultScreenLockUI showPasswordFieldMakingFirstResponder:] | 	  showing password field, shouldMakeFirstResponder: 1
+01:29:50.976 -[LWDefaultScreenLockUI loginPressed:] | enter
+01:29:50.976 -[LWDefaultScreenLockUI loginPressed:] | 	 loginPressed, set _windowControllerActionInProgress = YES
+01:29:50.976 -[LWDefaultScreenLockUI loginPressed:] | 	 setEnabled:NO
+01:29:50.976 -[LWDefaultScreenLockUI loginPressed:] | 	 Attempt #: 1
+01:29:50.976 -[LWDefaultScreenLockUI loginPressed:] | 	 Detaching thread - checkAuth
+01:29:53.054 -[LWScreenLockAuthentication _authCopyRightsWithUsername:password:continuityHints:localAuthenticationHints:] | Screensaver authorization failed: -60005, look
+01:29:53.054 -[LWDefaultScreenLockUI authFailWithMessage:numFailedAttempts:] | enter. INCORRECT password
+01:29:56.076 -[LWDefaultScreenLockUI loginPressed:] | enter
+01:29:56.076 -[LWDefaultScreenLockUI loginPressed:] | 	 loginPressed, set _windowControllerActionInProgress = YES
+01:29:56.076 -[LWDefaultScreenLockUI loginPressed:] | 	 setEnabled:NO
+01:29:56.076 -[LWDefaultScreenLockUI loginPressed:] | 	 Attempt #: 2
+01:29:56.076 -[LWDefaultScreenLockUI loginPressed:] | 	 Detaching thread - checkAuth
+01:29:58.108 -[LWScreenLockAuthentication _authCopyRightsWithUsername:password:continuityHints:localAuthenticationHints:] | Screensaver authorization failed: -60005, look
+01:29:58.108 -[LWDefaultScreenLockUI authFailWithMessage:numFailedAttempts:] | enter. INCORRECT password
+01:30:28.110 -[LWDefaultScreenLockUI handleTimeOutTimer:] | enter. timeout timer fired
+01:30:37.543 -[LWDefaultScreenLockUI handleTimeOutTimer:] | enter. timeout timer fired
+01:31:07.547 -[LWDefaultScreenLockUI handleTimeOutTimer:] | enter. timeout timer fired
+01:31:09.042 -[LWDefaultScreenLockUI handleTimeOutTimer:] | enter. timeout timer fired
+lw-log: end
+new audit lines:
+{"ts":"2026-11-28T01:29:59Z","event":"unlock_failed","mode":"own","reason":"still_locked","keys":["display_name","event","login_name","mode","node_name","node_stable_id","reason","share_id","tailnet_ip","ts","user_id","v"]}
+office after: lockstate: locked=true {"viewers":1,"own_viewers":1,"goroutines":63,"unlock":{"state":"idle","failures":1,"relock_armed":false}}

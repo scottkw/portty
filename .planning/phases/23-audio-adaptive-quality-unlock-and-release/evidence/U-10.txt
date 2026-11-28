@@ -1,0 +1,72 @@
+U-10 re-lock after the last own-account viewer leaves
+t=+0.37 panel: Unlocking…
+t=+6.41 panel: Trying once more…
+t=+8.05 panel: panel absent; notice: none
+01:17:43.423 -[LWScreenLockAuthentication _authCopyRightsWithUsername:password:continuityHints:localAuthenticationHints:] | Screensaver authorization succeeded
+office after: lockstate: locked=false {"viewers":1,"own_viewers":1,"goroutines":65,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+closing the viewer and timing the lock state inside the office:
+close-viewer: done
+viewer closed (the loop's t=0 is about 4 s before this)
+office loop start epoch 1795828677.792
+t=0.0 locked=false viewers=1 own=1 armed=true
+t=0.9 locked=false viewers=1 own=1 armed=true
+t=1.8 locked=false viewers=1 own=1 armed=true
+t=2.7 locked=false viewers=1 own=1 armed=true
+t=3.6 locked=false viewers=1 own=1 armed=true
+t=4.4 locked=false viewers=0 own=0 armed=true
+t=5.5 locked=false viewers=0 own=0 armed=true
+t=6.5 locked=false viewers=0 own=0 armed=true
+t=7.4 locked=false viewers=0 own=0 armed=true
+t=8.4 locked=false viewers=0 own=0 armed=true
+t=9.3 locked=false viewers=0 own=0 armed=true
+t=10.2 locked=false viewers=0 own=0 armed=true
+t=11.0 locked=false viewers=0 own=0 armed=true
+t=11.9 locked=false viewers=0 own=0 armed=true
+t=12.8 locked=false viewers=0 own=0 armed=true
+t=13.6 locked=false viewers=0 own=0 armed=true
+t=14.5 locked=false viewers=0 own=0 armed=true
+t=15.4 locked=false viewers=0 own=0 armed=true
+t=16.2 locked=false viewers=0 own=0 armed=true
+t=17.2 locked=false viewers=0 own=0 armed=true
+t=18.0 locked=false viewers=0 own=0 armed=true
+t=18.9 locked=false viewers=0 own=0 armed=true
+t=19.8 locked=false viewers=0 own=0 armed=true
+t=20.7 locked=false viewers=0 own=0 armed=true
+t=21.7 locked=false viewers=0 own=0 armed=true
+t=22.7 locked=false viewers=0 own=0 armed=true
+t=23.6 locked=false viewers=0 own=0 armed=true
+t=24.5 locked=false viewers=0 own=0 armed=true
+t=25.4 locked=false viewers=0 own=0 armed=true
+t=26.4 locked=false viewers=0 own=0 armed=true
+t=27.3 locked=false viewers=0 own=0 armed=true
+t=28.2 locked=false viewers=0 own=0 armed=true
+t=29.2 locked=false viewers=0 own=0 armed=true
+t=30.2 locked=false viewers=0 own=0 armed=true
+t=31.4 locked=false viewers=0 own=0 armed=true
+t=32.6 locked=false viewers=0 own=0 armed=true
+t=33.6 locked=false viewers=0 own=0 armed=true
+t=34.5 locked=false viewers=0 own=0 armed=true
+t=35.5 locked=false viewers=0 own=0 armed=false
+t=37.3 locked=true viewers=0 own=0 armed=false
+t=38.7 locked=true viewers=0 own=0 armed=false
+t=39.6 locked=true viewers=0 own=0 armed=false
+t=40.7 locked=true viewers=0 own=0 armed=false
+t=41.6 locked=true viewers=0 own=0 armed=false
+t=42.4 locked=true viewers=0 own=0 armed=false
+t=43.3 locked=true viewers=0 own=0 armed=false
+t=44.2 locked=true viewers=0 own=0 armed=false
+t=45.1 locked=true viewers=0 own=0 armed=false
+t=46.0 locked=true viewers=0 own=0 armed=false
+t=46.9 locked=true viewers=0 own=0 armed=false
+t=47.8 locked=true viewers=0 own=0 armed=false
+t=48.7 locked=true viewers=0 own=0 armed=false
+t=49.5 locked=true viewers=0 own=0 armed=false
+t=50.4 locked=true viewers=0 own=0 armed=false
+t=51.3 locked=true viewers=0 own=0 armed=false
+audit tail:
+2026-11-28T01:14:28Z share_stop guest share_stopped 32 
+2026-11-28T01:14:28Z leave guest share_stopped 32 HOME
+2026-11-28T01:14:54Z join own  0 HOME
+2026-11-28T01:17:48Z unlocked own  0 HOME
+2026-11-28T01:18:02Z leave own viewer_closed 0 HOME
+2026-11-28T01:18:33Z relocked own  0 HOME

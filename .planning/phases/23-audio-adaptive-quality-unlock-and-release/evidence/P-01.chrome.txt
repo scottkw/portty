@@ -1,0 +1,21 @@
+P-01 Chrome (portty-test-2): save-password bubble after a submit
+lockstate: lockstate: locked=true {"viewers":1,"own_viewers":1,"goroutines":69,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+field: hit role=AXTextField title=[Mac password] desc=[Mac password] value=[chars=0] mark=[] enabled=1 @479,589 206x28
+typed-five-keys
+field after typing: hit role=AXTextField title=[Mac password] desc=[Mac password] value=[chars=5] mark=[] enabled=1 @479,589 206x28
+return-pressed
+AX searches right after the submit:
+  find [Save password]: no match 
+  find [Update password]: no match 
+  find [Password Manager]: no match 
+  find [Passwords]: hit role=AXMenuItem title=[Passwords…] desc=[] value=[] mark=[] enabled=0 @0,720 0x0 
+  find [Never]: no match 
+  find [Save]: hit role=AXWindow title=[Save password?] desc=[] value=[] mark=[] enabled= @689,132 448x374 hit role=AXGroup title=[Save password?] desc=[] value=[] mark=[] enabled=1 @689,132 448x374 hit role=AXHeading title=[Save password?] desc=[Save password?] value=[] mark=[] enabled=1 @753,272 364x24 
+  find [Google Password Manager]: hit role=AXGroup title=[Passwords are saved to Google Password Manager on this device.] desc=[] value=[] mark=[] enabled=1 @709,471 408x20 hit role=AXLink title=[Google Password Manager] desc=[Google Password Manager] value=[] mark=[] enabled=1 @846,471 151x20 hit role=AXGroup title=[Passwords are saved to Google Password Manager on this device.] desc=[] value=[] mark=[] enabled=1 @709,471 408x20 
+  find [Strong password]: no match 
+AX searches 5.5 s after:
+  find [Save password]: hit role=AXWindow title=[Save password?] desc=[] value=[] mark=[] enabled= @689,132 448x374 hit role=AXGroup title=[Save password?] desc=[] value=[] mark=[] enabled=1 @689,132 448x374 
+  find [Password Manager]: hit role=AXGroup title=[Passwords are saved to Google Password Manager on this device.] desc=[] value=[] mark=[] enabled=1 @709,471 408x20 hit role=AXLink title=[Google Password Manager] desc=[Google Password Manager] value=[] mark=[] enabled=1 @846,471 151x20 
+  find [Never]: hit role=AXButton title=[Never] desc=[Never] value=[] mark=[] enabled=1 @709,404 99x36 hit role=AXButton title=[Never] desc=[Never] value=[] mark=[] enabled=1 @709,404 99x36 
+unlock panel: no match
+stats: lockstate: locked=false {"viewers":1,"own_viewers":1,"goroutines":62,"unlock":{"state":"idle","failures":1,"relock_armed":false}}

@@ -1,0 +1,36 @@
+F-late-success: a daemon unlock whose macOS authorization succeeded but was read as still locked (found during P-01, Chrome half)
+loginwindow, office clock 01:23:00 to 01:25:20 (lock at 01:23:10; the Chrome viewer submitted at about 01:24:00):
+01:23:10.362 _handleAppleEvent | Received a kAELockScreenEvent
+01:23:12.892 -[LWDefaultScreenLockUI hidePasswordField] | 	 not hidding password field, screenwatcher present
+01:23:13.366 -[LWScreenLock startUnlock:] |      _numFailedAuthAttempts = 0
+01:23:14.178 -[LWDefaultScreenLockUI hidePasswordField] | 	 not hidding password field, screenwatcher present
+01:23:44.283 -[LWDefaultScreenLockUI handleTimeOutTimer:] | enter. timeout timer fired
+01:24:00.578 -[LWDefaultScreenLockUI keyPressed:] | 	 View is hidden password field length = 0
+01:24:02.166 -[LWDefaultScreenLockUI loginPressed:] | enter
+01:24:02.166 -[LWDefaultScreenLockUI loginPressed:] | 	 loginPressed, set _windowControllerActionInProgress = YES
+01:24:02.166 -[LWDefaultScreenLockUI loginPressed:] | 	 setEnabled:NO
+01:24:02.167 -[LWDefaultScreenLockUI loginPressed:] | 	 Attempt #: 1
+01:24:02.167 -[LWDefaultScreenLockUI loginPressed:] | 	 Detaching thread - checkAuth
+01:24:04.470 -[LWScreenLockAuthentication _authCopyRightsWithUsername:password:continuityHints:localAuthenticationHints:] | Screensaver authorization succeeded
+01:24:07.593 -[LWDefaultScreenLockUI keyPressed:] | 	 View is hidden password field length = 0
+01:24:07.594 -[LWDefaultScreenLockUI keyPressed:] | 	 View is hidden password field length = 0
+01:24:07.594 -[LWDefaultScreenLockUI keyPressed:] | 	 return in secure textfield
+01:24:07.594 -[LWDefaultScreenLockUI loginPressed:] | enter
+01:24:07.594 -[LWDefaultScreenLockUI loginPressed:] | 	 loginPressed, set _windowControllerActionInProgress = YES
+01:24:07.594 -[LWDefaultScreenLockUI loginPressed:] | 	 setEnabled:NO
+01:24:07.594 -[LWDefaultScreenLockUI loginPressed:] | 	 Attempt #: 1
+01:24:07.594 -[LWDefaultScreenLockUI loginPressed:] | 	 Detaching thread - checkAuth
+01:24:11.519 -[LWScreenLockAuthentication _authCopyRightsWithUsername:password:continuityHints:localAuthenticationHints:] | Screensaver authorization failed: -60005, look
+01:24:11.519 -[LWDefaultScreenLockUI authFailWithMessage:numFailedAttempts:] | enter. INCORRECT password
+lw-log: end
+audit lines in that window (the daemon's own account of the submit):
+2026-11-28T01:22:12Z join own  0 HOME
+2026-11-28T01:22:26Z unlocked own  0 HOME
+2026-11-28T01:22:53Z leave own viewer_closed 0 HOME
+2026-11-28T01:23:05Z join own  0 HOME
+2026-11-28T01:24:11Z unlock_failed own still_locked 0 HOME
+2026-11-28T01:24:26Z leave own viewer_closed 0 HOME
+2026-11-28T01:24:37Z join own  0 HOME
+state now, about a minute after the last viewer left:
+lockstate: locked=false {"viewers":0,"own_viewers":0,"goroutines":37,"unlock":{"state":"idle","failures":1,"relock_armed":false}}
+Reading: loginPressed at 01:24:02.166, 'Screensaver authorization succeeded' at 01:24:04.470 (2.3 s; the successes in U-02, U-03 and U-10 took 0.35 s to 0.4 s). The daemon's check window is 3 s after Return, so it read still locked, retyped the password at 01:24:07.59 (the lock UI was still up: 'return in secure textfield', Attempt 1, authorization failed -60005, INCORRECT password), and reported unlock_failed / still_locked. The Mac WAS unlocked by the first typing. failures=1 and relock_armed=false: no re-lock was armed, and the Mac stayed unlocked with no viewer connected.

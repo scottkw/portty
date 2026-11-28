@@ -1,0 +1,14 @@
+sentinels checked: 5
+sentinel 1: daemon.log=0 rotated-daemon-logs=0 desktop-audit.jsonl=0 unified-log(Portty process)=0 unified-log(any process, message text)=0
+sentinel 2: daemon.log=0 rotated-daemon-logs=0 desktop-audit.jsonl=0 unified-log(Portty process)=0 unified-log(any process, message text)=0
+sentinel 3: daemon.log=0 rotated-daemon-logs=0 desktop-audit.jsonl=0 unified-log(Portty process)=0 unified-log(any process, message text)=0
+sentinel 4: daemon.log=0 rotated-daemon-logs=0 desktop-audit.jsonl=0 unified-log(Portty process)=0 unified-log(any process, message text)=0
+sentinel 5: daemon.log=0 rotated-daemon-logs=0 desktop-audit.jsonl=0 unified-log(Portty process)=0 unified-log(any process, message text)=0
+audit file: mode=600 lines=276
+events unlocked / unlock_failed / relocked: relocked=3 unlock_failed=4 unlocked=19 
+modes on those lines: own=26 
+key sets on those lines:
+   3 {"event":"relocked","keys":["display_name","event","login_name","mode","node_name","node_stable_id","share_id","tailnet_ip","ts","user_id","v"]}
+   4 {"event":"unlock_failed","keys":["display_name","event","login_name","mode","node_name","node_stable_id","reason","share_id","tailnet_ip","ts","user_id","v"]}
+  19 {"event":"unlocked","keys":["display_name","event","login_name","mode","node_name","node_stable_id","share_id","tailnet_ip","ts","user_id","v"]}
+any line with a key naming length, password or secret: 0
