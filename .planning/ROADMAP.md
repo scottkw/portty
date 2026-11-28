@@ -410,7 +410,7 @@ Plans:
 - [x] 23-11-PLAN.md — SC5 VM rehearsal: two-build upgrade with live viewer and sessions, one-hour VM soak
 
 **Wave 9** *(blocked on Wave 8 completion)*
-- [ ] 23-12-PLAN.md — TESTING.md (Sections 2, 4, 5; M-NN at run time) and README
+- [x] 23-12-PLAN.md — TESTING.md (Sections 2, 4, 5; M-NN at run time) and README
 
 **Wave 10** *(blocked on Wave 9 completion)*
 - [ ] 23-13-PLAN.md — v2.0.0-rc.1 and rc.2 dry run on the Phase 18.1 pipeline (checkpoint: user pushes tags)

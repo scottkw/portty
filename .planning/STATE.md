@@ -30,9 +30,9 @@ See: .planning/PROJECT.md (updated 2026-11-24)
 ## Current Position
 
 Phase: 23 (Audio, Adaptive Quality, Unlock and Release) — EXECUTING
-Plan: 23-11 complete (H-00..H-03 PASS: two-build upgrade with live viewer and sessions, re-lock survives upgrade, one-hour soak flat); next 23-12 (wave 9)
+Plan: 23-12 complete (TESTING.md Phase 23 suites, traceability and Category BN M-224..M-234; README v2.0 review); next 23-13 (wave 10, rc.1 tag: needs the user)
 Status: Phase 22 complete 2026-11-27 (verification human_needed 5/7, live two-account and real-Mac items deferred; see Deferred Verification); Phase 23 executing
-Last activity: 2026-11-28 -- 23-11 hardening rehearsal PASS; re-run fixes merged: quality controller cycles 2-3 (pinned GCC estimate, target-driven ladder), re-lock counts only working joins, re-lock chord confirmed before relocked, encoder-service wedge recovery; P-01 accepted known limit
+Last activity: 2026-11-28 -- 23-12 records and README v2.0 review done; 23-11 hardening rehearsal PASS; re-run fixes merged: quality controller cycles 2-3 (pinned GCC estimate, target-driven ladder), re-lock counts only working joins, re-lock chord confirmed before relocked, encoder-service wedge recovery; P-01 accepted known limit
 
 ## Performance Metrics
 
