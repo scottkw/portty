@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -420,6 +421,168 @@ func TestQuality_LoneSlowViewerStillGetsTheFloor(t *testing.T) {
 	qt.run(6 * time.Second)
 	if got := qt.m.QualityStats(); got.Slow != 1 || got.TargetBps != floorBps {
 		t.Fatalf("stats %+v, want one slow viewer and the floor as target", got)
+	}
+}
+
+// gccEst is a GCC whose estimate the test sets.
+type gccEst struct {
+	fakeEst
+	rate atomic.Int64
+}
+
+func (g *gccEst) GetTargetBitrate() int { return int(g.rate.Load()) }
+
+// sentViewer is a viewer behind the real viewerBWE, so what it is sent is
+// measured as in production, over an estimate the test moves. Feedback has
+// arrived, so the estimate counts.
+type sentViewer struct {
+	est *gccEst
+	w   interceptor.RTPWriter
+}
+
+func (qt *qTest) sentViewer(t *testing.T, id ViewerID, est int) *sentViewer {
+	t.Helper()
+	g := &gccEst{}
+	g.rate.Store(int64(est))
+	bwe := newViewerBWE(g, qt.clk.Now)
+	w := bwe.AddStream(&interceptor.StreamInfo{}, interceptor.RTPWriterFunc(func(*rtp.Header, []byte, interceptor.Attributes) (int, error) { return 0, nil }))
+	if err := bwe.WriteRTCP([]rtcp.Packet{&rtcp.TransportLayerCC{}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	qt.q.register(&viewer{Viewer: Viewer{ID: id}}, bwe)
+	return &sentViewer{est: g, w: w}
+}
+
+// send is a quarter second of the shared encoder at bps.
+func (v *sentViewer) send(t *testing.T, bps int) {
+	t.Helper()
+	if _, err := v.w.Write(&rtp.Header{}, make([]byte, bps/8/4), nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// cleanGCC is the most pion's GCC may report for a viewer on a clean link that
+// was sent sent bits per second: from est it rises about 8 percent a second
+// (pion rate_controller.go increase) but never past 1.5 times what was
+// acknowledged (its additive branch's cap), and never under its minimum, the
+// floor (peer.go). On a clean link what is acknowledged is what was sent.
+func cleanGCC(est, sent int) int {
+	return min(max(min(int(float64(est)*1.0194), sent*3/2), floorBps), ceilingBps)
+}
+
+// encoderShare is the part of its target the encoder really sends. VideoToolbox
+// and a busy capture send well under it: in the VM the estimate fell from a
+// 1.42 Mbps target to the floor with no loss (explore-heavy t=40), which pion
+// does only when under 590 kbps was acknowledged.
+const encoderShare = 0.6
+
+// DESK-07 (VM row Q-03): B's link drops to 200 kbps and loses most of what it
+// is sent; A's link stays clean. Both are sent the one encoder's output, so
+// while B pulls the target to the floor A is sent under the floor and its own
+// GCC can show no more than its floor clamp. A must never be told slow, B must
+// be (once), and once B is out of the minimum the target climbs again for A.
+func TestQuality_CleanViewerNotSlowBesideASlowOne(t *testing.T) {
+	qt := newQTest(t)
+	a := qt.sentViewer(t, "a", ceilingBps)
+	b := qt.sentViewer(t, "b", ceilingBps)
+	bShaped := false
+	tick := func(d time.Duration) {
+		for e := time.Duration(0); e < d; e += 250 * time.Millisecond {
+			out := int(encoderShare * float64(qt.m.QualityStats().TargetBps))
+			a.send(t, out)
+			b.send(t, out)
+			a.est.rate.Store(int64(cleanGCC(int(a.est.rate.Load()), out)))
+			if bShaped {
+				b.est.rate.Store(floorBps) // GCC's minimum: it shows no less
+			} else {
+				b.est.rate.Store(int64(cleanGCC(int(b.est.rate.Load()), out)))
+			}
+			qt.q.tick()
+			qt.clk.Advance(250 * time.Millisecond)
+		}
+	}
+	tick(5 * time.Second)
+	if got := qt.m.QualityStats().TargetBps; got != ceilingBps {
+		t.Fatalf("target %d with two clean viewers, want the ceiling", got)
+	}
+
+	bShaped = true
+	qt.q.noteLoss("b", 0.6)
+	tick(60 * time.Second)
+	if got := qt.told("a"); len(got) != 0 {
+		t.Errorf("A, on a clean link, was told %v (DESK-07: only the slow viewer is told)", got)
+	}
+	if got := qt.told("b"); len(got) != 1 || !got[0] {
+		t.Errorf("B was told %v, want one slow true", got)
+	}
+	st := qt.m.QualityStats()
+	if st.Slow != 1 {
+		t.Errorf("QualityStats.Slow %d, want 1 (only B)", st.Slow)
+	}
+	if st.TargetBps <= 4_000_000 {
+		t.Errorf("target %d a minute after B went slow, want it climbing past 4 Mbps for A (B must not drag A down)", st.TargetBps)
+	}
+
+	// A still screen: next to nothing is sent and B's reports show no loss. That
+	// measures nothing, so B stays slow and nobody is told anything.
+	qt.q.mu.Lock()
+	qt.q.still.still = true
+	qt.q.mu.Unlock()
+	qt.q.noteLoss("b", 0)
+	qt.run(30 * time.Second)
+	if a, b := qt.told("a"), qt.told("b"); len(a) != 0 || len(b) != 1 {
+		t.Errorf("over a still screen A was told %v and B %v, want nothing new (B is still slow)", a, b)
+	}
+}
+
+// Finding 2 (the floor trap): a lone viewer on a clean link whose estimate was
+// cut to the floor by a short burst follows it down, and once its feedback is
+// good again it is never told slow and climbs back: the target past 4 Mbps and
+// the full picture within a minute. A real cut (under what it was sent) still
+// pulls the target down at once.
+func TestQuality_CleanViewerClimbsBackFromTheFloor(t *testing.T) {
+	qt := newQTest(t)
+	a := qt.sentViewer(t, "a", ceilingBps)
+	qt.m.noteSize(2560, 1600)
+	dip := false
+	tick := func(d time.Duration) int {
+		out := 0
+		for e := time.Duration(0); e < d; e += 250 * time.Millisecond {
+			out = int(encoderShare * float64(qt.m.QualityStats().TargetBps))
+			a.send(t, out)
+			if dip {
+				a.est.rate.Store(floorBps)
+			} else {
+				a.est.rate.Store(int64(cleanGCC(int(a.est.rate.Load()), out)))
+			}
+			qt.q.tick()
+			qt.clk.Advance(250 * time.Millisecond)
+		}
+		return out
+	}
+	tick(10 * time.Second)
+	dip = true
+	tick(2 * time.Second)
+	if got := qt.m.QualityStats().TargetBps; got != floorBps {
+		t.Fatalf("target %d after the estimate was cut to the floor, want it followed down to the floor", got)
+	}
+
+	dip = false
+	out := tick(60 * time.Second)
+	if got := qt.told("a"); len(got) != 0 {
+		t.Errorf("a viewer with good feedback was told %v", got)
+	}
+	st := qt.m.QualityStats()
+	if st.TargetBps <= 4_000_000 || st.Step != 0 {
+		t.Fatalf("a minute after feedback was good again: target %d at step %d, want past 4 Mbps at step 0 (stuck at the floor)", st.TargetBps, st.Step)
+	}
+
+	// A cut under what it is sent is congestion: the target follows it at once.
+	cut := int(0.85 * float64(out))
+	a.est.rate.Store(int64(cut))
+	qt.q.tick()
+	if got := qt.m.QualityStats().TargetBps; got != cut {
+		t.Fatalf("target %d after a cut to %d (85 percent of the %d sent), want it followed", got, cut, out)
 	}
 }
 
