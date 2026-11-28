@@ -1,0 +1,12 @@
+T-01 evidence (real Portty.app 23.9.0 in portty-test-2, Desktop tab on the office; AX through axp22 inside the VM)
+before: title=[Desktop · OFFICE] | sound item: role=AXButton title=[Unmute] | office stats: {"viewers":1,"state":"streaming","audio":"ok"}
+press: role=AXButton title=[Unmute] rc=0
+after AXPress Unmute: tab title=[Desktop · OFFICE, playing sound] | sound item: role=AXButton title=[Mute] 
+front: Portty pid=79322
+front: System Settings pid=39116
+0
+1795825225
+hidden for about 155 s (Cmd+H sent at 1795825225; Portty windows on screen: 0)
+office stats while hidden: {"viewers":0,"state":"idle"}
+AX while hidden, tab: title=[Desktop · OFFICE]
+after showing the window again (+10 s): office {"viewers":1,"state":"streaming"} | tab title=[Desktop · OFFICE, playing sound] | sound item role=AXButton title=[Mute] 

@@ -1,0 +1,10 @@
+Q-04 evidence (Safari viewer in portty-test-2 connected; Terminal line stream in portty-test stopped with pkill -x yes, nothing closed)
+still-timed: before the stop: {"viewers":1,"still":false,"step":2,"target_bps":500000}
+still-timed: motion stopped at office epoch 1795825147.412
+still-timed: still true 0.97 s after the stop (poll 4)
+still-timed: after: {"viewers":1,"still":true,"step":2,"target_bps":500000}
+--- second run
+still-timed: before the stop: {"viewers":1,"still":false,"step":3,"target_bps":500000}
+still-timed: motion stopped at office epoch 1795825161.154
+still-timed: still true 0.91 s after the stop (poll 4)
+still-timed: after: {"viewers":1,"still":true,"step":3,"target_bps":500000}
