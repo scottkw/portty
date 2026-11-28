@@ -12,6 +12,7 @@ rep.forEach((s) => {
 })
 const sdp = (pc.localDescription && pc.localDescription.sdp) || ''
 out.twcc_in_offer = /transport-wide-cc|transport-cc/.test(sdp)
+out.extmap_uris = [...new Set((sdp.match(/a=extmap:\d+ \S+/g) || []).map((l) => l.split(' ')[1]))]
 const rsdp = (pc.remoteDescription && pc.remoteDescription.sdp) || ''
 out.opus_stereo_in_answer = /opus\/48000\/2/.test(rsdp)
 const v = document.querySelector('video')

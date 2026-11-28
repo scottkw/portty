@@ -1,0 +1,9 @@
+A-03 evidence
+viewer before fault: {"status":"streaming","framesDecoded":534} audio recv 4554
+office clock: 1795823379.40
+audio-fault: coreaudiod pid before: 326
+audio-fault: coreaudiod pid after: 32231
+viewer after fault (+8 s): {"status":"streaming","framesDecoded":609} audio recv 4584
+viewer after fault (+18 s): {"status":"streaming","framesDecoded":673} audio recv 4584
+after closing the viewer and opening a new one: audio recv 60 then 118 (4 s later)
+["ok",1]

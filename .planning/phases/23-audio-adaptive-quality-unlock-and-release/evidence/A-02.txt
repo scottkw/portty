@@ -1,0 +1,18 @@
+A-02 evidence (fresh page, Safari, portty-test-2)
+fresh page element/audio: {"element":{"muted":true,"paused":false,"audioTracks":1},"audio_recv":1308}
+AX before click:          AXButton Title=Unmute Description=Unmute
+{"error":"element not interactable","message":"","stacktrace":""}
+click-label: clicked [Unmute]
+AX after click:          AXButton Title=Unmute Description=Unmute
+element/audio after click (1): {"element":{"muted":true,"paused":false,"audioTracks":1},"audio_recv":1458}
+element/audio after click (2, 3 s later): {"element":{"muted":true,"paused":false,"audioTracks":1},"audio_recv":1619}
+--- click through the bar's reveal zone (p20 safari-menu: pointer to the top-centre zone, then an element click)
+null
+safari-menu: clicked [Unmute]
+AX after click:          AXButton Title=Mute Description=Mute
+element/audio after click (1): {"element":{"muted":false,"paused":false,"audioTracks":1},"audio_recv":2415}
+element/audio after click (2, 3 s later): {"element":{"muted":false,"paused":false,"audioTracks":1},"audio_recv":2576}
+--- Chrome (portty-test-2, throwaway profile, web AX tree on); the page's own state is read through AX, scripts could not be run in Chrome's page world
+Chrome AX before: role=AXButton title=[Unmute] 
+press: role=AXButton title=[Unmute] rc=0
+Chrome AX after the press: role=AXButton title=[Mute] 

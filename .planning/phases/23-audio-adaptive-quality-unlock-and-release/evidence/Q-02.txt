@@ -1,0 +1,6 @@
+Q-02 evidence (derived from Q-02.stats, Q-02.viewer-home and Q-02.shape.txt; pipe on at guest epoch 1795823986, off at 1795824071, 270 s of samples)
+pre-pipe step (t=14): 2 (the DERP relay had already pushed the ladder down before the pipe); max step while shaped: 3 (reached by t=25, quality.slow 1, 'Slow connection' on the page from t=21)
+after the pipe was removed: min step 2 (1920 px long edge) at t=131, max target_bps 1726131, quality.slow back to 0 at t=115 (page chip cleared by t=111); the relay then pulled it back to step 3 and about 500000, as it does without any pipe
+viewer page over 270 samples: status streaming 270, reconnecting text 0; frameWidth 2560 x9, 1920 x21, 1280 x240; load origin 1795823959860/61 (one page, no reload)
+Safari AX tree at the end, count of lines containing Reconnecting: 0
+no pipe left: shape: dnctl list: []

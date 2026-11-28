@@ -32,12 +32,15 @@
 #   close-viewer WHO         end WHO's Safari session
 #   vstats WHO               the page's debug stats once
 #   js WHO NAME [MS]         run rig/js/NAME.js (an async function body) in WHO's viewer page; MS replaces MS
+#   vlog WHO SECS ROW        one line a second: status, frames, width, Reconnecting or Slow connection text, load origin
 #   hook WHO                 capture the page's RTCPeerConnection (window.__pc) through the debug poll
 #   pcstats WHO              receive-side counts, codec channels, transport-cc in the offer
 #   levels WHO MS            left and right energy of the received sound over MS ms
 #   page WHO                 title and visible text of the viewer page, scrubbed
 #   click-label WHO LABEL    click the button whose aria-label is LABEL (a real WebDriver element click)
 #   label-has WHO LABEL      yes|no: a button with that aria-label exists
+#   chrome-open              home: Chrome (throwaway profile, web AX tree on) on the desktop link (#debug)
+#   chrome-close             home: quit Chrome and remove its throwaway profile
 #   ax-safari [ROW]          home: Safari's accessibility tree, scrubbed (also saved as evidence/ROW.ax)
 # Shaping (home VM only, dummynet through pf anchor com.apple/p23, tailnet address resolved in the VM):
 #   shape on KBIT            a pipe of KBIT kbit/s on traffic from the office to the home VM
@@ -193,6 +196,23 @@ cmd_js() {
     who_run "$who" 'D=http://127.0.0.1:4444; SID=$(cat ~/p19/safari.sid); curl -s -m 120 -X POST $D/session/$SID/execute/async --data-binary @-' |
     jq -r '.value|tostring' | scrub
 }
+# vlog WHO SECS ROW: once a second for SECS seconds, inside WHO's VM, the viewer page's status, decoded frames,
+# frame width, whether its text holds Reconnecting or Slow connection, and the page's load time origin (a
+# reload would change it); saved as evidence/ROW.viewer-WHO.
+cmd_vlog() {
+  [ $# -eq 3 ] || die "usage: vlog WHO SECS ROW"
+  mkdir -p "$PHASE_DIR/evidence"
+  who_run "$1" bash -s -- "$2" <<'EOF' | scrub | tee "$PHASE_DIR/evidence/$3.viewer-$1"
+D=http://127.0.0.1:4444; SID=$(cat ~/p19/safari.sid)
+JS='const s=window.__desktopStats||{}; const t=document.body.innerText; return JSON.stringify({status:s.status,fd:s.framesDecoded,fw:s.frameWidth,reconnecting:/Reconnecting/.test(t),slow:/Slow connection/.test(t),origin:Math.round(performance.timeOrigin)})'
+BODY=$(jq -nc --arg s "$JS" '{script:$s,args:[]}')
+for i in $(seq 1 $1); do
+  echo "t=$i epoch=$(date +%s) $(curl -s -m 8 -X POST $D/session/$SID/execute/sync -d "$BODY" | jq -r '.value|tostring')"
+  sleep 1
+done
+exit 0
+EOF
+}
 cmd_hook() { cmd_js "$1" hook; }
 cmd_pcstats() { cmd_js "$1" pcstats; }
 cmd_levels() { [ $# -eq 2 ] || die "usage: levels WHO MS"; cmd_js "$1" levels "$2"; }
@@ -223,6 +243,25 @@ n=$(curl -s -m 20 -X POST $D/session/$SID/elements -d "$(jq -nc --arg x "$(print
 [ "$n" -gt 0 ] && echo yes || echo no
 EOF
 }
+
+# chrome-open: Chrome in the home VM with a throwaway profile and its web accessibility tree switched on, on the
+# desktop link with #debug (the link is read on the VM, never printed). Chrome's page scripts could not be driven:
+# AppleScript JavaScript runs in an isolated world (the page's own RTCPeerConnection is not visible), and a raw
+# DevTools socket client got no answer from Chrome's loopback HTTP endpoint. Chrome is therefore read through the
+# AX tree (ax-home) and through the daemon's stats route.
+cmd_chrome_open() {
+  vm2sh <<'REMOTE'
+pkill -x "Google Chrome" 2>/dev/null; sleep 2
+rm -rf /tmp/p23-chrome
+open -na "Google Chrome" --args --user-data-dir=/tmp/p23-chrome --force-renderer-accessibility \
+  --no-first-run --no-default-browser-check "$(cat ~/p19/link.txt)#debug"
+sleep 8
+echo "chrome-open: Chrome pid $(pgrep -x 'Google Chrome' | head -1)"
+exit 0
+REMOTE
+}
+
+cmd_chrome_close() { vm2 'pkill -x "Google Chrome"; sleep 1; rm -rf /tmp/p23-chrome; echo chrome-close: done'; }
 
 cmd_ax_home() {
   [ $# -ge 3 ] || die "usage: ax-home find|press|has BUNDLE WORDS"
@@ -300,12 +339,15 @@ case "$sub" in
   close-viewer) cmd_close_viewer "$@" ;;
   vstats) cmd_vstats "$@" ;;
   js) cmd_js "$@" ;;
+  vlog) cmd_vlog "$@" ;;
   hook) cmd_hook "$@" ;;
   pcstats) cmd_pcstats "$@" ;;
   levels) cmd_levels "$@" ;;
   page) cmd_page "$@" ;;
   click-label) cmd_click_label "$@" ;;
   label-has) cmd_label_has "$@" ;;
+  chrome-open) cmd_chrome_open ;;
+  chrome-close) cmd_chrome_close ;;
   ax-home) cmd_ax_home "$@" ;;
   ax-safari) cmd_ax_safari "$@" ;;
   shape) cmd_shape "$@" ;;
