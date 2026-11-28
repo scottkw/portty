@@ -239,6 +239,7 @@ type Deps struct {
 	Probe           func(ctx context.Context) (screencap.Permissions, error) // fresh-child permission read
 	Wake            <-chan wakewatch.Reason                                  // nil means wakewatch.Watch on the Manager's context
 	ApprovalStore   func(ctx context.Context) (time.Time, error)             // replayd's LastAlerted date, if readable
+	ResetEncoder    func() (pids []int, err error)                           // end this process's encoder service (screencap.ResetEncoderService)
 
 	// Unlock types a viewer's password at the lock screen; nil means
 	// screencap.NewUnlockBridge(), whose posting calls refuse under tests.
@@ -435,6 +436,7 @@ type Manager struct {
 	approaching  bool      // the approval record is 27 to 30 days old
 	lapseSeq     int       // approval lapses so far
 	lapseClaimed int       // the last lapse whose notification has a sender
+	enc          encoderRecovery
 
 	// pmu guards the power assertions (power.go); native calls run under it.
 	pmu        sync.Mutex
@@ -502,6 +504,9 @@ func NewManager(d Deps) (*Manager, error) {
 	}
 	if d.ApprovalStore == nil {
 		d.ApprovalStore = defaultApprovalStore
+	}
+	if d.ResetEncoder == nil {
+		d.ResetEncoder = screencap.ResetEncoderService
 	}
 	if d.Input == nil {
 		d.Input = screencap.NewInputBridge()
@@ -996,6 +1001,7 @@ func (m *Manager) startSource() error {
 	var cfgInfo screencap.SurfaceInfo
 	cfg.Surface, cfgInfo = m.currentSurface()
 	err := src.Start(sctx, cfg)
+	m.encoderOutcome(err, now)
 	resync := false
 	defer func() {
 		// After mu is released: viewers learn what the stream really shows.

@@ -109,6 +109,10 @@ var (
 	ErrPermissionDenied = errors.New("screencap: screen recording permission denied")
 	// ErrNoDisplay is ScreenCaptureKit error -3815 (no display to capture, e.g. asleep).
 	ErrNoDisplay = errors.New("screencap: no display")
+	// ErrEncoderStart is a Start whose VideoToolbox encoder could not be made
+	// (the error adds the OSStatus). A wedged encoder service returns it on
+	// every Start (U-load); the desktop Manager counts it to recover.
+	ErrEncoderStart = errors.New("screencap: starting the encoder failed")
 	// ErrRefusedInTest is returned by every real bridge under testing.Testing().
 	ErrRefusedInTest = errors.New("screencap: real capture refused in tests")
 	// ErrSurfaceUnsupported is returned for a surface the source cannot capture.
