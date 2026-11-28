@@ -407,7 +407,7 @@ Plans:
 - [x] 23-10-PLAN.md — VM proof of remote unlock (VM admin password only)
 
 **Wave 8** *(blocked on Wave 7 completion)*
-- [ ] 23-11-PLAN.md — SC5 VM rehearsal: two-build upgrade with live viewer and sessions, one-hour VM soak
+- [x] 23-11-PLAN.md — SC5 VM rehearsal: two-build upgrade with live viewer and sessions, one-hour VM soak
 
 **Wave 9** *(blocked on Wave 8 completion)*
 - [ ] 23-12-PLAN.md — TESTING.md (Sections 2, 4, 5; M-NN at run time) and README
