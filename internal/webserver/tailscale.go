@@ -73,6 +73,5 @@ func CheckHealth(ctx context.Context) TailscaleHealth {
 	if !tailnet.LiveAllowed() {
 		return TailscaleHealth{} // not connected (WR-07)
 	}
-	var lc local.Client
-	return checkHealth(ctx, lc.StatusWithoutPeers, realPrefsFunc(&lc))
+	return checkHealth(ctx, tailnet.LocalAPI.StatusWithoutPeers, realPrefsFunc(&tailnet.LocalAPI))
 }

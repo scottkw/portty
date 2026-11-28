@@ -87,14 +87,19 @@ func discoverPeers(ctx context.Context, fn statusFunc) ([]Peer, error) {
 	return peers, nil
 }
 
+// LocalAPI is the process's one tailscaled LocalAPI client; every call shares it.
+// Each local.Client owns an http.Transport, and tailscaled never closes an idle
+// connection, so a client per call stranded a socket and two goroutines per call
+// (23-09: +2 goroutines every 10 s desktop health poll).
+var LocalAPI local.Client
+
 // DiscoverPeers queries the local tailscaled daemon for online peers owned by
 // the user's own Tailscale account. ctx should carry a short timeout.
 func DiscoverPeers(ctx context.Context) ([]Peer, error) {
 	if !LiveAllowed() {
 		return nil, ErrLiveTailnetInTest
 	}
-	var lc local.Client
-	return discoverPeers(ctx, lc.Status)
+	return discoverPeers(ctx, LocalAPI.Status)
 }
 
 // IsPorttyProbeResponse reports whether a probe response comes from a running
