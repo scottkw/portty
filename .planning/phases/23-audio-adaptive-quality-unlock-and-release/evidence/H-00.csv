@@ -1,0 +1,3 @@
+ts,pid,rss_kb,footprint,fds,cpu,goroutines,viewers,state,audio,step,target_bps
+2026-11-28T07:10:41Z,60566,68144,24791808,44,3.0,65,1,streaming,ok,0,8000000
+2026-11-28T07:10:43Z,60566,68336,24988416,44,3.7,65,1,streaming,ok,0,8000000
