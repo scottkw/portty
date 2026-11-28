@@ -511,10 +511,13 @@ func (q *qualityController) decideLocked(now time.Time, pw, ph int, sized bool) 
 		// whose feedback arrives later than that (a flood into a slow link) yields
 		// no acknowledgments and an estimate that never moves.
 		lossy := v.loss > lossLimit
-		est := ceilingBps
+		// est is what the slow test reads (and the minimum when every viewer is
+		// slow), lim what limits the target while the viewer counts.
+		est, lim := ceilingBps, ceilingBps
 		switch {
 		case v.stub != nil:
 			est = v.stub()
+			lim = est
 			v.noFB = false
 		case v.bwe.noFeedback(now):
 			// GCC's estimate never moved, so it measures nothing: the viewer does not
@@ -524,25 +527,37 @@ func (q *qualityController) decideLocked(now time.Time, pw, ph int, sized bool) 
 			v.noFB = false
 			v.raw, v.cutting = v.bwe.GetTargetBitrate(), v.bwe.cutting()
 			sent := v.sentRate(now)
-			// GCC learns only from what it is sent. Once it has cut a few times at about
-			// the rate it is sent now, it rises additively and never past 1.5 times what
-			// came back in the last 500 ms, so with bursty screen content its estimate
-			// sits at or under what was sent though nothing is congested; read as a
-			// limit it held the target at the floor (VM row Q-03, lone viewer). So an
-			// estimate constrains only while GCC is cutting (its own congestion signal)
-			// or the viewer loses heavily (a full drop-tail queue shows no delay trend),
-			// and not even then with room over what this viewer was really sent. While
-			// the screen is still next to nothing is sent and nothing is measured: the
-			// estimate is the one the viewer last counted with.
+			// Slow test: the raw estimate unless it has room over what this viewer was
+			// really sent (GCC measures only what it is sent). Behind a slow drop-tail
+			// link GCC's delay controller is cutting only now and then (a full queue
+			// shows no delay trend) and NACK resends keep the receiver reports' loss low,
+			// but its loss controller holds the estimate under the floor between cuts
+			// (VM rows Q-02r and Q-03r4).
+			if q.still.still || float64(v.raw) < upRatio*float64(sent) {
+				est = v.raw
+			}
+			// Target limit: once GCC has cut a few times at about the rate it is sent
+			// now, it rises additively and never past 1.5 times what came back in the
+			// last 500 ms, so with bursty screen content its estimate sits at or under
+			// what was sent though nothing is congested; read as a limit it held the
+			// target at the floor (VM row Q-03, lone viewer). So for the minimum an
+			// estimate counts only while GCC is cutting (its own congestion signal) or
+			// the viewer loses heavily, and not even then with room over what it was
+			// sent. While the screen is still next to nothing is sent and nothing is
+			// measured: it is the one the viewer last counted with.
 			if !q.still.still {
 				v.held = v.raw
 				if !(v.cutting || lossy) || float64(v.raw) >= upRatio*float64(sent) {
 					v.held = ceilingBps
 				}
 			}
-			est = v.held
+			lim = v.held
 		}
-		bad, good := est <= floorBps || lossy, float64(est) > upRatio*floorBps && !lossy
+		// Under the floor, not at it: GCC's delay controller stops at floorBps
+		// (peer.go), where an app-limited clean viewer's estimate sits after any cut;
+		// only its loss controller goes lower. Not slow any more needs both readings.
+		bad := est < floorBps || lossy
+		good := !bad && float64(lim) > upRatio*floorBps
 		if v.noFB {
 			bad, good = lossy, !lossy
 		}
@@ -554,8 +569,8 @@ func (q *qualityController) decideLocked(now time.Time, pw, ph int, sized bool) 
 			lowestAll, lowAllID = est, id
 		}
 		if !v.slow.Slow {
-			if est <= lowest {
-				lowest, lowID = est, id
+			if lim <= lowest {
+				lowest, lowID = lim, id
 			}
 			counted++
 		}

@@ -384,6 +384,11 @@ func (qt *qTest) told(id ViewerID) []bool {
 	return append([]bool(nil), qt.slow[id]...)
 }
 
+// slowLinkBps is a slow link's estimate: under the floor, where only pion's loss
+// controller goes (its delay controller stops at the floor, which an app-limited
+// clean viewer reads after any cut).
+const slowLinkBps = 300_000
+
 // Edge, DESK-07 concurrency: viewer B sits below the floor, so after 3 s it is
 // left out of the minimum and told slow once, and the target is free to climb for
 // A. After 5 s back above the floor B counts again and is told it is not slow.
@@ -393,7 +398,7 @@ func TestQuality_SlowViewerIsLeftOutOfTheMinimum(t *testing.T) {
 	qt.viewer("b", ceilingBps)
 	qt.run(time.Second)
 
-	qt.setEst("b", floorBps)
+	qt.setEst("b", slowLinkBps)
 	qt.run(2 * time.Second)
 	if got := qt.m.QualityStats().TargetBps; got != floorBps {
 		t.Fatalf("target %d while B is under the floor but still counted, want the floor", got)
@@ -435,7 +440,7 @@ func TestQuality_SlowViewerIsLeftOutOfTheMinimum(t *testing.T) {
 // not the ceiling.
 func TestQuality_LoneSlowViewerStillGetsTheFloor(t *testing.T) {
 	qt := newQTest(t)
-	qt.viewer("b", floorBps)
+	qt.viewer("b", slowLinkBps)
 	qt.run(6 * time.Second)
 	if got := qt.m.QualityStats(); got.Slow != 1 || got.TargetBps != floorBps {
 		t.Fatalf("stats %+v, want one slow viewer and the floor as target", got)
@@ -773,6 +778,98 @@ func TestQuality_ConstrainedLinkStepsTheLadderDown(t *testing.T) {
 	}
 }
 
+// slowLinkGCC is what pion's GCC reports behind a slow drop-tail link (VM rows
+// Q-02r and Q-03r4, a dummynet pipe of 200 or 300 kbit/s with 30 slots, sent more
+// than it carries): the delay controller sees a FIFO that is full or draining,
+// with no growing trend, so it is mostly not cutting (state increase), while the
+// loss controller, which counts every transmission the transport-cc feedback names
+// lost and goes down to 100 kbps (the delay controller stops at the floor), holds
+// the estimate under the floor. Q-02r read 100k to 230k.
+func slowLinkGCC(n int) int { return 100_000 + n%8*16_000 }
+
+// DESK-07 (VM rows Q-03r4 and Q-02r, cycle 2 regression): a viewer behind a slow
+// link is told slow within 10 s of the pipe although GCC is cutting only now and
+// then and its receiver reports lose 10 percent (NACK resends fill the holes),
+// also when the screen is still as the pipe goes on (Q-02r read still on most
+// lines). Beside a clean viewer it is left out of the minimum, so the target
+// climbs for the clean one, which is never told; alone it gets the floor, not a
+// target that climbs between GCC's cuts over its link. Once the pipe is gone it is
+// told it is not slow again within 15 s, with its estimate pinned on the floor
+// clamp and, alone, nicked under it now and then by the loss controller while it
+// is sent less (Q-03-lone3 light: 457245 with 125279 sent).
+func TestQuality_SlowLinkIsToldSlowBetweenGCCCuts(t *testing.T) {
+	for _, lone := range []bool{false, true} {
+		qt := newQTest(t)
+		var a *sentViewer
+		if !lone {
+			a = qt.sentViewer(t, "a", ceilingBps)
+		}
+		b := qt.sentViewer(t, "b", ceilingBps)
+		phase, n, peak := 0, 0, 0 // before, behind and after the pipe; peak target 15 s on
+		tick := func(d time.Duration) {
+			for e := time.Duration(0); e < d; e += 250 * time.Millisecond {
+				still := lone && phase == 1 && n < 52 // the first 8 s of the pipe
+				qt.q.mu.Lock()
+				qt.q.still.still = still
+				qt.q.mu.Unlock()
+				out := int(encoderShare * float64(qt.m.QualityStats().TargetBps))
+				if still {
+					out = 0
+				}
+				if a != nil {
+					a.send(t, out)
+					a.est.rate.Store(int64(cleanGCC(int(a.est.rate.Load()), out)))
+				}
+				b.send(t, out)
+				b.est.cutting.Store(phase == 1 && n%120 == 0) // a delay cut every 30 s
+				switch phase {
+				case 0:
+					b.est.rate.Store(int64(cleanGCC(int(b.est.rate.Load()), out)))
+				case 1:
+					b.est.rate.Store(int64(slowLinkGCC(n)))
+				case 2:
+					b.est.rate.Store(floorBps) // the delay controller's clamp, not cutting
+					if lone && n%2 == 0 {
+						b.est.rate.Store(457_000)
+					}
+				}
+				if phase == 1 && n >= 80 {
+					peak = max(peak, qt.m.QualityStats().TargetBps)
+				}
+				n++
+				qt.q.tick()
+				qt.clk.Advance(250 * time.Millisecond)
+			}
+		}
+		tick(5 * time.Second)
+		phase = 1
+		qt.q.noteLoss("b", 0.10)
+		tick(10 * time.Second)
+		if got := qt.told("b"); len(got) != 1 || !got[0] {
+			t.Fatalf("lone=%v: B behind a slow link (estimate under the floor, GCC not cutting, 10 percent loss) was told %v 10 s after the pipe, want slow true", lone, got)
+		}
+		tick(50 * time.Second)
+		st := qt.m.QualityStats()
+		switch {
+		case lone && peak != floorBps:
+			t.Fatalf("lone slow viewer: target up to %d behind the pipe once it was slow, want the floor", peak)
+		case !lone && st.TargetBps <= 4_000_000:
+			t.Fatalf("target %d a minute after B went slow, want it climbing past 4 Mbps for A (B must not drag A down)", st.TargetBps)
+		case !lone && len(qt.told("a")) != 0:
+			t.Fatalf("A, on a clean link, was told %v", qt.told("a"))
+		case st.Slow != 1 || len(qt.told("b")) != 1:
+			t.Fatalf("lone=%v: Slow %d and B told %v while behind the pipe, want 1 and one slow true", lone, st.Slow, qt.told("b"))
+		}
+
+		phase = 2
+		qt.q.noteLoss("b", 0)
+		tick(15 * time.Second)
+		if got := qt.told("b"); len(got) != 2 || got[1] {
+			t.Fatalf("lone=%v: B was told %v 15 s after the pipe was removed, want slow true then slow false", lone, got)
+		}
+	}
+}
+
 // fakeEst is what GCC reports for a viewer that never sends feedback: its initial
 // rate, forever.
 type fakeEst struct{ rate int }
@@ -877,7 +974,7 @@ func TestQuality_KeyframeRequestsAreCoalescedAndSlowOnesIgnored(t *testing.T) {
 	}
 
 	// B goes slow; both viewers are now past their join window.
-	qt.setEst("b", floorBps)
+	qt.setEst("b", slowLinkBps)
 	qt.run(4 * time.Second)
 	if qt.m.QualityStats().Slow != 1 {
 		t.Fatal("B did not become slow")
