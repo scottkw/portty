@@ -8,6 +8,7 @@ package desktop
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"time"
@@ -137,6 +138,7 @@ func (m *Manager) audioOut(ctx context.Context, src screencap.AudioSource, done 
 			if !ok {
 				return
 			}
+			m.audioPkts.Add(1)
 			m.noteAudioOK()
 			m.writeAudio(clk.packetize(m.d.Now().Round(0), ap))
 		case err, ok := <-errs:
@@ -185,4 +187,57 @@ func (m *Manager) noteAudioOK() {
 	}
 	slog.Info("desktop: audio recovered")
 	m.pushIfChanged(context.Background())
+}
+
+// The audio stall watchdog (A-03). ScreenCaptureKit sends an audio buffer every
+// 20 ms even when the Mac is silent (R21 control run: 3-byte Opus packets), so a
+// display capture with no audio packet for audioStallAfter has lost its audio
+// without an error, as after a coreaudiod restart.
+const (
+	audioStallAfter = 3 * time.Second
+	audioRetryFirst = 5 * time.Second // the audio restart's backoff doubles from here
+	audioRetryMax   = time.Minute
+)
+
+var errAudioStalled = errors.New("no audio from the capture for " + audioStallAfter.String())
+
+// audioWatch is the audio stall watchdog's memory, guarded by Manager.tickMu.
+type audioWatch struct {
+	run   chan struct{} // the watched capture run's audioDone
+	seen  uint64        // Manager.audioPkts when it last moved
+	at    time.Time     // when it last moved, or the watch began
+	next  time.Time     // no audio restart before this
+	every time.Duration // the backoff after the last audio restart
+}
+
+// audioWatchStep is one state-loop step of the audio stall watchdog: no packet
+// for audioStallAfter makes audio failed and restarts the audio capture alone,
+// with backoff; the stream itself never restarts for audio (CONTEXT [Audio]).
+// The next packet clears the failure (audioOut). Progress is a packet count per
+// tick, so a wall-clock step while packets flow is no stall.
+func (m *Manager) audioWatchStep(now time.Time) {
+	m.smu.Lock()
+	blocked := m.paused || m.permDenied || m.asleep || m.noDisplay || !m.wakeAt.IsZero()
+	m.smu.Unlock()
+	m.mu.Lock()
+	src, run := m.src, m.audioDone
+	m.mu.Unlock()
+	w, n := &m.aw, m.audioPkts.Load()
+	// shortcut: window shares are not watched (whether SCK sends a silent app's audio buffers is unmeasured); watch them once a VM row shows it does.
+	if blocked || run == nil || run != w.run || n != w.seen || m.surfaceSel().Kind != screencap.SurfaceDisplay {
+		*w = audioWatch{run: run, seen: n, at: now}
+		return
+	}
+	if now.Sub(w.at) < audioStallAfter || now.Before(w.next) {
+		return
+	}
+	m.noteAudioFailed(errAudioStalled)
+	w.every = min(max(2*w.every, audioRetryFirst), audioRetryMax)
+	w.next = now.Add(w.every)
+	if r, ok := src.(screencap.AudioRestarter); ok {
+		slog.Info("desktop: restarting audio capture", "retry_in", w.every)
+		if err := r.RestartAudio(); err != nil {
+			slog.Warn("desktop: audio capture restart failed", "err", err)
+		}
+	}
 }

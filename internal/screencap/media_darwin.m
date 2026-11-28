@@ -987,6 +987,39 @@ void pc_stream_stop(void) {
 	}
 }
 
+// Re-creates the running stream's audio capture: capturesAudio off, then on,
+// through updateConfiguration, each bounded at 5 s. For an audio tap that died
+// without an error (coreaudiod restarted, A-03); the picture output and the Opus
+// encoder are kept. kPCNilErr when this run has no audio.
+int pc_audio_restart(void) {
+	@autoreleasepool {
+		int rc = 0;
+		@try {
+			if (gStream == nil || gConfig == nil || gAudioQueue == nil) return kPCNilErr;
+			for (int on = 0; on <= 1 && rc == 0; on++) {
+				gConfig.capturesAudio = on == 1;
+				__block NSError *updErr = nil;
+				dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+				[gStream updateConfiguration:gConfig
+				           completionHandler:^(NSError *e) {
+					           updErr = e;
+					           dispatch_semaphore_signal(sem);
+				           }];
+				if (dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC)) != 0) {
+					rc = kPCTimeoutErr;
+				} else if (updErr != nil) {
+					rc = updErr.code != 0 ? (int)updErr.code : kPCNilErr;
+				}
+			}
+		} @catch (NSException *e) {
+			rc = kPCExceptionErr;
+		}
+		// Every later configuration update sends gConfig, so it must never turn audio off.
+		gConfig.capturesAudio = YES;
+		return rc;
+	}
+}
+
 int pc_encoder_force_keyframe(void) {
 	@try {
 		return gEnc == nil ? (int)kVTInvalidSessionErr : (int)[gEnc forceKeyframe];

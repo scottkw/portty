@@ -38,3 +38,9 @@ type AudioSource interface {
 	AudioPackets() <-chan AudioPacket
 	AudioErrors() <-chan error
 }
+
+// AudioRestarter is the optional audio restart of a running AudioSource: it
+// re-creates the audio capture alone and never touches Frames.
+type AudioRestarter interface {
+	RestartAudio() error
+}

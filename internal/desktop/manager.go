@@ -345,6 +345,8 @@ type Manager struct {
 	audioDone chan struct{}
 	// audioFail is set while audio capture or encoding has failed (audio.go).
 	audioFail atomic.Bool
+	// audioPkts counts audio packets received, for the audio stall watchdog.
+	audioPkts atomic.Uint64
 	// vpkt and aclk number and stamp the video and audio RTP packets for the
 	// Manager's whole life, not per capture run: a viewer's track, SSRC and SRTP
 	// context outlive a source restart, and SRTP on the viewer drops packets
@@ -442,8 +444,9 @@ type Manager struct {
 	lockVal   bool
 	lockKnown bool
 
-	tickMu                sync.Mutex // one state-loop pass at a time; also guards wd
+	tickMu                sync.Mutex // one state-loop pass at a time; also guards wd and aw
 	wd                    watchdog
+	aw                    audioWatch
 	kick                  chan struct{} // a join or leave: re-pace the loop and tick now
 	tickViewers, tickIdle time.Duration // the state loop's cadence (tests shorten it)
 	loopCancel            context.CancelFunc

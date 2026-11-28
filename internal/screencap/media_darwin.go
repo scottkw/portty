@@ -31,6 +31,7 @@ int pc_encoder_refine(int bps);
 int pc_encoder_idle_refresh(void);
 int pc_encoder_set_bitrate(int bps);
 int pc_stream_set_fps(int fps);
+int pc_audio_restart(void);
 int pc_encoder_hardware(void);
 int pc_still_capture(int maxLong, uint8_t **out, int *n, char *errbuf, int errlen);
 uint32_t pc_main_display_id(void);
@@ -478,6 +479,24 @@ func (d *DisplaySource) AudioErrors() <-chan error {
 	d.emitMu.Lock()
 	defer d.emitMu.Unlock()
 	return d.audioErrs
+}
+
+var _ AudioRestarter = (*DisplaySource)(nil)
+
+// RestartAudio re-creates the running stream's audio capture and leaves the
+// picture alone: for an audio tap that died without an error (A-03).
+func (d *DisplaySource) RestartAudio() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if !d.running {
+		return ErrNotRunning
+	}
+	nativeMu.Lock()
+	defer nativeMu.Unlock()
+	if rc := C.pc_audio_restart(); rc != 0 {
+		return mapSCKError(int(rc), "restarting audio capture failed")
+	}
+	return nil
 }
 
 // ForceKeyframe re-encodes the cached frame as an IDR (a still screen yields
