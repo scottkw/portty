@@ -139,6 +139,7 @@ func (a *API) registerDesktopRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /desktop", a.handlePutDesktop)
 	mux.HandleFunc("GET /desktop/link", a.handleGetDesktopLink)
 	mux.HandleFunc("GET /desktop/permissions", a.handleDesktopPermissions)
+	mux.HandleFunc("GET /desktop/stats", a.handleDesktopStats)
 	mux.HandleFunc("POST /desktop/test-capture", a.handleDesktopTestCapture)
 	mux.HandleFunc("POST /desktop/lapse-claim", a.handleDesktopLapseClaim)
 	a.registerDesktopShareRoutes(mux)
@@ -184,6 +185,19 @@ func (a *API) handleGetDesktop(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleDesktopStats answers the stats route: counts and states only (desktop.Stats),
+// 503 while there is no Manager. Daemon socket only; the share server never routes it.
+func (a *API) handleDesktopStats(w http.ResponseWriter, _ *http.Request) {
+	a.mu.RLock()
+	mgr := a.desktopMgr
+	a.mu.RUnlock()
+	if mgr == nil {
+		http.Error(w, "desktop is off", http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, http.StatusOK, mgr.Stats())
 }
 
 // lapseClaimRequest is the POST /desktop/lapse-claim body.

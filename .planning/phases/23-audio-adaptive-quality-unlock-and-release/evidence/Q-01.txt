@@ -1,0 +1,9 @@
+Q-01 evidence
+Safari (portty-test-2), one viewer, streaming for more than 10 s:
+  offer carries transport-wide-cc: true
+  stats: {"viewers":1,"no_feedback":0,"slow":0,"step":0,"target_bps":1243272}
+  offer extension URIs: ["urn:ietf:params:rtp-hdrext:toffset","http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time","urn:3gpp:video-orientation","http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01","http://www.webrtc.org/experiments/rtp-hdrext/playout-delay","http://www.webrtc.org/experiments/rtp-hdrext/video-content-type","http://www.webrtc.org/experiments/rtp-hdrext/video-timing","http://www.webrtc.org/experiments/rtp-hdrext/color-space","urn:ietf:params:rtp-hdrext:sdes:mid","urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id","urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id","urn:ietf:params:rtp-hdrext:ssrc-audio-level"]
+Chrome (portty-test-2, only viewer, streaming for more than 10 s):
+  stats: {"viewers":1,"no_feedback":0,"slow":0,"step":2,"target_bps":665500}
+  Chrome AX window title: Portty Desktop (debug fd=156 fw=1920 csp=0 st=streaming) - Google Chrome
+  Chrome's own offer was not read (page scripts could not be run in Chrome's page world, see A-02 notes); the daemon-side fact is stronger: no_feedback counts a viewer from which no transport-cc report ever arrived, and it reads 0

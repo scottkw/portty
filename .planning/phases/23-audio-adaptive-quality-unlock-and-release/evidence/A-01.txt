@@ -1,0 +1,6 @@
+A-01 evidence (left-only 440 Hz tone played with afplay inside portty-test; viewer Safari in portty-test-2, unmuted)
+tone: 5 s, 48 kHz stereo 16-bit, left channel 440 Hz at half scale, right channel silent; made on the host scratch directory, played only in the office VM
+element state: {"muted":false,"paused":false,"audioTracks":1}
+levels during the tone window (8 s window, tone started about 1.5 s in): {"ctx_state_ran":true,"rmsL":0.16587,"rmsR":0,"peakL":0.5392,"peakR":0,"samples":374784}
+levels with no tone playing (3 s control): {"ctx_state_ran":true,"rmsL":0,"rmsR":0,"peakL":0,"peakR":0,"samples":141312}
+codecs (mime, channels, clock): [[["audio/opus",2,48000],["video/H264",null,90000]],true]

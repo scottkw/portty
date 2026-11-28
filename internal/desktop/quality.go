@@ -254,13 +254,13 @@ type msgQuality struct {
 // viewers are in the slow set or have sent no feedback. LongEdge is the ladder
 // position's nominal long edge (a smaller surface is never scaled up).
 type QualityStats struct {
-	TargetBps  int
-	FPS        int
-	LongEdge   int
-	Step       int
-	Slow       int
-	NoFeedback int
-	Still      bool // the screen is still: the picture was refined and is being kept alive
+	TargetBps  int  `json:"target_bps"`
+	FPS        int  `json:"fps"`
+	LongEdge   int  `json:"long_edge"`
+	Step       int  `json:"step"`
+	Slow       int  `json:"slow"`
+	NoFeedback int  `json:"no_feedback"`
+	Still      bool `json:"-"` // the screen is still: the picture was refined and is being kept alive (Stats carries it)
 }
 
 // qViewer is the controller's record of one viewer.

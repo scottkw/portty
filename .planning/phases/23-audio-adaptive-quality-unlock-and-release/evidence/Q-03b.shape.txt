@@ -1,0 +1,6 @@
+shape: pipe of 200 kbit/s at guest epoch 1795824612
+shape: dnctl list: [00001: 200.000 Kbit/s   20 ms   30 sl. 1 queues (1 buckets) droptail  
+shape: off at guest epoch 1795824661
+shape: dnctl list: []
+shape: anchor dummynet rules: 0
+shape: Status: Disabled for 0 days 00:00:00          Debug: Urgent

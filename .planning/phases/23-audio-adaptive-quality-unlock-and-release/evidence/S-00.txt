@@ -1,0 +1,9 @@
+S-00 evidence (conditions 1 to 3; condition 4 is in S-00.stats lines t=23 to t=25)
+office bundle version: 23.9.0
+office health: {"status":"ok","version":"v23.9.0","api":5}
+home bundle version: 23.9.0
+stats keys (15, re-read after fixing the jq filter that skipped a false value): audio goroutines own_viewers quality.fps quality.long_edge quality.no_feedback quality.slow quality.step quality.target_bps state still unlock.failures unlock.relock_armed unlock.state viewers
+stats now: {"goroutines":449,"viewers":1,"own_viewers":1,"state":"streaming","audio":"ok","quality":{"target_bps":1727622,"fps":15,"long_edge":2560,"step":1,"slow":0,"no_feedback":0},"still":false,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+viewer debug stats 1: {"status":"streaming","state":"streaming","viewers":1,"framesDecoded":189,"frameWidth":2560,"frameHeight":1440,"bytesReceived":4881308,"cspViolations":0}
+viewer debug stats 2 (3 s later): {"status":"streaming","state":"streaming","viewers":1,"framesDecoded":216,"frameWidth":2560,"frameHeight":1440,"bytesReceived":5376623,"cspViolations":0}
+viewer pc counts: {"codecs":[["audio/opus",2,48000],["video/H264",null,90000]],"audio":{"lost":0,"recv":1596,"jitter":0.005,"energy":0},"video":{"lost":0,"recv":4841,"jitter":0.005,"fd":216,"fw":2560},"twcc_in_offer":true,"opus_stereo_in_answer":true,"element":{"muted":true,"paused":false,"audioTracks":1}}
