@@ -1,0 +1,10 @@
+window 2026-11-28 00:51:45 .. 2026-11-28 00:51:49 (vk=123 delay=45 how=probe)
+00:51:45.206 [ Display:Power      ] Event: Will Wake
+00:51:45.223 Clearing password field for NSWorkspaceScreensDidWakeNotification
+00:51:45.282 [ Display:Power      ] Event: Did Wake
+00:51:45.301 -[LWDefaultScreenLockUI hidePasswordField] |       hiding password field
+00:51:45.346 -[LWDefaultScreenLockUI showPasswordFieldMakingFirstResponder:] | 	  showing password field, shouldMakeFirstResponder: 1
+00:51:46.295 -[LWDefaultScreenLockUI keyPressed:] | 	 View is hidden password field length = 0
+00:51:46.295 -[LWDefaultScreenLockUI showPasswordFieldMakingFirstResponder:] | 	  showing password field, shouldMakeFirstResponder: 0
+00:51:46.296 -[LWDefaultScreenLockUI showPasswordFieldMakingFirstResponder:] | 	  showing password field, shouldMakeFirstResponder: 1
+unlock-admin: unlocked
