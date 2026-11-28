@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -45,6 +46,9 @@ type fakeUnlock struct {
 	typePanic      bool
 	returns        int
 	unlockOnReturn int           // the 1-based Return that unlocks; 0 never
+	unlockDelay    time.Duration // when set, that Return unlocks the fake Mac this long after it (a slow authorization)
+	unlockAt       time.Time     // when the delayed unlock lands, zero when none is pending
+	flip           func() bool   // when set and true at a lock read, the fake Mac unlocks before the read answers
 	wakeGate       chan struct{} // when set, Wake waits for it to close (an attempt held mid-way)
 }
 
@@ -101,14 +105,28 @@ func (f *fakeUnlock) Return() error {
 	f.returns++
 	f.record("return", 0, 0)
 	if f.unlockOnReturn != 0 && f.returns == f.unlockOnReturn {
-		f.locked.Store(false)
+		if f.unlockDelay > 0 {
+			f.unlockAt = f.clk.Now().Add(f.unlockDelay)
+		} else {
+			f.locked.Store(false)
+		}
 	}
 	return nil
 }
 
 func (f *fakeUnlock) SessionLocked() (bool, error) {
 	f.mu.Lock()
+	flip := f.flip
+	f.mu.Unlock()
+	if flip != nil && flip() { // outside f.mu: the test's check may read the Manager
+		f.locked.Store(false)
+	}
+	f.mu.Lock()
 	defer f.mu.Unlock()
+	if !f.unlockAt.IsZero() && !f.clk.Now().Before(f.unlockAt) {
+		f.unlockAt = time.Time{}
+		f.locked.Store(false)
+	}
 	return f.locked.Load(), f.lockErr
 }
 
@@ -382,7 +400,7 @@ func (v *surfViewer) waitUnlockStates(t *testing.T, want ...string) {
 // settle gives a wrongly accepted request time to show itself.
 func settle() { time.Sleep(200 * time.Millisecond) }
 
-// TestUnlock_RetriesOnceThenFails: still locked 3 s after Return, the same
+// TestUnlock_RetriesOnceThenFails: still locked 10 s after Return, the same
 // strokes are typed once more and the submit fails with failures 1; there is
 // never a second retry.
 func TestUnlock_RetriesOnceThenFails(t *testing.T) {
@@ -408,8 +426,8 @@ func TestUnlock_RetriesOnceThenFails(t *testing.T) {
 			t.Fatalf("retried stroke %d is %#x, first time %#x: the strokes are not identical", i, ev[n+2+i].VK, ev[1+i].VK)
 		}
 	}
-	if gap := ev[n+2].At.Sub(ev[n+1].At); gap != 3*time.Second {
-		t.Errorf("Return to the retry %v, want the 3 s check", gap)
+	if gap := ev[n+2].At.Sub(ev[n+1].At); gap != 10*time.Second {
+		t.Errorf("Return to the retry %v, want the 10 s check", gap)
 	}
 	if st := r.mgr.UnlockStats(); st.Failures != 1 || st.State != "idle" {
 		t.Errorf("UnlockStats = %+v, want failures 1 and idle", st)
@@ -430,6 +448,231 @@ func TestUnlock_RetrySucceeds(t *testing.T) {
 	if m := v.lastUnlock(); m["by_portty"] != true || m["failures"] != float64(0) {
 		t.Errorf("unlocked message %v, want by_portty true and failures 0", m)
 	}
+}
+
+// opCounts counts the bridge's wake, type and return calls.
+func opCounts(f *fakeUnlock) (wakes, types, returns int) {
+	for _, op := range f.ops() {
+		switch op {
+		case "wake":
+			wakes++
+		case "type":
+			types++
+		case "return":
+			returns++
+		}
+	}
+	return
+}
+
+// requireTypings fails unless the bridge saw one wake and the whole password
+// typed n times, each followed by Return, and nothing else.
+func requireTypings(t *testing.T, f *fakeUnlock, n int) {
+	t.Helper()
+	wakes, types, returns := opCounts(f)
+	if wakes != 1 || types != n*len(sentinelPassword) || returns != n {
+		t.Fatalf("bridge saw %d wakes, %d strokes, %d returns (%v); want 1 wake and %d typings of %d strokes each with Return", wakes, types, returns, f.ops(), n, len(sentinelPassword))
+	}
+}
+
+// requireUnlockedByPortty checks a submit ended as a Portty unlock: the last
+// message says unlocked by Portty with no failure, the count is 0, the re-lock
+// rule is armed, and the audit lines are want.
+func requireUnlockedByPortty(t *testing.T, rr *relockRig, v *unlockViewer, want ...string) {
+	t.Helper()
+	if m := v.lastUnlock(); m["state"] != "unlocked" || m["by_portty"] != true || m["failures"] != float64(0) {
+		t.Errorf("last unlock message %v, want unlocked by Portty with failures 0", m)
+	}
+	if st := rr.mgr.UnlockStats(); st.Failures != 0 || !st.RelockArmed || st.State != "idle" {
+		t.Errorf("UnlockStats = %+v, want idle, failures 0 and the re-lock armed", st)
+	}
+	if got := rr.auditEvents(t); !slices.Equal(got, want) {
+		t.Errorf("audit events %v, want %v", got, want)
+	}
+}
+
+// TestUnlock_LateSuccessIsOneTyping (23-10 F-late-success): a loaded Mac took
+// 2.3 s to accept the password, and its lock flag clears later still. A Mac
+// that reads unlocked anywhere inside the check after Return is one typing, no
+// retype: unlocked by Portty, audited, the re-lock armed, no failure counted.
+func TestUnlock_LateSuccessIsOneTyping(t *testing.T) {
+	for _, after := range []time.Duration{2300 * time.Millisecond, 4500 * time.Millisecond, 9750 * time.Millisecond} {
+		t.Run(after.String(), func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+			rr := newRelockRig(t, func(r *unlockRig, _ *desktop.Deps) { r.fb.unlockDelay = after })
+			v := rr.ownUnlockViewerAs(ctx, t, relockWho)
+
+			v.submit(t, sentinelPassword)
+			v.waitUnlockStates(t, "unlocking", "unlocked")
+			settle()
+			requireTypings(t, rr.fb, 1)
+			requireUnlockedByPortty(t, rr, v, "unlocked")
+		})
+	}
+}
+
+// TestUnlock_UnlockedBeforeTheRetypeTypesNothing: the check ends with the Mac
+// still locked and the first typing's success lands after it (U-10: the retype
+// began the second the Mac read unlocked, into the live desktop). A fresh lock
+// read before every key stops the retype: no key and no Return once the Mac
+// reads unlocked, and the submit is the first typing's success.
+func TestUnlock_UnlockedBeforeTheRetypeTypesNothing(t *testing.T) {
+	t.Run("between the verdict and the retype", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		rr := newRelockRig(t, func(r *unlockRig, _ *desktop.Deps) { r.fb.unlockOnReturn = 0 })
+		// The Mac unlocks at the first lock read after the daemon decided to retry.
+		rr.fb.set(func() { rr.fb.flip = func() bool { return rr.mgr.UnlockStats().State == "retrying" } })
+		v := rr.ownUnlockViewerAs(ctx, t, relockWho)
+
+		v.submit(t, sentinelPassword)
+		v.waitUnlockStates(t, "unlocking", "retrying", "unlocked")
+		settle()
+		requireTypings(t, rr.fb, 1)
+		requireUnlockedByPortty(t, rr, v, "unlocked")
+	})
+
+	t.Run("in the middle of the retype", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		// Unlocked 100 ms after the 10 s check ended: two retyped strokes went to the
+		// still-locked screen, then the reads stop the rest and Return.
+		rr := newRelockRig(t, func(r *unlockRig, _ *desktop.Deps) { r.fb.unlockDelay = 10*time.Second + 100*time.Millisecond })
+		v := rr.ownUnlockViewerAs(ctx, t, relockWho)
+
+		v.submit(t, sentinelPassword)
+		v.waitUnlockStates(t, "unlocking", "retrying", "unlocked")
+		settle()
+		if wakes, types, returns := opCounts(rr.fb); wakes != 1 || returns != 1 || types >= 2*len(sentinelPassword) {
+			t.Fatalf("bridge saw %v; want one Return and the retype stopped short", rr.fb.ops())
+		}
+		requireUnlockedByPortty(t, rr, v, "unlocked")
+	})
+
+	t.Run("before the retype's Return", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		rr := newRelockRig(t, func(r *unlockRig, _ *desktop.Deps) { r.fb.unlockOnReturn = 0 })
+		// The Mac unlocks at the first lock read after the last retyped stroke.
+		rr.fb.set(func() {
+			rr.fb.flip = func() bool { _, types, _ := opCounts(rr.fb); return types == 2*len(sentinelPassword) }
+		})
+		v := rr.ownUnlockViewerAs(ctx, t, relockWho)
+
+		v.submit(t, sentinelPassword)
+		v.waitUnlockStates(t, "unlocking", "retrying", "unlocked")
+		settle()
+		if _, _, returns := opCounts(rr.fb); returns != 1 {
+			t.Fatalf("bridge saw %v; want no Return after the Mac read unlocked", rr.fb.ops())
+		}
+		requireUnlockedByPortty(t, rr, v, "unlocked")
+	})
+}
+
+// TestUnlock_WrongPasswordStaysFailed: a Mac that never unlocks gets exactly two
+// typed tries, one unlock_failed line, failures 1 and no re-lock; once the late
+// watch is over, an unlock by someone at the Mac is not taken for Portty's.
+func TestUnlock_WrongPasswordStaysFailed(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	rr := newRelockRig(t, func(r *unlockRig, _ *desktop.Deps) { r.fb.unlockOnReturn = 0 })
+	v := rr.ownUnlockViewerAs(ctx, t, relockWho)
+
+	v.submit(t, sentinelPassword)
+	v.waitUnlockStates(t, "unlocking", "retrying", "failed")
+	settle()
+	requireTypings(t, rr.fb, 2)
+	if st := rr.mgr.UnlockStats(); st.Failures != 1 || st.RelockArmed {
+		t.Errorf("UnlockStats = %+v, want failures 1 and no re-lock", st)
+	}
+	if got := rr.auditEvents(t); !slices.Equal(got, []string{"unlock_failed"}) {
+		t.Errorf("audit events %v, want one unlock_failed", got)
+	}
+
+	rr.clk.Advance(31 * time.Second)
+	rr.mgr.UnlockLatePollForTest() // the watch ends here
+	rr.locked.Store(false)         // someone at the Mac
+	rr.mgr.UnlockLatePollForTest()
+	settle()
+	if st := rr.mgr.UnlockStats(); st.Failures != 1 || st.RelockArmed {
+		t.Errorf("UnlockStats = %+v after an unlock at the Mac, want failures 1 and no re-lock", st)
+	}
+	if got := v.unlockStates(); !slices.Equal(got, []string{"unlocking", "retrying", "failed"}) {
+		t.Errorf("unlock states %v, want nothing after failed", got)
+	}
+	requireTypings(t, rr.fb, 2)
+}
+
+// TestUnlock_UnlockedBeforeAnyKeyIsNotPorttys: a Mac unlocked at its own
+// keyboard after the submit was taken but before the wake key gets no key at
+// all, the wake key included; every unlock viewer is told idle, and nothing is
+// counted, audited or armed.
+func TestUnlock_UnlockedBeforeAnyKeyIsNotPorttys(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	rr := newRelockRig(t, nil)
+	rr.fb.set(func() { rr.fb.flip = func() bool { return rr.mgr.UnlockStats().State == "unlocking" } })
+	v := rr.ownUnlockViewerAs(ctx, t, relockWho)
+
+	v.submit(t, sentinelPassword)
+	v.waitUnlockStates(t, "unlocking", "idle")
+	settle()
+	if ops := rr.fb.ops(); len(ops) != 0 {
+		t.Errorf("the bridge was asked to %v on a Mac that read unlocked", ops)
+	}
+	if st := rr.mgr.UnlockStats(); st.Failures != 0 || st.RelockArmed || st.State != "idle" {
+		t.Errorf("UnlockStats = %+v, want idle, failures 0 and no re-lock", st)
+	}
+	if got := rr.auditEvents(t); len(got) != 0 {
+		t.Errorf("audit events %v, want none", got)
+	}
+}
+
+// TestUnlock_SuccessAfterTheVerdictCountsAsSuccess: the Mac accepts the retyped
+// password only after the check has ended and failed (or paused) was reported.
+// The daemon still sees it: unlocked by Portty, the failure count and any pause
+// taken back, the re-lock armed, so the Mac is never left open with no re-lock.
+func TestUnlock_SuccessAfterTheVerdictCountsAsSuccess(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	t.Run("after the first failure", func(t *testing.T) {
+		rr := newRelockRig(t, func(r *unlockRig, _ *desktop.Deps) {
+			r.fb.unlockOnReturn, r.fb.unlockDelay = 2, 12*time.Second
+		})
+		v := rr.ownUnlockViewerAs(ctx, t, relockWho)
+
+		v.submit(t, sentinelPassword)
+		v.waitUnlockStates(t, "unlocking", "retrying", "failed")
+		if st := rr.mgr.UnlockStats(); st.Failures != 1 || st.RelockArmed {
+			t.Fatalf("UnlockStats = %+v at the verdict, want failures 1 and no re-lock yet", st)
+		}
+		rr.clk.Advance(2 * time.Second)
+		// No test call here: the lease loop's own one-second tick must catch it.
+		v.waitUnlockStates(t, "unlocking", "retrying", "failed", "unlocked")
+		requireTypings(t, rr.fb, 2)
+		requireUnlockedByPortty(t, rr, v, "unlock_failed", "unlocked")
+	})
+
+	t.Run("after the third failure", func(t *testing.T) {
+		rr := newRelockRig(t, func(r *unlockRig, _ *desktop.Deps) { r.fb.unlockOnReturn = 0 })
+		v := rr.ownUnlockViewerAs(ctx, t, relockWho)
+		failSubmit(t, rr.unlockRig, v, "unlocking", "retrying", "failed")
+		failSubmit(t, rr.unlockRig, v, failedTwice...)
+		rr.fb.set(func() { rr.fb.unlockOnReturn, rr.fb.unlockDelay = rr.fb.returns+2, 12*time.Second })
+		paused := append(append([]string(nil), failedTwice...), "unlocking", "retrying", "paused")
+
+		v.submit(t, sentinelPassword)
+		v.waitUnlockStates(t, paused...)
+		rr.clk.Advance(2 * time.Second)
+		rr.mgr.UnlockLatePollForTest()
+		v.waitUnlockStates(t, append(paused, "unlocked")...)
+		if _, _, returns := opCounts(rr.fb); returns != 6 {
+			t.Errorf("Return pressed %d times, want two per submit", returns)
+		}
+		requireUnlockedByPortty(t, rr, v, "unlock_failed", "unlock_failed", "unlock_failed", "unlocked")
+	})
 }
 
 // TestUnlock_RefusalsTypeNothingAndCostNothing: Caps Lock on, a character with

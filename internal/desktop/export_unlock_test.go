@@ -9,3 +9,7 @@ func SecretForTest(b []byte) any { return secretBytes{b: b} }
 
 // SecretPtrForTest is SecretForTest as a pointer.
 func SecretPtrForTest(b []byte) any { return &secretBytes{b: b} }
+
+// UnlockLatePollForTest runs one pass of the late-success watch at the fake
+// clock's now, without waiting for the lease loop's tick.
+func (m *Manager) UnlockLatePollForTest() { m.unlockLatePoll(m.d.Now()) }
