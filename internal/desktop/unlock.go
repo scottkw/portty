@@ -3,7 +3,10 @@ package desktop
 // unlock.go: remote unlock (UNLK-01). An own-account viewer sends a macOS login
 // password as one binary message on the input data channel; the daemon wakes
 // the screen, types the password through the native bridge, checks the lock,
-// retries once and reports. The password lives in one daemon-owned byte buffer
+// retries once and reports. No key goes out unless the Mac reads locked right
+// before it, and an unlock that follows a typed submit, even one that lands
+// after failed was reported, is reported as Portty's and arms the re-lock
+// (23-10 F-late-success). The password lives in one daemon-owned byte buffer
 // for the attempt and is zeroed in a defer. It is never a Go string, never
 // logged, never put in an error, a message or a counter name. Guests never get
 // the capability.
@@ -36,10 +39,14 @@ const unlockMsgType byte = 0x01
 const (
 	maxUnlockBytes = 1024 // the most password bytes (after the type byte) one request carries
 
-	unlockSettle = time.Second            // wake key to first typed key: the password field appears
-	unlockKeyGap = 60 * time.Millisecond  // between typed strokes
-	unlockCheck  = 3 * time.Second        // how long after Return the lock is polled
-	unlockPoll   = 250 * time.Millisecond // between lock reads while polling
+	unlockSettle = time.Second           // wake key to first typed key: the password field appears
+	unlockKeyGap = 60 * time.Millisecond // between typed strokes
+	// unlockCheck is how long after Return the lock is polled. The flag clears
+	// about 2 s after macOS accepts the password, and a loaded Mac took 2.3 s to
+	// accept it (23-10 F-late-success), so 3 s retyped real successes.
+	unlockCheck = 10 * time.Second
+	unlockPoll  = 250 * time.Millisecond // between lock reads while polling
+	unlockLate  = 30 * time.Second       // after a typed submit ends without success, an unlock this soon is still its success
 
 	unlockSpacing     = 5 * time.Second  // no submit this soon after an attempt that typed
 	unlockPause       = 15 * time.Minute // how long unlock stays paused after the failures
@@ -148,6 +155,8 @@ type unlockState struct {
 	lastEnd    time.Time
 	failures   int
 	pauseUntil time.Time
+	lateBy     *viewer   // the submitter of the last typed submit that did not end unlocked, until lateUntil
+	lateUntil  time.Time // unlockLatePoll watches for a late success until then
 }
 
 // unlockResult is how an attempt ended.
@@ -164,7 +173,7 @@ const (
 type ulRun struct {
 	strokes []KeyStroke
 	slot    bool // this attempt holds the single attempt flag
-	typed   bool // typing began
+	typed   bool // a password stroke was posted
 }
 
 // expireLocked ends a pause whose time has passed and starts the count over;
@@ -239,6 +248,7 @@ func (m *Manager) runUnlock(v *viewer, secret secretBytes) {
 // attempt slot, the refusals that cost nothing (Accessibility, Caps Lock, a
 // character with no key), release of held input, the wake key, a settle, the
 // strokes, Return, the lock poll, and one retype if the Mac is still locked.
+// Every key, the wake key too, goes out only on a fresh locked read.
 func (m *Manager) attemptUnlock(v *viewer, secret secretBytes, r *ulRun) unlockResult {
 	b := m.d.Unlock
 	locked, err := b.SessionLocked()
@@ -297,25 +307,50 @@ func (m *Manager) attemptUnlock(v *viewer, secret secretBytes, r *ulRun) unlockR
 
 	m.unlockProgress(unlockUnlocking)
 	m.releaseHeldAll("unlock")
+	if res, ok := m.lockedForKey(r); !ok {
+		return res
+	}
 	if err := b.Wake(unlockWakeKey); err != nil {
 		return ulError
 	}
 	m.unlockSleep(unlockSettle)
-	if !m.typeStrokes(r, strokes) {
-		return ulError
+	if res, ok := m.typeStrokes(r, strokes); !ok {
+		return res
 	}
 	if !m.lockedAfterReturn() {
 		return ulUnlocked
 	}
-	// Still locked: one retype from the same strokes, never a second.
+	// Still locked: one retype from the same strokes, never a second. Its reads
+	// stop it at the first key if the first typing's success has landed since.
 	m.unlockProgress(unlockRetrying)
-	if !m.typeStrokes(r, strokes) {
-		return ulError
+	if res, ok := m.typeStrokes(r, strokes); !ok {
+		return res
 	}
 	if !m.lockedAfterReturn() {
 		return ulUnlocked
 	}
 	return ulFailed
+}
+
+// lockedForKey is the fresh lock read taken right before every key the sequence
+// posts, so no key, the password least of all, reaches an unlocked desktop. ok
+// means the Mac reads locked now; otherwise nothing is posted and the attempt
+// ends with res. A failed read is an error (fail closed). Unlocked once a
+// stroke went in is this submit's success, typically the first typing accepted
+// late and seen before the retype; a hand at the Mac cannot be told apart, and
+// arming the re-lock is the safe side. Unlocked before any stroke is not
+// Portty's: every unlock viewer is told idle.
+func (m *Manager) lockedForKey(r *ulRun) (unlockResult, bool) {
+	locked, err := m.d.Unlock.SessionLocked()
+	switch {
+	case err != nil:
+		return ulError, false
+	case locked:
+		return ulNone, true
+	case r.typed:
+		return ulUnlocked, false
+	}
+	return m.unlockTell(nil, unlockIdle, "", 0, "unlock_not_locked"), false
 }
 
 func isUnmappable(err error) bool { return errors.Is(err, ErrUnmappable) }
@@ -331,23 +366,33 @@ func (m *Manager) unlockProgress(state string) {
 }
 
 // typeStrokes types each stroke with unlockKeyGap between them and presses
-// Return. false means the bridge failed or the Manager closed; typing stopped
-// and Return was not pressed, so the Mac never saw a whole password.
-func (m *Manager) typeStrokes(r *ulRun, strokes []KeyStroke) bool {
+// Return, each key only after lockedForKey reads the Mac locked. !ok ends the
+// attempt with res: a read stopped it, the bridge failed or the Manager closed.
+// Return was then not pressed, so the Mac never saw a whole password.
+func (m *Manager) typeStrokes(r *ulRun, strokes []KeyStroke) (unlockResult, bool) {
 	b := m.d.Unlock
-	r.typed = true
 	for i, s := range strokes {
 		if m.closed.Load() {
-			return false
+			return ulError, false
 		}
 		if i > 0 {
 			m.unlockSleep(unlockKeyGap)
 		}
+		if res, ok := m.lockedForKey(r); !ok {
+			return res, false
+		}
+		r.typed = true
 		if err := b.Type(s); err != nil {
-			return false
+			return ulError, false
 		}
 	}
-	return b.Return() == nil
+	if res, ok := m.lockedForKey(r); !ok {
+		return res, false
+	}
+	if b.Return() != nil {
+		return ulError, false
+	}
+	return ulNone, true
 }
 
 // lockedAfterReturn polls a fresh lock read for unlockCheck and reports whether
@@ -373,9 +418,9 @@ func (m *Manager) unlockSleep(d time.Duration) {
 	time.Sleep(d)
 }
 
-// unlockTell answers a refusal to the submitter alone and counts it. Nothing
-// was typed, so it does not count as a failed submit and does not start the
-// spacing window.
+// unlockTell answers a refusal to the submitter alone (every unlock viewer when
+// v is nil) and counts it. Nothing was typed, so it does not count as a failed
+// submit and does not start the spacing window.
 func (m *Manager) unlockTell(v *viewer, state, reason string, waitMS int, counter string) unlockResult {
 	m.countInput(counter)
 	u := &m.ul
@@ -389,7 +434,8 @@ func (m *Manager) unlockTell(v *viewer, state, reason string, waitMS int, counte
 // unlockEnd releases the attempt slot and reports how the attempt ended to
 // every unlock-capable viewer: the spacing window starts when typing began, a
 // failed submit counts once, the third in a row starts the pause, a success
-// resets the count.
+// resets the count. A submit that typed and did not end unlocked is watched for
+// a late success (unlockLatePoll).
 func (m *Manager) unlockEnd(v *viewer, r *ulRun, res unlockResult) {
 	u := &m.ul
 	now := m.d.Now()
@@ -400,10 +446,13 @@ func (m *Manager) unlockEnd(v *viewer, r *ulRun, res unlockResult) {
 			u.lastEnd = now
 		}
 	}
+	if r.typed && res != ulUnlocked {
+		u.lateBy, u.lateUntil = v, now.Add(unlockLate)
+	}
 	var msg msgUnlock
 	switch res {
 	case ulUnlocked:
-		u.failures = 0
+		u.failures, u.lateBy = 0, nil
 		msg = u.msgLocked(unlockUnlocked, "", 0)
 		msg.ByPortty = true
 	case ulFailed:
@@ -435,6 +484,38 @@ func (m *Manager) unlockEnd(v *viewer, r *ulRun, res unlockResult) {
 	m.countInput("unlock_" + msg.State)
 	slog.Info("desktop: unlock finished", "viewer", shortID(v.ID), "outcome", msg.State)
 	m.sendUnlock(nil, msg)
+}
+
+// unlockLatePoll runs each second from the lease loop. A slow Mac can accept a
+// typed submit after the attempt reported failed or error; within unlockLate,
+// a Mac that reads unlocked is that submit's success, reported, audited and
+// re-lock armed like any other, with its failure and any pause taken back, so a
+// late success never leaves the Mac open with no re-lock.
+func (m *Manager) unlockLatePoll(now time.Time) {
+	u := &m.ul
+	u.mu.Lock()
+	by := u.lateBy
+	if by != nil && now.After(u.lateUntil) {
+		u.lateBy, by = nil, nil
+	}
+	running := u.running // a running attempt reads the lock itself
+	u.mu.Unlock()
+	if by == nil || running {
+		return
+	}
+	if locked, err := m.d.Unlock.SessionLocked(); err != nil || locked {
+		return
+	}
+	u.mu.Lock()
+	ok := u.lateBy == by && !u.running
+	if ok {
+		u.lateBy, u.pauseUntil = nil, time.Time{}
+	}
+	u.mu.Unlock()
+	if ok {
+		slog.Info("desktop: the Mac unlocked after the unlock attempt had ended")
+		m.unlockEnd(by, &ulRun{}, ulUnlocked)
+	}
 }
 
 // sendUnlock writes msg to one viewer (only) or to every unlock-capable viewer

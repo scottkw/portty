@@ -244,6 +244,7 @@ func (m *Manager) leasePass(ctx context.Context, poll bool) {
 	defer recoverLog()
 	if poll {
 		m.pollTap()
+		m.unlockLatePoll(m.d.Now())
 		m.relockPoll(m.d.Now()) // after the tap's own poll, so a tap started this pass is read
 	}
 	m.pushLease(ctx)
