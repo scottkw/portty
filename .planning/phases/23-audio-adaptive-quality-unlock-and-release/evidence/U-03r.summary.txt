@@ -1,0 +1,21 @@
+U-03r: build 23.10.3 (UNLK-01 fix f6d9ef68), 10 cycles of lock + unlock-try admin 14 from the home Safari viewer, office under load (rig motion on + 1 'yes > /dev/null' loop; a first try with 3 such loops drove the load average to 77 and the daemon stopped answering curl -m 3, so 2 were stopped). The load average still climbed to 100-160 during the cycles (CPU 0% idle)
+cycle 01: load=[{ 18.93 18.83 10.72 }] loginPressed=1 at [03:00:34.182 ] authorization=[03:00:35.828 succeeded ] unlocked_audit=1 unlock_failed_audit=0 trying_once_more=0 retrying_state=0 success_notice_at=t=+12.69 after="failures":0,"relock_armed":true
+cycle 02: load=[{ 86.78 41.94 20.25 }] loginPressed=0 at [] authorization=[] unlocked_audit=0 unlock_failed_audit=0 trying_once_more=0 retrying_state=0 success_notice_at= after="failures":0,"relock_armed":false
+cycle 02: still locked, unlock-admin
+unlock-admin: unlocked
+cycle 03: load=[{ 118.15 60.00 28.54 }] loginPressed=1 at [03:02:46.042 ] authorization=[03:02:46.744 succeeded ] unlocked_audit=1 unlock_failed_audit=0 trying_once_more=0 retrying_state=0 success_notice_at=t=+6.13 after="failures":0,"relock_armed":true
+cycle 04: load=[{ 102.35 65.33 32.35 }] loginPressed=1 at [03:03:28.455 ] authorization=[03:03:28.859 succeeded ] unlocked_audit=1 unlock_failed_audit=0 trying_once_more=0 retrying_state=0 success_notice_at=t=+5.15 after="failures":0,"relock_armed":true
+cycle 05: load=[{ 71.67 62.89 33.02 }] loginPressed=1 at [03:04:13.619 ] authorization=[03:04:14.463 succeeded ] unlocked_audit=1 unlock_failed_audit=0 trying_once_more=0 retrying_state=0 success_notice_at=t=+6.06 after="failures":0,"relock_armed":true
+cycle 06: load=[{ 49.11 58.30 32.88 }] loginPressed=1 at [03:04:57.705 ] authorization=[03:04:58.349 succeeded ] unlocked_audit=1 unlock_failed_audit=0 trying_once_more=0 retrying_state=0 success_notice_at=t=+5.30 after="failures":0,"relock_armed":true
+cycle 07: load=[{ 51.08 55.75 33.84 }] loginPressed=0 at [] authorization=[] unlocked_audit=0 unlock_failed_audit=0 trying_once_more=0 retrying_state=0 success_notice_at= after=
+cycle 07: still locked, unlock-admin
+unlock-admin: unlocked
+cycle 08: load=[{ 101.08 71.48 41.61 }] loginPressed=1 at [03:07:21.389 ] authorization=[03:07:21.953 succeeded ] unlocked_audit=1 unlock_failed_audit=0 trying_once_more=0 retrying_state=0 success_notice_at=t=+6.17 after="failures":0,"relock_armed":true
+cycle 09: load=[{ 128.75 88.76 51.45 }] loginPressed=0 at [] authorization=[] unlocked_audit=0 unlock_failed_audit=0 trying_once_more=0 retrying_state=0 success_notice_at= after=
+cycle 09: still locked, unlock-admin
+unlock-admin: unlocked
+cycle 10: load=[{ 155.74 107.25 62.08 }] loginPressed=1 at [03:10:23.409 ] authorization=[03:10:23.879 succeeded ] unlocked_audit=1 unlock_failed_audit=0 trying_once_more=0 retrying_state=0 success_notice_at=t=+5.23 after="failures":0,"relock_armed":true
+U-03r extra cycles 11-13 (cycles 02, 07 and 09 typed nothing: the viewer was reconnecting or gone at the submit); before each submit the rig now waits for viewers 1 and the Unlock panel on the page
+cycle 11: load=[{ 9.19 20.56 42.11 }] loginPressed=1 at [03:23:58.366 ] authorization=[03:23:59.187 succeeded ] unlocked_audit=1 unlock_failed_audit=0 trying_once_more=0 retrying_state=0 success_notice_at=t=+7.35 after="failures":0,"relock_armed":true
+cycle 12: load=[{ 29.08 24.77 42.36 }] loginPressed=1 at [03:24:58.771 ] authorization=[03:25:00.852 succeeded ] unlocked_audit=1 unlock_failed_audit=0 trying_once_more=0 retrying_state=0 success_notice_at=t=+13.31 after="failures":0,"relock_armed":true
+cycle 13: load=[{ 75.13 41.92 47.59 }] loginPressed=1 at [03:26:04.122 ] authorization=[03:26:04.692 succeeded ] unlocked_audit=1 unlock_failed_audit=0 trying_once_more=0 retrying_state=0 success_notice_at=t=+7.05 after="failures":0,"relock_armed":true

@@ -1,0 +1,60 @@
+U-10r: build 23.10.3, office under moderate load; daemon unlock (U-10r.unlock.txt), then the own viewer closed (close-viewer, Safari quit); lock state read about once a second
+load: { 21.91 34.82 43.72 }
+close-viewer: done
+viewer closed by office epoch 1795836581 03:29:41
+t=0s 03:29:41 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=1s 03:29:42 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=2s 03:29:43 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=3s 03:29:44 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=4s 03:29:45 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=5s 03:29:46 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=6s 03:29:47 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=7s 03:29:48 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=8s 03:29:49 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=9s 03:29:50 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=10s 03:29:51 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=11s 03:29:52 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=12s 03:29:53 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=13s 03:29:54 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=14s 03:29:55 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=16s 03:29:57 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=17s 03:29:58 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=18s 03:29:59 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=19s 03:30:00 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=20s 03:30:01 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=21s 03:30:02 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=22s 03:30:03 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=23s 03:30:04 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=24s 03:30:05 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=25s 03:30:06 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=26s 03:30:07 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=27s 03:30:08 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=28s 03:30:09 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=29s 03:30:10 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
+t=31s 03:30:12 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+t=32s 03:30:13 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+t=33s 03:30:14 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+t=34s 03:30:15 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+t=35s 03:30:16 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+t=37s 03:30:18 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+t=38s 03:30:19 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+t=39s 03:30:20 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+t=40s 03:30:21 locked=false {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+t=41s 03:30:22 locked=true {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+t=42s 03:30:23 locked=true {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+t=43s 03:30:24 locked=true {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+t=44s 03:30:25 locked=true {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+t=45s 03:30:26 locked=true {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+t=46s 03:30:27 locked=true {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+t=47s 03:30:28 locked=true {"viewers":0,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+audit tail:
+{"ts":"2026-11-28T03:28:18Z","event":"unlock_failed","mode":"own","reason":"still_locked"}
+{"ts":"2026-11-28T03:29:21Z","event":"unlocked","mode":"own","reason":null}
+{"ts":"2026-11-28T03:29:40Z","event":"leave","mode":"own","reason":"viewer_closed"}
+{"ts":"2026-11-28T03:30:11Z","event":"relocked","mode":"own","reason":null}
+daemon.log tail:
+2026/11/28 03:29:08.162031 INFO desktop: viewer slow state changed viewer=0fe4571b slow=true
+2026/11/28 03:29:21.596510 INFO desktop: viewer slow state changed viewer=0fe4571b slow=false
+2026/11/28 03:29:21.693012 INFO desktop: unlock finished viewer=0fe4571b outcome=unlocked
+2026/11/28 03:29:40.130950 INFO desktop: viewer left viewer=0fe4571b viewers=0
+2026/11/28 03:30:11.060698 INFO desktop: the Mac was locked again after the last own-account viewer left

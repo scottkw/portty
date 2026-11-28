@@ -1,0 +1,159 @@
+Q-03-lone2-heavy: build 23.10.3, lone office loopback Safari viewer, no pipe. Heavy motion: Terminal running yes (rig motion on).
+start office epoch 1795833546 (stats-log t=1 starts here)
+epoch=1795833547 load=[{ 5.00 3.77 4.47 }] target=[1595152,0,0]
+Terminal 78.7;WindowServer 24.4;kernel_task 9.4 ;yes 8.9 ;Portty 7.9 ;com.apple.WebKit 7.1 ;
+CPU usage: 36.6% user, 52.45% sys, 11.47% idle 
+recv={"audio":{"recv":1023,"lost":0},"video":{"recv":553,"fd":550,"dropped":0,"lost":0,"jb_ms":38,"dec_ms":7,"fw":2560}}
+epoch=1795833551 load=[{ 4.76 3.74 4.46 }] target=[1930133,0,0]
+Terminal 91.1;WindowServer 24.4;top 12.3;kernel_task 9.6 ;Portty 9.6 ;yes 9.6 ;
+CPU usage: 44.18% user, 54.26% sys, 1.55% idle 
+recv={"audio":{"recv":1280,"lost":0},"video":{"recv":679,"fd":675,"dropped":0,"lost":0,"jb_ms":58,"dec_ms":8,"fw":2560}}
+epoch=1795833557 load=[{ 6.38 4.10 4.58 }] target=[2569006,0,0]
+Terminal 77.5;WindowServer 28.6;kernel_task 12.7;Portty 9.7 ;top 8.5 ;yes 8.3 ;
+CPU usage: 42.6% user, 51.58% sys, 6.34% idle 
+recv={"audio":{"recv":1542,"lost":0},"video":{"recv":803,"fd":796,"dropped":0,"lost":0,"jb_ms":88,"dec_ms":10,"fw":2560}}
+epoch=1795833562 load=[{ 6.11 4.08 4.57 }] target=[3108496,0,0]
+Terminal 77.2;WindowServer 30.7;kernel_task 15.7;top 12.1;com.apple.WebKit 9.3 ;Portty 8.4 ;
+CPU usage: 36.87% user, 49.64% sys, 13.47% idle 
+recv={"audio":{"recv":1824,"lost":0},"video":{"recv":934,"fd":924,"dropped":0,"lost":0,"jb_ms":123,"dec_ms":10,"fw":2560}}
+epoch=1795833567 load=[{ 5.78 4.04 4.55 }] target=[532448,0,0]
+Terminal 78.6;WindowServer 23.8;yes 9.2 ;kernel_task 8.4 ;Portty 7.3 ;top 6.8 ;
+CPU usage: 39.39% user, 53.53% sys, 7.7% idle 
+recv={"audio":{"recv":2051,"lost":0},"video":{"recv":1056,"fd":1048,"dropped":0,"lost":0,"jb_ms":148,"dec_ms":10,"fw":2560}}
+epoch=1795833572 load=[{ 5.56 4.02 4.54 }] target=[585692,0,0]
+Terminal 81.0;WindowServer 21.2;yes 9.7 ;kernel_task 8.6 ;Portty 7.0 ;top 6.3 ;
+CPU usage: 34.48% user, 51.72% sys, 13.79% idle 
+recv={"audio":{"recv":2268,"lost":0},"video":{"recv":1179,"fd":1171,"dropped":0,"lost":0,"jb_ms":165,"dec_ms":10,"fw":2560}}
+epoch=1795833576 load=[{ 5.35 4.01 4.53 }] target=[500000,0,0]
+Terminal 75.0;WindowServer 28.0;kernel_task 12.0;Portty 9.1 ;yes 8.6 ;top 8.4 ;
+CPU usage: 38.5% user, 51.32% sys, 10.61% idle 
+recv={"audio":{"recv":2520,"lost":0},"video":{"recv":1300,"fd":1291,"dropped":0,"lost":0,"jb_ms":176,"dec_ms":10,"fw":2560}}
+epoch=1795833581 load=[{ 5.33 4.02 4.54 }] target=[500000,0,0]
+Terminal 71.6;WindowServer 27.3;kernel_task 14.6;top 10.4;Portty 8.6 ;com.apple.WebKit 7.9 ;
+CPU usage: 42.50% user, 53.12% sys, 4.37% idle 
+recv={"audio":{"recv":2803,"lost":0},"video":{"recv":1423,"fd":1420,"dropped":0,"lost":0,"jb_ms":179,"dec_ms":11,"fw":2560}}
+epoch=1795833587 load=[{ 5.30 4.04 4.54 }] target=[665500,0,0]
+Terminal 75.1;WindowServer 26.9;kernel_task 11.9;top 8.9 ;Portty 8.4 ;yes 8.0 ;
+CPU usage: 39.8% user, 54.2% sys, 6.89% idle 
+recv={"audio":{"recv":3044,"lost":0},"video":{"recv":1544,"fd":1540,"dropped":0,"lost":0,"jb_ms":178,"dec_ms":11,"fw":2560}}
+epoch=1795833591 load=[{ 5.44 4.09 4.55 }] target=[805255,0,0]
+Terminal 82.1;WindowServer 27.6;kernel_task 10.7;top 10.5;Portty 9.5 ;yes 8.5 ;
+CPU usage: 42.85% user, 52.38% sys, 4.76% idle 
+recv={"audio":{"recv":3278,"lost":0},"video":{"recv":1672,"fd":1665,"dropped":0,"lost":0,"jb_ms":181,"dec_ms":11,"fw":2560}}
+epoch=1795833596 load=[{ 5.32 4.09 4.55 }] target=[974358,0,0]
+Terminal 76.0;WindowServer 24.0;kernel_task 10.2;yes 9.1 ;top 7.7 ;Portty 7.7 ;
+CPU usage: 38.15% user, 53.94% sys, 7.89% idle 
+recv={"audio":{"recv":3503,"lost":0},"video":{"recv":1797,"fd":1790,"dropped":0,"lost":0,"jb_ms":186,"dec_ms":10,"fw":2560}}
+epoch=1795833601 load=[{ 5.13 4.07 4.54 }] target=[523180,0,0]
+Terminal 80.9;WindowServer 23.6;yes 9.4 ;kernel_task 9.1 ;NotificationCent 9.0 ;Portty 6.9 ;
+CPU usage: 40.65% user, 51.64% sys, 7.69% idle 
+recv={"audio":{"recv":3732,"lost":0},"video":{"recv":1923,"fd":1919,"dropped":0,"lost":0,"jb_ms":192,"dec_ms":10,"fw":2560}}
+epoch=1795833605 load=[{ 5.04 4.07 4.54 }] target=[575498,0,0]
+Terminal 77.3;WindowServer 21.7;kernel_task 9.5 ;yes 9.3 ;Portty 5.9 ;top 5.4 ;
+CPU usage: 41.48% user, 53.19% sys, 5.31% idle 
+recv={"audio":{"recv":3959,"lost":0},"video":{"recv":2053,"fd":2047,"dropped":0,"lost":0,"jb_ms":196,"dec_ms":10,"fw":2560}}
+epoch=1795833610 load=[{ 4.72 4.02 4.51 }] target=[575498,0,0]
+Terminal 76.8;WindowServer 22.1;kernel_task 9.9 ;yes 9.2 ;Portty 6.6 ;top 5.8 ;
+CPU usage: 41.93% user, 53.76% sys, 4.30% idle 
+recv={"audio":{"recv":4190,"lost":0},"video":{"recv":2184,"fd":2177,"dropped":0,"lost":0,"jb_ms":196,"dec_ms":10,"fw":2560}}
+epoch=1795833615 load=[{ 4.82 4.05 4.52 }] target=[575498,0,0]
+Terminal 89.6;WindowServer 27.1;replayd 24.8;kernel_task 20.4;top 18.6;com.apple.WebKit 11.6;
+CPU usage: 39.73% user, 60.26% sys, 0.0% idle 
+recv={"audio":{"recv":4497,"lost":0},"video":{"recv":2318,"fd":2318,"dropped":0,"lost":0,"jb_ms":194,"dec_ms":11,"fw":2560}}
+epoch=1795833621 load=[{ 7.40 4.60 4.71 }] target=[575498,1,0]
+Terminal 79.3;WindowServer 23.4;kernel_task 19.4;top 7.3 ;Portty 6.0 ;com.apple.WebKit 4.9 ;
+CPU usage: 40.14% user, 51.40% sys, 8.45% idle 
+recv={"audio":{"recv":4729,"lost":0},"video":{"recv":2396,"fd":2396,"dropped":0,"lost":0,"jb_ms":188,"dec_ms":11,"fw":2560}}
+epoch=1795833626 load=[{ 6.89 4.54 4.69 }] target=[575498,1,0]
+Terminal 86.8;WindowServer 19.2;kernel_task 11.6;yes 10.6;top 6.5 ;Portty 6.2 ;
+CPU usage: 33.89% user, 49.15% sys, 16.94% idle 
+recv={"audio":{"recv":4937,"lost":0},"video":{"recv":2457,"fd":2453,"dropped":0,"lost":0,"jb_ms":184,"dec_ms":10,"fw":2560}}
+epoch=1795833630 load=[{ 6.41 4.48 4.67 }] target=[575498,1,0]
+Terminal 87.4;WindowServer 20.5;yes 10.7;kernel_task 8.3 ;top 6.9 ;Portty 6.0 ;
+CPU usage: 34.48% user, 50.0% sys, 15.51% idle 
+recv={"audio":{"recv":5138,"lost":0},"video":{"recv":2514,"fd":2510,"dropped":0,"lost":0,"jb_ms":184,"dec_ms":10,"fw":2560}}
+epoch=1795833634 load=[{ 5.98 4.42 4.65 }] target=[575498,1,0]
+Terminal 85.6;WindowServer 22.4;yes 10.1;kernel_task 9.2 ;top 6.3 ;Portty 6.3 ;
+CPU usage: 33.33% user, 50.87% sys, 15.78% idle 
+recv={"audio":{"recv":5357,"lost":0},"video":{"recv":2576,"fd":2572,"dropped":0,"lost":0,"jb_ms":187,"dec_ms":10,"fw":2560}}
+epoch=1795833638 load=[{ 5.74 4.39 4.64 }] target=[575498,1,0]
+Terminal 76.0;WindowServer 23.5;kernel_task 11.0;yes 8.5 ;top 7.0 ;Portty 6.6 ;
+CPU usage: 38.46% user, 52.30% sys, 9.23% idle 
+recv={"audio":{"recv":5571,"lost":0},"video":{"recv":2635,"fd":2631,"dropped":0,"lost":0,"jb_ms":189,"dec_ms":10,"fw":2560}}
+epoch=1795833642 load=[{ 5.74 4.39 4.64 }] target=[696351,1,0]
+Terminal 83.8;WindowServer 21.7;yes 10.1;kernel_task 8.3 ;top 7.7 ;Portty 5.9 ;
+CPU usage: 39.60% user, 54.45% sys, 5.94% idle 
+recv={"audio":{"recv":5803,"lost":0},"video":{"recv":2700,"fd":2697,"dropped":0,"lost":0,"jb_ms":191,"dec_ms":10,"fw":2560}}
+epoch=1795833647 load=[{ 5.84 4.44 4.65 }] target=[524764,1,0]
+Terminal 87.9;WindowServer 19.9;yes 10.6;kernel_task 7.9 ;top 5.8 ;Portty 5.8 ;
+CPU usage: 35.0% user, 50.0% sys, 15.0% idle 
+recv={"audio":{"recv":6007,"lost":0},"video":{"recv":2756,"fd":2754,"dropped":0,"lost":0,"jb_ms":191,"dec_ms":10,"fw":2560}}
+epoch=1795833651 load=[{ 5.53 4.40 4.64 }] target=[524764,1,0]
+Terminal 87.5;WindowServer 17.4;yes 11.1;kernel_task 7.0 ;top 5.8 ;Portty 5.2 ;
+CPU usage: 36.66% user, 50.0% sys, 13.33% idle 
+recv={"audio":{"recv":6207,"lost":0},"video":{"recv":2814,"fd":2812,"dropped":0,"lost":0,"jb_ms":191,"dec_ms":10,"fw":2560}}
+epoch=1795833655 load=[{ 5.57 4.42 4.64 }] target=[524764,1,0]
+Terminal 86.2;WindowServer 22.2;yes 10.2;kernel_task 8.7 ;Portty 6.6 ;top 5.7 ;
+CPU usage: 35.0% user, 48.33% sys, 16.66% idle 
+recv={"audio":{"recv":6407,"lost":0},"video":{"recv":2873,"fd":2870,"dropped":0,"lost":0,"jb_ms":191,"dec_ms":10,"fw":2560}}
+epoch=1795833659 load=[{ 5.28 4.38 4.63 }] target=[524764,1,0]
+Terminal 79.2;WindowServer 24.3;kernel_task 9.7 ;yes 8.9 ;top 8.0 ;Portty 6.9 ;
+CPU usage: 34.42% user, 50.81% sys, 14.75% idle 
+recv={"audio":{"recv":6622,"lost":0},"video":{"recv":2934,"fd":2932,"dropped":0,"lost":0,"jb_ms":190,"dec_ms":10,"fw":2560}}
+epoch=1795833663 load=[{ 5.02 4.34 4.61 }] target=[524764,1,0]
+Terminal 86.4;spindump 30.6;WindowServer 22.8;kernel_task 10.9;yes 10.7;Portty 6.9 ;
+CPU usage: 35.61% user, 52.5% sys, 12.32% idle 
+recv={"audio":{"recv":6836,"lost":0},"video":{"recv":2995,"fd":2991,"dropped":1,"lost":0,"jb_ms":189,"dec_ms":10,"fw":2560}}
+epoch=1795833668 load=[{ 4.86 4.32 4.60 }] target=[577240,1,0]
+Terminal 75.5;WindowServer 21.8;yes 9.4 ;kernel_task 8.6 ;top 5.7 ;Portty 5.5 ;
+CPU usage: 32.14% user, 51.78% sys, 16.7% idle 
+recv={"audio":{"recv":7052,"lost":0},"video":{"recv":3058,"fd":3055,"dropped":1,"lost":0,"jb_ms":188,"dec_ms":10,"fw":2560}}
+epoch=1795833672 load=[{ 4.86 4.32 4.60 }] target=[634964,1,0]
+Terminal 80.1;WindowServer 24.4;kernel_task 14.2;yes 7.8 ;Portty 6.7 ;top 5.9 ;
+CPU usage: 42.37% user, 55.8% sys, 2.54% idle 
+recv={"audio":{"recv":7275,"lost":0},"video":{"recv":3120,"fd":3118,"dropped":1,"lost":0,"jb_ms":186,"dec_ms":10,"fw":2560}}
+epoch=1795833677 load=[{ 5.11 4.38 4.62 }] target=[845136,1,0]
+Terminal 74.7;WindowServer 25.1;kernel_task 12.1;yes 8.8 ;Portty 7.4 ;top 7.2 ;
+CPU usage: 36.36% user, 53.24% sys, 10.38% idle 
+recv={"audio":{"recv":7507,"lost":0},"video":{"recv":3213,"fd":3209,"dropped":1,"lost":0,"jb_ms":184,"dec_ms":10,"fw":2560}}
+epoch=1795833681 load=[{ 4.94 4.36 4.61 }] target=[1022613,0,0]
+Terminal 77.6;WindowServer 23.4;kernel_task 11.1;yes 9.2 ;top 7.4 ;Portty 6.9 ;
+CPU usage: 40.70% user, 53.9% sys, 6.19% idle 
+recv={"audio":{"recv":7744,"lost":4},"video":{"recv":3345,"fd":3342,"dropped":1,"lost":0,"jb_ms":180,"dec_ms":9,"fw":2560}}
+epoch=1795833686 load=[{ 4.95 4.37 4.61 }] target=[1022613,0,0]
+Terminal 77.0;WindowServer 25.1;kernel_task 10.0;yes 9.0 ;Portty 7.6 ;top 6.6 ;
+CPU usage: 38.75% user, 51.25% sys, 10.0% idle 
+recv={"audio":{"recv":7966,"lost":4},"video":{"recv":3467,"fd":3463,"dropped":1,"lost":0,"jb_ms":177,"dec_ms":9,"fw":2560}}
+epoch=1795833690 load=[{ 4.95 4.38 4.62 }] target=[1237361,0,0]
+Terminal 83.2;WindowServer 24.2;yes 9.7 ;kernel_task 9.3 ;Portty 7.4 ;top 5.7 ;
+CPU usage: 32.20% user, 50.84% sys, 16.94% idle 
+recv={"audio":{"recv":8183,"lost":4},"video":{"recv":3583,"fd":3579,"dropped":1,"lost":0,"jb_ms":176,"dec_ms":9,"fw":2560}}
+epoch=1795833695 load=[{ 4.87 4.37 4.61 }] target=[500000,0,0]
+Terminal 81.4;WindowServer 24.8;kernel_task 10.9;yes 9.4 ;top 8.0 ;Portty 7.1 ;
+CPU usage: 38.20% user, 51.68% sys, 10.11% idle 
+recv={"audio":{"recv":8409,"lost":4},"video":{"recv":3704,"fd":3699,"dropped":1,"lost":0,"jb_ms":176,"dec_ms":9,"fw":2560}}
+epoch=1795833699 load=[{ 4.96 4.40 4.62 }] target=[500000,0,0]
+Terminal 77.4;WindowServer 24.6;kernel_task 11.0;yes 9.2 ;Portty 7.5 ;top 7.1 ;
+CPU usage: 37.66% user, 53.24% sys, 9.9% idle 
+recv={"audio":{"recv":8640,"lost":4},"video":{"recv":3835,"fd":3829,"dropped":1,"lost":0,"jb_ms":176,"dec_ms":9,"fw":2560}}
+epoch=1795833704 load=[{ 5.05 4.43 4.63 }] target=[500000,0,0]
+Terminal 83.7;WindowServer 23.4;kernel_task 11.1;yes 9.8 ;Portty 7.9 ;top 6.6 ;
+CPU usage: 36.92% user, 50.76% sys, 12.30% idle 
+recv={"audio":{"recv":8862,"lost":4},"video":{"recv":3958,"fd":3952,"dropped":1,"lost":0,"jb_ms":175,"dec_ms":9,"fw":2560}}
+epoch=1795833708 load=[{ 4.72 4.37 4.61 }] target=[500000,0,0]
+Terminal 75.3;WindowServer 28.3;kernel_task 11.2;yes 8.3 ;Portty 7.8 ;top 5.2 ;
+CPU usage: 37.28% user, 52.54% sys, 10.16% idle 
+recv={"audio":{"recv":9085,"lost":4},"video":{"recv":4079,"fd":4074,"dropped":1,"lost":0,"jb_ms":174,"dec_ms":9,"fw":2560}}
+epoch=1795833713 load=[{ 5.22 4.48 4.64 }] target=[500000,0,0]
+Terminal 77.2;WindowServer 23.9;kernel_task 10.3;yes 9.1 ;Portty 7.6 ;top 6.0 ;
+CPU usage: 40.90% user, 59.9% sys, 0.0% idle 
+recv={"audio":{"recv":9305,"lost":4},"video":{"recv":4199,"fd":4195,"dropped":1,"lost":0,"jb_ms":172,"dec_ms":9,"fw":2560}}
+epoch=1795833717 load=[{ 5.22 4.48 4.64 }] target=[500000,0,0]
+Terminal 83.1;deleted 37.6;WindowServer 29.3;mobileassetd 14.8;kernel_task 13.9;yes 9.2 ;
+CPU usage: 44.44% user, 55.55% sys, 0.0% idle 
+recv={"audio":{"recv":9551,"lost":4},"video":{"recv":4328,"fd":4327,"dropped":1,"lost":0,"jb_ms":171,"dec_ms":9,"fw":2560}}
+epoch=1795833722 load=[{ 5.45 4.54 4.66 }] target=[500000,0,0]
+Terminal 62.0;WindowServer 27.5;kernel_task 16.6;triald_system 15.4;cloudd 12.8;Portty 8.1 ;
+CPU usage: 41.55% user, 58.44% sys, 0.0% idle 
+recv={"audio":{"recv":9805,"lost":4},"video":{"recv":4446,"fd":4445,"dropped":1,"lost":0,"jb_ms":169,"dec_ms":9,"fw":2560}}
+/private/tmp/claude-501/-Users-ken-dev-portty/118cdc22-b23b-4659-bc76-5e0241eb480e/scratchpad/s/lone.sh: line 23: wait: pid 74342 is not a child of this shell

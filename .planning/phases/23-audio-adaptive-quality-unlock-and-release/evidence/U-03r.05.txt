@@ -1,0 +1,30 @@
+unlock-try U-03r.05: kind=admin dur=14s office-start=2026-11-28 03:04:08
+office before: lockstate: locked=true {"viewers":1,"own_viewers":1,"goroutines":67,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+home before: Portty never saves it. Wrong tries count toward the Mac's own limit.
+home fill: "set"
+home click: null
+t=+0.48 panel: Unlocking…
+t=+5.68 panel: panel absent; notice: none
+t=+6.06 panel: panel absent; notice: Mac unlocked.
+t=+11.19 panel: panel absent; notice: none
+office transitions:
+t=0.0 locked=true {"unlock":{"state":"idle","failures":0,"relock_armed":false},"viewers":1}
+t=1.0 locked=true {"unlock":{"state":"unlocking","failures":0,"relock_armed":false},"viewers":1}
+t=3.0 locked=false {"unlock":{"state":"idle","failures":0,"relock_armed":true},"viewers":1}
+loginwindow:
+03:04:12.499 -[LWDefaultScreenLockUI keyPressed:] | 	 View is hidden password field length = 0
+03:04:12.499 -[LWDefaultScreenLockUI showPasswordFieldMakingFirstResponder:] | 	  showing password field, shouldMakeFirstResponder: 0
+03:04:12.499 -[LWDefaultScreenLockUI showPasswordFieldMakingFirstResponder:] | 	  showing password field, shouldMakeFirstResponder: 1
+03:04:13.618 -[LWDefaultScreenLockUI loginPressed:] | enter
+03:04:13.618 -[LWDefaultScreenLockUI loginPressed:] | 	 loginPressed, set _windowControllerActionInProgress = YES
+03:04:13.618 -[LWDefaultScreenLockUI loginPressed:] | 	 setEnabled:NO
+03:04:13.619 -[LWDefaultScreenLockUI loginPressed:] | 	 Attempt #: 1
+03:04:13.619 -[LWDefaultScreenLockUI loginPressed:] | 	 Detaching thread - checkAuth
+03:04:14.463 -[LWScreenLockAuthentication _authCopyRightsWithUsername:password:continuityHints:localAuthenticationHints:] | Screensaver authorization succeeded
+03:04:14.823 -[LWDefaultScreenLockUI showPasswordFieldMakingFirstResponder:] | 	  showing password field, shouldMakeFirstResponder: 1
+03:04:14.826 -[LWDefaultScreenLockUI showPasswordFieldMakingFirstResponder:] | 	  showing password field, shouldMakeFirstResponder: 1
+03:04:14.827 -[LWDefaultScreenLockUI showPasswordFieldMakingFirstResponder:] | 	  showing password field, shouldMakeFirstResponder: 1
+lw-log: end
+new audit lines:
+{"ts":"2026-11-28T03:04:16Z","event":"unlocked","mode":"own","reason":null,"keys":["display_name","event","login_name","mode","node_name","node_stable_id","share_id","tailnet_ip","ts","user_id","v"]}
+office after: lockstate: locked=false {"viewers":1,"own_viewers":1,"goroutines":66,"unlock":{"state":"idle","failures":0,"relock_armed":true}}
