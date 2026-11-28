@@ -21,7 +21,7 @@ int pc_encode_synthetic_rate(uintptr_t handle, int frames, int width, int height
 
 // Capture. Each returns 0 or an error code (SCK codes pass through, else OSStatus);
 // the char buffer receives a message. One stream per process: nativeMu serialises.
-int pc_stream_start(uintptr_t handle, int kind, uint32_t id, int fps, int maxLong, int bitrate, double keyframeSecs, char *errbuf, int errlen);
+int pc_stream_start(uintptr_t handle, int kind, uint32_t id, int fps, int maxLong, int bitrate, double keyframeSecs, int *encoderFailed, char *errbuf, int errlen);
 int pc_stream_select(int kind, uint32_t id, int maxLong, char *errbuf, int errlen);
 int pc_list_surfaces(char **json, int *n, char *errbuf, int errlen);
 void pc_stream_stop(void);
@@ -33,6 +33,7 @@ int pc_encoder_set_bitrate(int bps);
 int pc_stream_set_fps(int fps);
 int pc_audio_restart(void);
 int pc_encoder_hardware(void);
+int pc_encoder_service_pids(int *out, int max);
 int pc_still_capture(int maxLong, uint8_t **out, int *n, char *errbuf, int errlen);
 uint32_t pc_main_display_id(void);
 */
@@ -46,6 +47,7 @@ import (
 	"runtime/cgo"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 	"unsafe"
@@ -98,6 +100,15 @@ func mapSCKError(code int, msg string) error {
 		return errNoEncoder
 	}
 	return fmt.Errorf("screencap: %s (code %d)", msg, code)
+}
+
+// startError maps a failed pc_stream_start: an encoder VideoToolbox would not
+// make is ErrEncoderStart with its OSStatus, anything else goes through mapSCKError.
+func startError(code int, encoder bool, msg string) error {
+	if encoder {
+		return fmt.Errorf("%w (code %d)", ErrEncoderStart, code)
+	}
+	return mapSCKError(code, msg)
 }
 
 //export goScreencapAccessUnit
@@ -416,16 +427,17 @@ func (d *DisplaySource) Start(ctx context.Context, cfg Config) error {
 	d.handle = cgo.NewHandle(&sink{au: d.emit, err: d.emitErr, audio: d.emitAudio, audioErr: d.emitAudioErr})
 
 	var msg [errBufLen]C.char
+	var encFailed C.int
 	nativeMu.Lock()
 	defer nativeMu.Unlock()
-	rc := C.pc_stream_start(C.uintptr_t(d.handle), C.int(d.surface.Kind), C.uint32_t(d.surface.ID), C.int(cfg.FPS), C.int(cfg.MaxLongEdge), C.int(cfg.BitrateBps), C.double(cfg.KeyframeInterval.Seconds()), &msg[0], errBufLen)
+	rc := C.pc_stream_start(C.uintptr_t(d.handle), C.int(d.surface.Kind), C.uint32_t(d.surface.ID), C.int(cfg.FPS), C.int(cfg.MaxLongEdge), C.int(cfg.BitrateBps), C.double(cfg.KeyframeInterval.Seconds()), &encFailed, &msg[0], errBufLen)
 	if rc != 0 {
 		d.handle.Delete()
 		d.closeChannels()
 		d.emitMu.Lock()
 		d.frames, d.errs, d.audio, d.audioErrs = nil, nil, nil, nil
 		d.emitMu.Unlock()
-		return mapSCKError(int(rc), C.GoString(&msg[0]))
+		return startError(int(rc), encFailed != 0, C.GoString(&msg[0]))
 	}
 	d.running = true
 	d.maxLong = cfg.MaxLongEdge
@@ -615,6 +627,54 @@ func (d *DisplaySource) HardwareEncoder() (hardware, known bool) {
 		return false, true
 	}
 	return false, false
+}
+
+// ownEncoderServices lists the pids of the VideoToolbox encoder service that
+// launchd runs for this process (see pc_encoder_service_pids). Read-only.
+func ownEncoderServices() ([]int, error) {
+	var buf [8]C.int
+	nativeMu.Lock()
+	n := int(C.pc_encoder_service_pids(&buf[0], C.int(len(buf))))
+	nativeMu.Unlock()
+	switch n {
+	case -1:
+		return nil, errors.New("screencap: this macOS does not say which encoder service belongs to this process")
+	case -2:
+		return nil, errors.New("screencap: the encoder is running")
+	case -3:
+		return nil, errors.New("screencap: the process list cannot be read")
+	}
+	pids := make([]int, n)
+	for i := range pids {
+		pids[i] = int(buf[i])
+	}
+	return pids, nil
+}
+
+// ResetEncoderService ends (SIGKILL, as the U-load recovery did by hand) the
+// encoder service launchd runs for this process, for an encoder that keeps
+// failing to start: launchd starts a fresh instance on the next encoder
+// request and the daemon goes on. It never signals another app's instance or
+// a service while this process has a running encoder. It returns the pids it
+// ended, none when no such service runs. Refuses under tests.
+func ResetEncoderService() ([]int, error) {
+	if testing.Testing() {
+		return nil, ErrRefusedInTest
+	}
+	pids, err := ownEncoderServices()
+	if err != nil {
+		return nil, err
+	}
+	var ended []int
+	var errs []error
+	for _, pid := range pids {
+		if err := syscall.Kill(pid, syscall.SIGKILL); err != nil {
+			errs = append(errs, fmt.Errorf("screencap: ending encoder service %d: %w", pid, err))
+			continue
+		}
+		ended = append(ended, pid)
+	}
+	return ended, errors.Join(errs...)
 }
 
 func (d *DisplaySource) noteEncoder() {

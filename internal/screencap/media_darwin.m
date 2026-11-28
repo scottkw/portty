@@ -17,6 +17,8 @@
 #import <CoreGraphics/CoreGraphics.h>
 #import <unistd.h>
 #import <stdatomic.h>
+#import <dlfcn.h>
+#import <libproc.h>
 
 // Exported from media_darwin.go. The handle is a runtime/cgo.Handle.
 extern void goScreencapAccessUnit(uintptr_t handle, void *avcc, int avccLen, void *sps, int spsLen,
@@ -852,10 +854,12 @@ static _Atomic uint64_t gEncoded;
 // Starts capturing a surface (kind 0 display, 1 window; display id 0 is the
 // main display) into a fresh encoder at the capture size.
 // Returns 0 or an error code: SCK codes pass through (-3801 no Screen
-// Recording grant, -3815 no display), OSStatus for the encoder.
+// Recording grant, -3815 no display), OSStatus for the encoder, and then
+// *encoderFailed is 1 (Go counts those toward resetting the encoder service).
 int pc_stream_start(uintptr_t handle, int kind, uint32_t sid, int fps, int maxLong, int bitrate, double keyframeSecs,
-                    char *errbuf, int errlen) {
+                    int *encoderFailed, char *errbuf, int errlen) {
 	@autoreleasepool {
+		*encoderFailed = 0;
 		@try {
 			if (gStream != nil) {
 				pcSetErr(errbuf, errlen, @"a capture stream is already running");
@@ -871,6 +875,7 @@ int pc_stream_start(uintptr_t handle, int kind, uint32_t sid, int fps, int maxLo
 			OSStatus st = [enc startWidth:w height:h fps:fps bitrate:bitrate keySecs:keyframeSecs];
 			if (st != noErr) {
 				pcSetErr(errbuf, errlen, @"starting the encoder failed");
+				*encoderFailed = 1;
 				return (int)st;
 			}
 
@@ -1298,6 +1303,39 @@ int pc_encoder_hardware(void) {
 	} @catch (NSException *e) {
 		return -1;
 	}
+}
+
+// Fills out with up to max pids of the VideoToolbox encoder service instances
+// launchd runs for this process: ServiceType Application gives each client its
+// own, whose responsible process is the client, so another app's instance never
+// matches. Returns the count; -1 when this macOS lacks the responsibility call
+// (private, looked up at run time so its absence cannot stop the daemon
+// loading), -2 while this process has a running encoder (a reset is only for an
+// encoder that could not start), -3 when the process list cannot be read.
+// The Go caller holds nativeMu (gEnc).
+int pc_encoder_service_pids(int *out, int max) {
+	static const char kService[] = "/System/Library/Frameworks/VideoToolbox.framework/Versions/A/XPCServices/VTEncoderXPCService";
+	pid_t (*responsible)(pid_t) = (pid_t(*)(pid_t))dlsym(RTLD_DEFAULT, "responsibility_get_pid_responsible_for_pid");
+	if (responsible == NULL) return -1;
+	if (gEnc != nil) return -2;
+	int cap = proc_listallpids(NULL, 0);
+	if (cap <= 0) return -3;
+	cap += 64; // room for processes started since the count
+	pid_t *pids = calloc((size_t)cap, sizeof(pid_t));
+	if (pids == NULL) return -3;
+	int n = proc_listallpids(pids, cap * (int)sizeof(pid_t));
+	pid_t self = getpid();
+	int found = 0;
+	char path[PROC_PIDPATHINFO_MAXSIZE];
+	for (int i = 0; i < n && found < max; i++) {
+		if (pids[i] <= 0 || pids[i] == self) continue;
+		if (proc_pidpath(pids[i], path, sizeof path) <= 0) continue;
+		if (strncmp(path, kService, sizeof kService - 1) != 0) continue; // also VTEncoderXPCServiceZonto
+		if (responsible(pids[i]) != self) continue;
+		out[found++] = pids[i];
+	}
+	free(pids);
+	return n < 0 ? -3 : found;
 }
 
 // One JPEG (quality 0.8) of the main display, at most maxLong px on the long
