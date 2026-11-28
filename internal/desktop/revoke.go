@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -134,12 +135,14 @@ func (m *Manager) cutViewer(v *viewer, code websocket.StatusCode, reason string)
 		_ = v.pc.Close()
 	}
 	m.syncTap()
-	go closeSocket(v.ws, code, reason)
+	go closeSocket(v.ws, v.drop, code, reason)
 }
 
 // closeSocket closes c with code and reason, and drops it without the handshake
-// once closeCeiling has passed.
-func closeSocket(c *websocket.Conn, code websocket.StatusCode, reason string) {
+// once closeCeiling has passed. drop ends the viewer's blocked read, which
+// closes c at once: in coder/websocket v1.8.15 CloseNow after Close has started
+// only waits, and Close waits about 5 s for the lock that read holds.
+func closeSocket(c *websocket.Conn, drop context.CancelFunc, code websocket.StatusCode, reason string) {
 	defer recoverLog()
 	done := make(chan struct{})
 	go func() {
@@ -152,6 +155,7 @@ func closeSocket(c *websocket.Conn, code websocket.StatusCode, reason string) {
 	select {
 	case <-done:
 	case <-t.C:
+		drop()
 		_ = c.CloseNow()
 		<-done
 	}

@@ -357,9 +357,10 @@ func TestGuestStop_ThreeSilentPeersDoNotHoldItUp(t *testing.T) {
 	if d := time.Since(start); d >= 2*time.Second {
 		t.Errorf("CloseGuests took %v with three silent peers, want under 2 s", d)
 	}
-	// Each socket is force-closed once the ceiling passes, all three together
-	// (serial closes would take 3 x the ceiling or more).
-	eventually(t, 8*time.Second, "the guests to be gone", func() bool { return e.mgr.Viewers() == 1 })
+	// Each socket is force-closed once the 2 s ceiling passes, all three
+	// together, though each read loop is blocked on a silent peer (Close alone
+	// would hold them about 5 s; serial closes 3 x the ceiling or more).
+	eventually(t, 3500*time.Millisecond, "the guests to be gone", func() bool { return e.mgr.Viewers() == 1 })
 	list := e.mgr.ViewerList()
 	if len(list) != 1 || list[0].Mode != desktop.ModeOwn {
 		t.Fatalf("remaining viewers %+v, want the one own-account viewer", list)

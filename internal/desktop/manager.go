@@ -311,6 +311,9 @@ type viewer struct {
 	gs       *GuestShare // the share a guest was admitted to; nil for an own-account viewer
 	mediaCut atomic.Bool // a media identity check already cut this guest
 	cut      atomic.Bool // CloseViewer or CloseGuests already cut this viewer
+	// drop cancels the context of serveAdmitted's read loop: a read whose
+	// context ends closes the socket at once (closeSocket's ceiling).
+	drop context.CancelFunc
 	// leaseReady is set once the answer is sent: lease messages start then.
 	leaseReady atomic.Bool
 
@@ -741,6 +744,11 @@ type readResult struct {
 // not nil, is a read already in flight on c (a guest's wait loop leaves one
 // running); its result is taken before the socket is read again.
 func (m *Manager) serveAdmitted(ctx context.Context, c *websocket.Conn, v *viewer, admit func() bool, pend <-chan readResult) {
+	// For the read loop only: writes keep ctx, so a broadcast to the other
+	// viewers never runs on a context one viewer's cut has ended.
+	rctx, drop := context.WithCancel(ctx)
+	defer drop()
+	v.drop = drop
 	id := string(v.ID)
 	// offer: a ping before it is answered, anything else is refused.
 	offerDeadline := time.Now().Add(offerTimeout)
@@ -893,7 +901,7 @@ func (m *Manager) serveAdmitted(ctx context.Context, c *websocket.Conn, v *viewe
 	slog.Info("desktop: viewer joined", "viewer", id[:8], "viewers", m.Viewers())
 
 	for {
-		in, err := read(ctx, c, 0)
+		in, err := read(rctx, c, 0)
 		if err != nil {
 			if errors.Is(err, errBadMessage) {
 				reject(ctx, c, errCodeBadMessage)
