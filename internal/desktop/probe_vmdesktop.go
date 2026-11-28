@@ -34,6 +34,7 @@ type DebugVM20Request struct {
 	Mask     int      `json:"mask,omitempty"`     // key: the modifier mask the key carries
 	Codes    []string `json:"codes,omitempty"`    // chord
 	S        string   `json:"s,omitempty"`        // text, pbwrite
+	VK       int      `json:"vk,omitempty"`       // wake: the virtual key code posted alone (23-10 U-01)
 	DX       float64  `json:"dx,omitempty"`       // scroll, in the CoreGraphics sign
 	DY       float64  `json:"dy,omitempty"`       // scroll, in the CoreGraphics sign
 	Kind     string   `json:"kind,omitempty"`     // select: display or window
@@ -150,7 +151,7 @@ func (m *Manager) vm20Select(ctx context.Context, v *viewer, kind string, id uin
 	return failure, nil
 }
 
-// DebugVM20 runs one probe call. Ops: list, key, chord, text, scroll, release,
+// DebugVM20 runs one probe call. Ops: list, key, wake, chord, text, scroll, release,
 // select, raise, minimized, topmost, focus, behavior, pbread, pbwrite, control.
 func (m *Manager) DebugVM20(ctx context.Context, req DebugVM20Request) (DebugVM20Response, error) {
 	v := vm20Pseudo()
@@ -175,6 +176,10 @@ func (m *Manager) DebugVM20(ctx context.Context, req DebugVM20Request) (DebugVM2
 		if err := m.vm20Send(v, vm20Key(req.Code, req.Down, req.Mask)); err != nil {
 			return nil, err
 		}
+	case "wake":
+		// The daemon's own wake step (user-activity declaration, then one key) with no viewer and no lock
+		// gate: U-01 posts each wake-key candidate alone at the real lock screen.
+		out["error"] = errText(screencap.NewUnlockBridge().Wake(uint16(req.VK)))
 	case "chord":
 		var msgs []map[string]any
 		mask := 0
