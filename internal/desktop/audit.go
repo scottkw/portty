@@ -37,11 +37,13 @@ const (
 	AuditClipboardGranted = "clipboard_granted"
 	AuditClipboardRevoked = "clipboard_revoked"
 
-	// Remote unlock (UNLK-01): one line per attempt that typed, and one when the
-	// Mac was locked again after the last own-account viewer left.
+	// Remote unlock (UNLK-01): one line per attempt that typed, one when the Mac
+	// was read locked again after the last own-account viewer left, and one when
+	// the re-lock's chords did not lock it (the rule keeps trying).
 	AuditUnlocked     = "unlocked"
 	AuditUnlockFailed = "unlock_failed"
 	AuditRelocked     = "relocked"
+	AuditRelockFailed = "relock_failed"
 )
 
 // Audit modes: guest events carry a share ID, own-account events do not.

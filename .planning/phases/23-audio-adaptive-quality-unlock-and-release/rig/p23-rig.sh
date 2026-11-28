@@ -625,10 +625,10 @@ for s in "$@"; do
 done
 F="$D/desktop-audit.jsonl"
 echo "audit file: mode=$(stat -f %Lp "$F") lines=$(wc -l < "$F" | tr -d ' ')"
-echo "events unlocked / unlock_failed / relocked: $(jq -r 'select(.event=="unlocked" or .event=="unlock_failed" or .event=="relocked") | .event' "$F" | sort | uniq -c | awk '{printf "%s=%s ", $2, $1}')"
-echo "modes on those lines: $(jq -r 'select(.event=="unlocked" or .event=="unlock_failed" or .event=="relocked") | .mode' "$F" | sort | uniq -c | awk '{printf "%s=%s ", $2, $1}')"
+echo "events unlocked / unlock_failed / relocked / relock_failed: $(jq -r 'select(.event=="unlocked" or .event=="unlock_failed" or .event=="relocked" or .event=="relock_failed") | .event' "$F" | sort | uniq -c | awk '{printf "%s=%s ", $2, $1}')"
+echo "modes on those lines: $(jq -r 'select(.event=="unlocked" or .event=="unlock_failed" or .event=="relocked" or .event=="relock_failed") | .mode' "$F" | sort | uniq -c | awk '{printf "%s=%s ", $2, $1}')"
 echo "key sets on those lines:"
-jq -c 'select(.event=="unlocked" or .event=="unlock_failed" or .event=="relocked") | {event, keys: (keys)}' "$F" | sort | uniq -c
+jq -c 'select(.event=="unlocked" or .event=="unlock_failed" or .event=="relocked" or .event=="relock_failed") | {event, keys: (keys)}' "$F" | sort | uniq -c
 echo "any line with a key naming length, password or secret: $(jq -r 'select(.event=="unlocked" or .event=="unlock_failed") | keys[] | select(test("len|pass|secret|pw"; "i"))' "$F" | wc -l | tr -d ' ')"
 exit 0
 EOF

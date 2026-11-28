@@ -9,6 +9,12 @@ package desktop
 // any unhealthy or unavailable reading while the rule is armed makes the
 // decision lock. The tap is kept running while armed (lease.go syncTap).
 //
+// A posted chord is not a locked Mac (RL-01r: under load with a busy app in
+// front macOS dropped it). The rule stays armed until a lock read says locked,
+// and only that read writes relocked; a Mac still unlocked gets the chord again
+// relockConfirm apart, and after relockTries unconfirmed posts relock_failed is
+// logged, counted and audited and the chord is posted every relockBackoff.
+//
 // The rule is armed only by a Portty unlock, never by an unlock at the Mac's
 // keyboard, and it survives a daemon restart through desktop-state.json. It is
 // driven by the lease loop's one-second poll, so the 30 s is "about": the lock
@@ -29,6 +35,15 @@ import (
 // before it locks again.
 const relockGrace = 30 * time.Second
 
+// A posted chord has relockConfirm to show as a locked Mac before it is posted
+// again; after relockTries such posts the re-lock is reported failed and the
+// chord is posted every relockBackoff while the rule stays armed.
+const (
+	relockConfirm = 5 * time.Second
+	relockTries   = 3
+	relockBackoff = 30 * time.Second
+)
+
 // relockState is the re-lock rule's bookkeeping. pollMu serialises polls (the
 // lease loop and tests), so one decision is taken at a time; mu guards the rest
 // and is a leaf apart from the vmu read noted above.
@@ -38,10 +53,11 @@ type relockState struct {
 	mu      sync.Mutex
 	armed   bool
 	since   time.Time // untagged input after this counts as someone at the Mac: the unlock, or the daemon's start after a restart
-	graceAt time.Time // lock at the first poll at or after this; zero while an own-account viewer is connected
+	graceAt time.Time // decide at the first poll at or after this (the grace's end, then each re-post); zero while an own-account viewer is connected
+	posts   int       // chords posted since the grace ended that the Mac has not been read locked after
 	seen    bool      // a healthy tap showed untagged input after since
 	unknown bool      // some reading while armed was not healthy
-	who     Identity  // the last own-account viewer, for the relocked audit line
+	who     Identity  // the last own-account viewer, for the relocked and relock_failed audit lines
 	failing bool      // the last chord post failed (logged once per streak)
 	resume  bool      // desktop-state.json said armed when this process started
 }
@@ -72,7 +88,7 @@ func (m *Manager) relockArmed() bool {
 func (m *Manager) armRelock(at time.Time) {
 	rl := &m.rl
 	rl.mu.Lock()
-	rl.armed, rl.since, rl.seen, rl.unknown, rl.failing = true, at, false, false, false
+	rl.armed, rl.since, rl.seen, rl.unknown, rl.failing, rl.posts = true, at, false, false, false, 0
 	rl.graceAt = time.Time{}
 	if m.ownViewers() == 0 {
 		rl.graceAt = at.Add(relockGrace)
@@ -105,7 +121,7 @@ func (m *Manager) relockViewer(joined bool, v *viewer) {
 	}
 	switch own := m.ownViewers(); {
 	case own > 0:
-		rl.graceAt = time.Time{}
+		rl.graceAt, rl.posts = time.Time{}, 0
 	case rl.graceAt.IsZero():
 		rl.graceAt = now.Add(relockGrace)
 	}
@@ -116,7 +132,7 @@ func (m *Manager) disarmRelock() {
 	rl := &m.rl
 	rl.mu.Lock()
 	was := rl.armed
-	rl.armed, rl.graceAt, rl.seen, rl.unknown, rl.failing = false, time.Time{}, false, false, false
+	rl.armed, rl.graceAt, rl.seen, rl.unknown, rl.failing, rl.posts = false, time.Time{}, false, false, false, 0
 	rl.mu.Unlock()
 	if was {
 		_, _ = m.persist(func(rs *runtimeState) { rs.RelockArmed, rs.RelockSince = false, time.Time{} })
@@ -144,9 +160,30 @@ func (m *Manager) resumeRelock() {
 	slog.Info("desktop: re-lock was armed before this start; it is armed again")
 }
 
+// relockEndIfLocked ends the rule on a Mac that reads locked; a failed read is
+// not locked. The relocked line is written here, after the read, and only when
+// the rule's own chord was posted: never on the strength of a post alone.
+func (m *Manager) relockEndIfLocked() bool {
+	if locked, err := m.d.Unlock.SessionLocked(); err != nil || !locked {
+		return false
+	}
+	rl := &m.rl
+	rl.mu.Lock()
+	posted, who := rl.posts > 0, rl.who
+	rl.mu.Unlock()
+	if posted {
+		m.audit(AuditRelocked, who, "")
+		m.countInput("relocked")
+		slog.Info("desktop: the Mac was locked again after the last own-account viewer left")
+	}
+	m.disarmRelock()
+	return true
+}
+
 // relockPoll is one pass of the rule, run each second by the lease loop after
-// the tap's own poll: disarm when the Mac is locked, sample the physical-input
-// source, and decide once the grace is over.
+// the tap's own poll: end it when the Mac reads locked (confirming a posted
+// chord), sample the physical-input source, and decide once the grace is over
+// or a posted chord's confirm window has passed.
 func (m *Manager) relockPoll(now time.Time) {
 	rl := &m.rl
 	rl.pollMu.Lock()
@@ -158,10 +195,9 @@ func (m *Manager) relockPoll(now time.Time) {
 	if !armed {
 		return
 	}
-	// Locked by any other means (a screen saver, the lid, someone at the keyboard):
-	// the rule has nothing left to do.
-	if locked, err := m.d.Unlock.SessionLocked(); err == nil && locked {
-		m.disarmRelock()
+	// Locked by the rule's chord, or by any other means (a screen saver, the lid,
+	// someone at the keyboard): the rule has nothing left to do.
+	if m.relockEndIfLocked() {
 		return
 	}
 	r := m.d.Physical()
@@ -180,9 +216,10 @@ func (m *Manager) relockPoll(now time.Time) {
 	}
 }
 
-// relockDecide ends the grace: a Mac found locked, or one a healthy tap showed
-// someone using, is left alone and the rule ends; anything else locks it. The
-// caller holds pollMu.
+// relockDecide ends the grace, and runs again each time a posted chord was not
+// confirmed: a Mac found locked, or one a healthy tap showed someone using, is
+// left alone and the rule ends; anything else gets the Lock Screen chord and
+// stays armed until a later pass reads it locked. The caller holds pollMu.
 func (m *Manager) relockDecide(now time.Time) {
 	rl := &m.rl
 	rl.mu.Lock()
@@ -190,11 +227,10 @@ func (m *Manager) relockDecide(now time.Time) {
 		rl.mu.Unlock()
 		return
 	}
-	seen, unknown, who := rl.seen, rl.unknown, rl.who
+	seen, unknown, who, posts := rl.seen, rl.unknown, rl.who, rl.posts
 	rl.mu.Unlock()
 
-	if locked, err := m.d.Unlock.SessionLocked(); err == nil && locked {
-		m.disarmRelock()
+	if m.relockEndIfLocked() {
 		return
 	}
 	if seen && !unknown {
@@ -219,10 +255,22 @@ func (m *Manager) relockDecide(now time.Time) {
 	m.in.mu.Lock()
 	m.in.lockUntil = now.Add(optimisticLock)
 	m.in.mu.Unlock()
-	m.audit(AuditRelocked, who, "")
-	m.countInput("relocked")
-	slog.Info("desktop: the Mac was locked again after the last own-account viewer left")
-	m.disarmRelock()
+	if posts == relockTries {
+		slog.Warn("desktop: the Mac did not lock after the re-lock keys; still trying", "posts", posts, "every", relockBackoff)
+		m.countInput("relock_failed")
+		m.audit(AuditRelockFailed, who, "")
+	}
+	wait := relockConfirm
+	if posts >= relockTries {
+		wait = relockBackoff
+	}
+	rl.mu.Lock()
+	if !rl.graceAt.IsZero() { // zero: an own-account viewer came back meanwhile
+		rl.posts++
+		rl.graceAt = now.Add(wait)
+	}
+	rl.failing = false
+	rl.mu.Unlock()
 }
 
 // postLockChord posts Lock Screen (Ctrl+Cmd+Q) through the input bridge, which

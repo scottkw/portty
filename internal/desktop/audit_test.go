@@ -94,12 +94,12 @@ func TestAudit_ReasonKeyAndConstants(t *testing.T) {
 	events := []string{
 		AuditShareStart, AuditShareStop, AuditAdmitRequest, AuditAdmitted, AuditDenied, AuditJoin,
 		AuditLeave, AuditRevoked, AuditControlGranted, AuditControlRevoked, AuditClipboardGranted, AuditClipboardRevoked,
-		AuditUnlocked, AuditUnlockFailed, AuditRelocked,
+		AuditUnlocked, AuditUnlockFailed, AuditRelocked, AuditRelockFailed,
 	}
 	wantEvents := []string{
 		"share_start", "share_stop", "admit_request", "admitted", "denied", "join",
 		"leave", "revoked", "control_granted", "control_revoked", "clipboard_granted", "clipboard_revoked",
-		"unlocked", "unlock_failed", "relocked",
+		"unlocked", "unlock_failed", "relocked", "relock_failed",
 	}
 	for i, e := range events {
 		if e != wantEvents[i] {
