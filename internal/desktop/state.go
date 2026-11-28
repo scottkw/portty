@@ -209,6 +209,7 @@ func (m *Manager) tick(ctx context.Context) {
 	} else {
 		m.ensureSource(now)
 		m.watchdogStep(ctx, now)
+		m.audioWatchStep(now)
 	}
 	m.lapseDueCheck(now)
 	m.pushIfChanged(ctx)
