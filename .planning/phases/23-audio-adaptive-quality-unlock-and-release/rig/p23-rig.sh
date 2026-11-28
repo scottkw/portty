@@ -849,7 +849,7 @@ cmd_soak_verdict() {
   awk -F, -v from="$from" -v to="$to" '
     function med(a, n,   i, j, t, b) { for (i = 1; i <= n; i++) b[i] = a[i]; for (i = 2; i <= n; i++) { t = b[i]; for (j = i - 1; j >= 1 && b[j] > t; j--) b[j + 1] = b[j]; b[j + 1] = t } return (n % 2) ? b[(n + 1) / 2] : (b[n / 2] + b[n / 2 + 1]) / 2 }
     NR == 1 { next }
-    { k = NR - 1; m = k - 1; pid[k] = $2; rss[k] = $3; fp[k] = $4; fds[k] = $5; gor[k] = $7; vw[k] = $8; st[k] = $9; n = k }
+    { k = NR - 1; ts[k] = $1; pid[k] = $2; rss[k] = $3; fp[k] = $4; fds[k] = $5; gor[k] = $7; vw[k] = $8; st[k] = $9; n = k }
     END {
       nw = 0
       for (k = 1; k <= n; k++) if (k - 1 >= from && k - 1 <= to) { nw++; wr[nw] = rss[k]; wf[nw] = fp[k]; if (nw == 1 || fds[k] < fmin) fmin = fds[k]; if (nw == 1 || fds[k] > fmax) fmax = fds[k]; if (nw == 1 || gor[k] < gmin) gmin = gor[k]; if (nw == 1 || gor[k] > gmax) gmax = gor[k] }
@@ -861,7 +861,7 @@ cmd_soak_verdict() {
         if (vw[k] < 1) badvw++
         if (k - 1 >= from) { na++; if (rss[k] / mr > maxr) maxr = rss[k] / mr; if (fp[k] / mf > maxf) maxf = fp[k] / mf; if (fds[k] < fmin - 5 || fds[k] > fmax + 5) badfd++; if (gor[k] < gmin - 10 || gor[k] > gmax + 10) badg++ }
       }
-      printf "samples=%d first=%s last=%s\n", n, "-", "-"
+      printf "samples=%d first=%s last=%s\n", n, ts[1], ts[n]
       printf "pid: %s throughout, samples with another pid: %d\n", pid[1], badpid
       printf "state: samples not streaming: %d, samples with no viewer: %d\n", badst, badvw
       printf "warm-up minutes %d..%d (%d samples): rss median %d kB, footprint median %d B, fds %d..%d, goroutines %d..%d\n", from, to, nw, mr, mf, fmin, fmax, gmin, gmax
