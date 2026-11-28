@@ -1,0 +1,4 @@
+unlock-try RL-02-2.unlock: kind=admin dur=20s office-start=2026-11-28 09:01:06
+office before: lockstate: locked=true {"viewers":1,"own_viewers":1,"goroutines":55,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+home before: panel absent; notice: none
+home: no Mac password field in the page

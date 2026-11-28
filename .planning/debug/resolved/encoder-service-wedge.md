@@ -1,8 +1,8 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: "U-load FAIL (23-VM-CHECKS.md notes item 9, evidence/U-load-encoder.txt): under extreme load in a macOS 27.2 Tart VM the VideoToolbox encoder service (ParavirtualizedVideoEncoder in VTEncoderXPCService) failed changes (-12902, -90004, -19092) and then refused every new encoder: every viewer join logged capture start failed (starting the encoder failed, code -12902), join failed, viewer left, after the load stopped too. sudo pkill -9 VTEncoderXPCService fixed joins on the same daemon pid. The daemon has no recovery; restarting the daemon is not acceptable (it hosts the terminal sessions)."
 created: 2026-11-28T03:44:00Z
-updated: 2026-11-28T05:05:00Z
+updated: 2026-11-28T09:10:00Z
 ---
 
 ## Current Focus
@@ -25,7 +25,7 @@ reasoning_checkpoint:
     - "code: daemon-held state (a leaked PCEncoder or session) blocking new sessions - ruled out: same daemon pid recovered after only the service was killed; pc_stream_start allocates a fresh PCEncoder per start and failed starts hold nothing (gStream stays nil)"
     - "data/config: wrong encoder parameters (-12902 is kVTParameterErr) - ruled out: identical parameters (2560 long edge, 30 fps, 8 Mbps) streamed before the wedge and right after the kill"
   and_gate: "yes: the user-visible failure needs both the wedged service (environment) and the absent recovery (code). The fix removes the code half; the environment half is not preventable from the daemon."
-next_action: VM re-check M-222 (TESTING.md): deploy a build with this fix to portty-test, confirm before the wedge that the daemon's VTEncoderXPCService has the daemon as its responsible pid (sudo launchctl procinfo), reproduce U-load, and watch for the reset line after the third failed start and a streaming join after it on the same daemon pid
+next_action: none; resolved 2026-11-28 after the VM re-check (see human_verify)
 
 ## Symptoms
 
@@ -105,6 +105,7 @@ verification:
   adjacent_tests: { result: pass, suites_run: ["go test -race ./internal/desktop/ : ok 188.6 s", "go test -race ./internal/daemon/ : ok 133.4 s", "go test -race -skip encoder/Opus ./internal/screencap/ : ok 1.2 s", "go vet ./... and -tags vmdesktop: clean", "gofmt -l: clean", "go build . (default, vmdesktop, wailsassets, wailsassets vmdesktop): ok", "tests/check-traceability-paths.sh: OK", "tests/check-brand.sh: clean"] }
   revert_and_reconfirm: { result: pass, bug_returned_on_revert: true, fixed_on_reapply: true, detail: "the RED run is the reverted state (stubs only): every new test failed; the mutant that drops the startSource call (the wiring revert) fails the rig test" }
   guardrail_verdict: accepted
+  human_verify: { result: pass, detail: "VM re-check M-222 = 23-VM-CHECKS row EW-01r on build AD 23.10.5: responsible pid of VTEncoderXPCService 39270 = the daemon; wedge under load; three capture start failures, then the reset line ended 39270, macOS started 57444 and the next join streamed on the same daemon pid 39212; no hand kill, no second reset" }
 not_verified: "No real wedge with the fix (VM M-222 pending): whether the reset alone clears a wedged ParavirtualizedVideoEncoder service as the manual pkill did, and whether a LaunchAgent daemon's encoder service reports the daemon as its responsible pid (inferred from the ExtensionKit sample on the host). Not covered: a wedge where sessions are created but every output fails (-19092) without starts failing (no frames, the watchdog restarts; if starts keep succeeding the policy never counts); a daemon started by the detached-spawn fallback (not its own responsible process: the lookup finds nothing and logs that); a pid reused between the lookup and the kill (microseconds, same user)."
 oracle_type: specified (U-load evidence: the manual kill of the daemon's encoder service restored joins on the same daemon pid; the policy's thresholds are this fix's contract)
 commit: 7af74813

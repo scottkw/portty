@@ -1,8 +1,8 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: "U-load (23.10.3 re-check, 23-VM-CHECKS notes item 10): after a remote unlock armed the re-lock, a wedged encoder made every join fail at once (capture start failed -> join failed -> viewer left); the page kept retrying and relock_armed stayed true with viewers 0 and the Mac unlocked for more than 5 min; relocked fired only about 30 s after Safari was closed. Each join attempt, even a failed one, restarts the 30 s grace"
 created: 2026-11-27T22:00:00Z
-updated: 2026-11-27T23:00:00Z
+updated: 2026-11-28T09:10:00Z
 ---
 
 ## Current Focus
@@ -10,7 +10,7 @@ updated: 2026-11-27T23:00:00Z
 hypothesis: CONFIRMED. join() calls relockViewer(true, v) right after registering v and before startSource; a start failure then calls leave(v) -> relockViewer(false, v), which finds graceAt zero (cleared by the join) and sets it to now+30 s, so every failed join restarts the grace. Second path: ownViewers counts registered viewers whose start is still in flight, holding the poll off
 test: TestRelock_FailedJoinsDoNotRestartTheGrace, TestRelock_JoinStillStartingDoesNotHoldOffTheLock (RED on 859746f7)
 expecting: GREEN after the fix; all other TestRelock_/TestUnlock_ still pass (met, see Resolution.verification)
-next_action: VM re-check on a build with this fix (orchestrator / user): see Resolution.vm_recheck; then archive to resolved/ and add the knowledge-base entry
+next_action: none; resolved 2026-11-28 after the VM re-check (see human_verify)
 bug_class: Bohrbug (deterministic, fake clock)
 
 reasoning_checkpoint:
@@ -76,7 +76,7 @@ verification:
   adjacent_tests: { result: pass, suites_run: ["go test -race ./internal/desktop/ ok (185.6 s)", "go test -race ./internal/daemon/ ok (132.6 s)", "new tests -race -count=20 zero failures", "go build ./internal/... (default and -tags vmdesktop)", "go vet ./internal/desktop/ ./internal/daemon/ ./internal/screencap/ (default and -tags vmdesktop) clean", "gofmt -l internal/ clean", "bash tests/check-brand.sh clean"] }
   revert_and_reconfirm: { result: pass, bug_returned_on_revert: true (RED on the original code; M2 reverts the ordering alone and both new tests fail again), fixed_on_reapply: true }
   guardrail_verdict: accepted
-  human_verify_pending: "VM re-check (vm_recheck)"
+  human_verify: { result: pass, detail: "VM re-check RL-01r on build AD 23.10.5 (23-VM-CHECKS): last real leave 06:35:21, failed joins at 06:35:42 and 06:35:54 did not restart the timer, relocked 06:35:52 (31 s after the leave) while joins kept failing. That run's chord did not lock the Mac (a separate bug, relock-chord-unverified, fixed in bd2ebc82 and passed RL-02 on 23.12.0); the timing this session fixed held" }
 files_changed: [internal/desktop/relock.go, internal/desktop/manager.go, internal/desktop/relock_test.go]
 oracle_type: specified (UNLK-01 re-lock contract from the brief: lock 30 s after the last own viewer that was actually viewing left; failed or in-flight joins neither restart, extend nor disarm; a real rejoin cancels) with boundary neighbours (no chord at +29 s right after a failed join, chord at +30 s; a start in flight across +30 s)
 vm_recheck: "On a build with this fix, repeat the U-load re-lock half without needing the load: remote unlock from the home viewer (relock_armed true), close the viewer (note the leave time), then make joins fail at once (wedge the encoder under load as in U-load, or any capture start failure) while the home page keeps retrying. Expect: relocked audit line and locked=true about 30 s (first poll at or after) after the last real leave, while failed joins continue; relock_armed true until then and false after; the relocked line names the viewer that left (node home-air VM); no relocked line earlier than 30 s; a real rejoin that streams inside 30 s still cancels (U-10r style). Evidence: lockstate/stats poll every 5 s plus daemon.log and audit tail"

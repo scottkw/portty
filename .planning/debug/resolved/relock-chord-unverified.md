@@ -1,8 +1,8 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: "RL-01r (23.10.5 VM re-check, 23-VM-CHECKS Notes 20-25): re-lock armed after a remote unlock; last real own viewer left 06:35:21; `relocked` audited 06:35:52 and relock_armed false afterwards, but the Mac never locked (GET /desktop locked=false at every read through 06:37:54, no loginwindow lock line) and a recovered viewer rejoined the unlocked desktop. Office load ~100, busy Terminal frontmost. Control (no load, Finder frontmost) locked at 30 s. relockDecide posts Ctrl+Cmd+Q, writes `relocked` and disarms without re-reading the lock state"
 created: 2026-11-28T08:00:00Z
-updated: 2026-11-28T10:30:00Z
+updated: 2026-11-28T09:10:00Z
 ---
 
 ## Current Focus
@@ -10,7 +10,7 @@ updated: 2026-11-28T10:30:00Z
 hypothesis: CONFIRMED. relockDecide treats a successfully posted Ctrl+Cmd+Q as a locked Mac: it audits relocked, counts relocked and disarms in the same pass, with no SessionLocked read afterwards, so a chord macOS drops (load ~100, busy Terminal frontmost) is never retried and the audit claims a lock
 test: TestRelock_LostChordIsRetriedNotClaimed, TestRelock_LockReadErrorIsNotLocked, TestRelock_ViewerBackPausesTheRetries (RED on d9b71c13)
 expecting: GREEN after the fix with every other TestRelock_/TestUnlock still passing (met, see Resolution.verification)
-next_action: VM re-check on a build with this fix (orchestrator / user): see Resolution.vm_recheck and TESTING.md M-223; then archive to resolved/ and add the knowledge-base entry
+next_action: none; resolved 2026-11-28 after the VM re-check (see human_verify)
 bug_class: Bohrbug (deterministic on the fake clock once the chord is lost; the loss itself is environmental)
 
 reasoning_checkpoint:
@@ -76,7 +76,7 @@ verification:
   adjacent_tests: { result: pass, suites_run: ["go test -race ./internal/desktop/: first run one known load flake TestQualityShaped_SlowViewerDoesNotStallOthers (quality controller, no relock path), re-run alone -count=3 ok (177.7 s); full package re-run ok (187.7 s)", "go test -race ./internal/daemon/ ok (133.6 s)", "go vet ./internal/desktop/ ./internal/daemon/ ./internal/screencap/ (default and -tags vmdesktop) clean", "go build ./... and -tags vmdesktop ./internal/... ok", "gofmt -l internal/ clean", "bash tests/check-brand.sh clean", "bash tests/check-traceability-paths.sh OK"] }
   revert_and_reconfirm: { result: pass, bug_returned_on_revert: true (RED on the original code; M10 restores the old disarm-after-post and M2 the old claim-on-post, both fail the new tests), fixed_on_reapply: true }
   guardrail_verdict: accepted
-  human_verify_pending: "VM re-check (vm_recheck)"
+  human_verify: { result: pass, detail: "VM re-check on build AG 23.12.0 (23-VM-CHECKS rows RL-02c PASS twice, RL-02 PASS): no load, relocked 0.9-1.0 s after loginwindow kAELockScreenEvent; under load 82-108 with the busy Terminal in front, no relocked while unlocked (ioreg No, relock_armed true), WARN posts=3 plus one relock_failed audit at 53.8 s after the leave, then four queued lock events reached loginwindow together and relocked was written 3.2 s after them (outcome b). Evidence RL-02-1.txt, RL-02c.txt, RL-02c-b.txt" }
 files_changed: [internal/desktop/relock.go, internal/desktop/audit.go, internal/desktop/relock_test.go, internal/desktop/audit_test.go, .planning/phases/23-audio-adaptive-quality-unlock-and-release/rig/p23-rig.sh, TESTING.md]
 oracle_type: specified (UNLK-01 fail-secure contract from the brief: relocked only after SessionLocked reads locked; read error is not locked; lost chord re-posted with spacing and reported relock_failed after bounded tries; keep trying on a backoff while armed and no own viewer is back) with boundary neighbours (no re-post at 4 s, re-post at 5 s; relock_failed not before the third unconfirmed post's window ends; no post at 29 s into the backoff, post at 30 s)
 vm_recheck: "On a build with this fix, repeat RL-01 under load with Terminal frontmost (as RL-01r): remote unlock from the home viewer (relock_armed true), load ~100 with the busy Terminal motion window in front, close the home viewer and note the leave time; poll GET /desktop locked and /desktop/stats unlock.relock_armed every 2-5 s, tail daemon.log and desktop-audit.jsonl, and on the vmdesktop build read the probe's counters. PASS is one of: (a) the chord takes: locked=true, and the relocked audit line plus 'the Mac was locked again' log at or after the first locked read (now about 31-32 s after the leave, one poll after the chord, instead of exactly at the chord), relock_armed false after; or (b) the chord is lost: no relocked line while locked=false, relock_armed stays true, the chord is re-posted 5 s apart, and about 45 s after the leave one relock_failed audit line (mode own, the last viewer's node) plus WARN 'the Mac did not lock after the re-lock keys; still trying posts=3 every=30s' and counters.relock_failed 1, then a post every 30 s until one takes (locked=true, then relocked). A recovered viewer that rejoins during the retries pauses them (relock_armed stays true) and its leave restarts the 30 s. FAIL: a relocked line or relock_armed false while GET /desktop reads locked=false. Control (no load, Finder in front): relocked about 1 s after locked=true. If (b) repeats with every post lost, the chord itself is not reaching loginwindow under load and needs a separate lock path (not in this fix)"

@@ -1,0 +1,33 @@
+RL-02-1: office-start=2026-11-28 08:57:25 audit-lines-before=420 daemon-log-lines-before=76
+before: { 64.52 31.47 14.36 } Terminal 
+counters before: {"relocked":2,"unlock_unlocked":3}
+close-viewer home: close-viewer: done at office 08:57:34
+== watch (office UTC):
+08:57:29.446 ioreg_locked=No get_locked=false {"viewers":1,"own_viewers":1,"relock_armed":true}
+08:57:41.729 ioreg_locked=No get_locked= 
+08:57:57.338 ioreg_locked=No get_locked=false {"viewers":0,"own_viewers":0,"relock_armed":true}
+08:58:05.051 ioreg_locked=No get_locked=false 
+08:58:07.539 ioreg_locked=No get_locked=false {"viewers":0,"own_viewers":0,"relock_armed":true}
+08:59:17.404 ioreg_locked=No get_locked= {"viewers":0,"own_viewers":0,"relock_armed":true}
+08:59:22.540 ioreg_locked=No get_locked=false {"viewers":0,"own_viewers":0,"relock_armed":true}
+08:59:34.261 ioreg_locked=Yes get_locked=false {"viewers":0,"own_viewers":0,"relock_armed":false}
+08:59:40.488 ioreg_locked=Yes get_locked=true {"viewers":0,"own_viewers":0,"relock_armed":false}
+watch: 59 samples, last 09:00:29.768 ioreg_locked=Yes get_locked=true {"viewers":0,"own_viewers":0,"relock_armed":false}
+== audit events since the start:
+{"ts":"2026-11-28T08:58:10Z","event":"leave","mode":"own","reason":"viewer_closed"}
+{"ts":"2026-11-28T08:59:03Z","event":"relock_failed","mode":"own","reason":null}
+{"ts":"2026-11-28T08:59:32Z","event":"relocked","mode":"own","reason":null}
+== daemon.log since the start (re-lock, viewer, WARN and ERROR lines):
+2026/11/28 08:57:55.978956 WARN desktop: still refresh failed err="screencap: refining the picture failed (code -19092)"
+2026/11/28 08:58:10.035774 INFO desktop: viewer left viewer=ID viewers=0
+2026/11/28 08:59:03.856465 WARN desktop: the Mac did not lock after the re-lock keys; still trying posts=3 every=30s
+2026/11/28 08:59:32.874373 INFO desktop: the Mac was locked again after the last own-account viewer left
+== loginwindow lock events:
+08:59:29.672 _handleAppleEvent | Received a kAELockScreenEvent
+08:59:29.686 _handleAppleEvent | Received a kAELockScreenEvent
+08:59:29.686 _handleAppleEvent | Received a kAELockScreenEvent
+08:59:29.686 _handleAppleEvent | Received a kAELockScreenEvent
+08:59:32.611 -[LWScreenLock startUnlock:] |      _numFailedAuthAttempts = 0
+lw-log: end
+== counters after: {"relock_failed":1,"relocked":3,"unlock_unlocked":3}
+after: { 43.90 48.49 25.70 } loginwindow 

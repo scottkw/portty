@@ -1,0 +1,22 @@
+relock-watch RL-02c: office-start=2026-11-28 08:47:52 audit-lines-before=410
+t=0.0 08:47:52 locked=false {"viewers":1,"own_viewers":1,"relock_armed":true,"unlock":"idle"}
+t=4.0 08:47:56 locked=false {"viewers":0,"own_viewers":0,"relock_armed":true,"unlock":"idle"}
+t=33.0 08:48:28 locked=false {"viewers":0,"own_viewers":0,"relock_armed":false,"unlock":"idle"}
+t=41.0 08:48:36 locked=true {"viewers":0,"own_viewers":0,"relock_armed":false,"unlock":"idle"}
+audit events since the start:
+{"ts":"2026-11-28T08:47:56Z","event":"leave","mode":"own","reason":"viewer_closed"}
+{"ts":"2026-11-28T08:48:27Z","event":"relocked","mode":"own","reason":null}
+loginwindow:
+08:48:26.837 _handleAppleEvent | Received a kAELockScreenEvent
+08:48:27.028 -[LWDefaultScreenLockUI hidePasswordField] |       hiding password field
+08:48:27.071 -[LWScreenLock startUnlock:] |      _numFailedAuthAttempts = 0
+08:48:27.109 -[LWDefaultScreenLockUI hidePasswordField] |       hiding password field
+08:48:27.153 -[LWDefaultScreenLockUI showPasswordFieldMakingFirstResponder:] | 	  showing password field, shouldMakeFirstResponder: 1
+08:48:57.117 -[LWDefaultScreenLockUI handleTimeOutTimer:] | enter. timeout timer fired
+08:48:57.121 -[LWDefaultScreenLockUI showPasswordFieldMakingFirstResponder:] | 	  showing password field, shouldMakeFirstResponder: 1
+08:48:57.147 Clearing password field for NSWorkspaceScreensDidSleepNotification
+08:48:57.173 [ Display:Power      ] Event: Will Sleep
+08:48:57.173 [ Display:Power      ] Event: Did Sleep
+lw-log: end
+daemon.log lines about the re-lock:
+2026/11/28 08:48:27.796840 INFO desktop: the Mac was locked again after the last own-account viewer left

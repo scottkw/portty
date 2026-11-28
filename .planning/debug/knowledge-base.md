@@ -52,3 +52,30 @@ Resolved debug sessions. Used by `gsd-debugger` to surface known-pattern hypothe
 - **Files changed:** internal/desktop/unlock.go, internal/desktop/lease.go, internal/desktop/unlock_test.go, internal/desktop/export_unlock_test.go
 - **Recurrence guard:** TestUnlock_LateSuccessIsOneTyping, TestUnlock_UnlockedBeforeTheRetypeTypesNothing, TestUnlock_SuccessAfterTheVerdictCountsAsSuccess and siblings; VM rows U-03r, U-04r, U-10r
 ---
+
+## encoder-service-wedge — under extreme load the VM's VideoToolbox encoder service refused every new encoder until killed
+- **Date:** 2026-11-28
+- **Error patterns:** capture start failed, starting the encoder failed (code -12902), join failed, reconnecting loop, -19092, -90004, VTEncoderXPCService, ParavirtualizedVideoEncoder, heavy load
+- **Root cause(s):** AND-gate: the OS encoder service instance for the daemon wedged under load (environment) and the daemon had no recovery for an encoder that keeps refusing (code)
+- **Fix:** screencap.ErrEncoderStart typed; after three consecutive encoder start failures (at most one reset a minute) the daemon ends only the VTEncoderXPCService whose responsible pid is itself; launchd starts a fresh one
+- **Files changed:** internal/screencap/screencap.go, internal/screencap/media_darwin.go, internal/screencap/media_darwin.m, internal/desktop/encoder_recovery.go, internal/desktop/manager.go and tests
+- **Recurrence guard:** encoder_recovery_test.go, encoder_wedge_test.go, encoder_service_darwin_test.go; VM row EW-01r (M-222)
+---
+
+## relocked-deferred-by-failed-joins — every failed join restarted the 30 s re-lock grace, keeping an unlocked Mac unlocked
+- **Date:** 2026-11-28
+- **Error patterns:** relock_armed stays true, viewers 0, Mac unlocked for minutes, failed joins, join failed, re-lock never fires, page retrying
+- **Root cause(s):** an own-account viewer counted for the re-lock rule from registration, before its capture start; a failed join's leave restarted the grace
+- **Fix:** a viewer counts (viewer.counted) only after its join worked; a never-counted viewer's leave does not touch the grace
+- **Files changed:** internal/desktop/relock.go, internal/desktop/manager.go, internal/desktop/relock_test.go
+- **Recurrence guard:** TestRelock_FailedJoinsDoNotRestartTheGrace, TestRelock_JoinStillStartingDoesNotHoldOffTheLock; VM row RL-01r (timing half)
+---
+
+## relock-chord-unverified — the re-lock was audited as done when Ctrl+Cmd+Q was posted, not when the Mac locked
+- **Date:** 2026-11-28
+- **Error patterns:** relocked audit but Mac unlocked, the Mac was locked again but locked=false, relock_armed false, no kAELockScreenEvent, chord lost under load, busy app frontmost
+- **Root cause(s):** relockDecide treated a nil postLockChord error as a locked Mac (audit, count, disarm in the posting pass, no lock read after); macOS dropped or delayed the chord under load
+- **Fix:** relocked is written only by a later pass that reads SessionLocked true (read error = not locked); the rule stays armed and re-posts every 5 s, then logs WARN and audits relock_failed after 3 tries and re-posts every 30 s; a viewer back pauses the tries
+- **Files changed:** internal/desktop/relock.go, internal/desktop/audit.go, internal/desktop/relock_test.go, internal/desktop/audit_test.go
+- **Recurrence guard:** TestRelock_LostChordIsRetriedNotClaimed, TestRelock_LockReadErrorIsNotLocked, TestRelock_ViewerBackPausesTheRetries, TestRelock_LockWithAViewerBackIsNotClaimed; VM rows RL-02c, RL-02 (M-223). Pattern (with unlk01-late-success-retype): on a loaded Mac read the outcome, never assume it from the action; GET /desktop locked lags up to 10 s with no viewer, use a fresh read
+---

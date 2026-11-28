@@ -1,0 +1,23 @@
+RL-02c-b: office-start=2026-11-28 08:51:43 audit-lines-before=414 daemon-log-lines-before=18
+before: { 1.36 2.44 2.52 } Finder 
+counters before: {"relocked":1,"unlock_unlocked":2}
+close-viewer home: close-viewer: done at office 08:51:50
+== watch (office UTC):
+08:51:46.089 ioreg_locked=No get_locked=false {"viewers":1,"own_viewers":1,"relock_armed":true}
+08:51:52.274 ioreg_locked=No get_locked=false {"viewers":0,"own_viewers":0,"relock_armed":true}
+08:52:21.181 ioreg_locked=Yes get_locked=false {"viewers":0,"own_viewers":0,"relock_armed":true}
+08:52:23.250 ioreg_locked=Yes get_locked=false {"viewers":0,"own_viewers":0,"relock_armed":false}
+08:52:31.492 ioreg_locked=Yes get_locked=true {"viewers":0,"own_viewers":0,"relock_armed":false}
+watch: 39 samples, last 08:53:06.463 ioreg_locked=Yes get_locked=true {"viewers":0,"own_viewers":0,"relock_armed":false}
+== audit events since the start:
+{"ts":"2026-11-28T08:51:50Z","event":"leave","mode":"own","reason":"viewer_closed"}
+{"ts":"2026-11-28T08:52:21Z","event":"relocked","mode":"own","reason":null}
+== daemon.log since the start (re-lock, viewer, WARN and ERROR lines):
+2026/11/28 08:51:50.262928 INFO desktop: viewer left viewer=ID viewers=0
+2026/11/28 08:52:21.801916 INFO desktop: the Mac was locked again after the last own-account viewer left
+== loginwindow lock events:
+08:52:20.862 _handleAppleEvent | Received a kAELockScreenEvent
+08:52:21.081 -[LWScreenLock startUnlock:] |      _numFailedAuthAttempts = 0
+lw-log: end
+== counters after: {"relocked":2,"unlock_unlocked":2}
+after: { 0.93 2.06 2.36 } loginwindow 

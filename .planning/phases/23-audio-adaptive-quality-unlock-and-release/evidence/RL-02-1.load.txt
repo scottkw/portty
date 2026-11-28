@@ -1,0 +1,41 @@
+rl02load: start 08:53:50 UTC
+rl02load: added a loop
+08:53:50 load=7.36 loops=1 yes_total=2 front=Terminal
+08:54:02 load=6.93 loops=1 yes_total=2 front=Terminal
+08:54:15 load=6.33 loops=1 yes_total=2 front=Terminal
+08:54:27 load=5.90 loops=1 yes_total=2 front=Terminal
+08:54:39 load=5.94 loops=1 yes_total=2 front=Terminal
+08:54:51 load=6.65 loops=1 yes_total=2 front=Terminal
+08:55:03 load=6.24 loops=1 yes_total=2 front=Terminal
+08:55:15 load=5.93 loops=1 yes_total=2 front=Terminal
+rl02load: added a loop
+08:55:27 load=5.56 loops=2 yes_total=3 front=Terminal
+08:55:40 load=16.85 loops=2 yes_total=3 front=Terminal
+08:55:53 load=27.56 loops=2 yes_total=3 front=Terminal
+08:56:05 load=44.04 loops=2 yes_total=3 front=Terminal
+08:56:17 load=58.49 loops=2 yes_total=3 front=Terminal
+08:56:30 load=77.34 loops=2 yes_total=3 front=Terminal
+08:56:43 load=88.04 loops=2 yes_total=3 front=Terminal
+rl02load: load over 100, one loop stopped
+08:56:55 load=101.78 loops=1 yes_total=2 front=Terminal
+08:57:07 load=88.89 loops=1 yes_total=2 front=Terminal
+08:57:19 load=75.69 loops=1 yes_total=2 front=Terminal
+rl02load: added a loop
+08:57:32 load=59.59 loops=2 yes_total=3 front=Terminal
+08:57:44 load=62.86 loops=2 yes_total=3 front=Terminal
+08:57:57 load=82.58 loops=2 yes_total=3 front=Terminal
+08:58:10 load=92.80 loops=2 yes_total=3 front=Terminal
+08:58:29 load=93.97 loops=2 yes_total=3 front=Terminal
+08:58:47 load=81.92 loops=2 yes_total=3 front=Terminal
+08:59:03 load=87.83 loops=2 yes_total=3 front=Terminal
+08:59:18 load=96.35 loops=2 yes_total=3 front=Terminal
+rl02load: load over 100, one loop stopped
+08:59:33 load=108.58 loops=1 yes_total=2 front=loginwindow
+08:59:45 load=96.00 loops=1 yes_total=2 front=loginwindow
+08:59:57 load=75.40 loops=1 yes_total=2 front=loginwindow
+09:00:09 load=64.74 loops=1 yes_total=2 front=loginwindow
+rl02load: added a loop
+09:00:21 load=51.14 loops=2 yes_total=3 front=loginwindow
+09:00:34 load=43.90 loops=2 yes_total=3 front=loginwindow
+09:00:46 load=34.92 loops=2 yes_total=3 front=loginwindow
+rl02load: stopped 09:00:58 UTC
