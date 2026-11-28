@@ -307,6 +307,9 @@ type viewer struct {
 	// unlockCap is the explicit unlock capability: set once at hello on the
 	// own-account serve path, never derived from rights bits, so no guest has it.
 	unlockCap bool
+	// counted: its join worked, so the re-lock rule counts it (relock.go).
+	// Guarded by Manager.vmu.
+	counted bool
 
 	gs       *GuestShare // the share a guest was admitted to; nil for an own-account viewer
 	mediaCut atomic.Bool // a media identity check already cut this guest
@@ -862,6 +865,7 @@ func (m *Manager) serveAdmitted(ctx context.Context, c *websocket.Conn, v *viewe
 			m.d.OnViewerLeave(v.Viewer)
 		}
 	}()
+	m.relockViewer(true, v) // after the capture start: a join that failed must not restart the re-lock grace (U-load)
 	if v.gs != nil {
 		// Registered above, so a Stop or revoke either finds v and cuts it or has
 		// already happened and is seen here: neither can be missed.
@@ -954,7 +958,6 @@ func (m *Manager) join(v *viewer, admit func() bool) error {
 	}
 	m.viewers[v.ID] = v
 	m.vmu.Unlock()
-	m.relockViewer(true, v)
 	// Remote activity lights a dark display before capture starts; viewers hold
 	// the display and system assertions until the last leaves (a join retries
 	// one that failed).
