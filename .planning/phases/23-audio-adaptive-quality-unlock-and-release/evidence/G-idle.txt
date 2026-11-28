@@ -1,0 +1,23 @@
+G-idle evidence: build 23.10.2 (commit d11e1811) on portty-test; always-available desktop on (PUT /desktop alwaysAvailable true), no viewer, Portty GUI quit (only the daemon running, gui=0, same daemon pid throughout); GET /desktop/stats goroutines every 30 s for 10 min (guest epoch shown). timed log over the window: no 'Received time' step.
+t=0s epoch=1795830988 {"goroutines":21,"viewers":0,"state":"idle"} gui=0
+t=30s epoch=1795831018 {"goroutines":21,"viewers":0,"state":"idle"} gui=0
+t=60s epoch=1795831049 {"goroutines":19,"viewers":0,"state":"idle"} gui=0
+t=90s epoch=1795831079 {"goroutines":19,"viewers":0,"state":"idle"} gui=0
+t=120s epoch=1795831109 {"goroutines":19,"viewers":0,"state":"idle"} gui=0
+t=150s epoch=1795831139 {"goroutines":19,"viewers":0,"state":"idle"} gui=0
+t=180s epoch=1795831169 {"goroutines":19,"viewers":0,"state":"idle"} gui=0
+t=210s epoch=1795831199 {"goroutines":19,"viewers":0,"state":"idle"} gui=0
+t=240s epoch=1795831229 {"goroutines":19,"viewers":0,"state":"idle"} gui=0
+t=270s epoch=1795831259 {"goroutines":19,"viewers":0,"state":"idle"} gui=0
+t=300s epoch=1795831290 {"goroutines":19,"viewers":0,"state":"idle"} gui=0
+t=330s epoch=1795831320 {"goroutines":19,"viewers":0,"state":"idle"} gui=0
+t=360s epoch=1795831350 {"goroutines":19,"viewers":0,"state":"idle"} gui=0
+t=390s epoch=1795831380 {"goroutines":19,"viewers":0,"state":"idle"} gui=0
+t=420s epoch=1795831410 {"goroutines":19,"viewers":0,"state":"idle"} gui=0
+t=450s epoch=1795831440 {"goroutines":19,"viewers":0,"state":"idle"} gui=0
+t=480s epoch=1795831471 {"goroutines":19,"viewers":0,"state":"idle"} gui=0
+t=510s epoch=1795831501 {"goroutines":19,"viewers":0,"state":"idle"} gui=0
+t=540s epoch=1795831531 {"goroutines":19,"viewers":0,"state":"idle"} gui=0
+t=570s epoch=1795831561 {"goroutines":19,"viewers":0,"state":"idle"} gui=0
+t=600s epoch=1795831591 {"goroutines":19,"viewers":0,"state":"idle"} gui=0
+result: 21 at t=0, 19 from t=60 s to t=600 s (flat; build 23.10.0 gained about 15 a minute in the same state, the pre-fix rate the debug session predicted was about +120 in 10 min)

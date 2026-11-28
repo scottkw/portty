@@ -1,0 +1,109 @@
+Q-03 re-run evidence: build 23.10.2 (commit d11e1811, carries 9be32f6a: an estimate at least 1.2 x what the viewer was actually sent counts as ceiling). Two Safari viewers: portty-test-2 over the relay (home, joined first, shaped inside portty-test-2 with dummynet) and portty-test's own Safari on loopback (office, never shaped). Terminal line stream on in the office. Per run: stats-log 120 (Q-03rN.stats), vlog 110 for each page (Q-03rN.viewer-home, Q-03rN.viewer-office), receive stats (rig/js/recv.js) and guest load before, during and after the pipe, daemon.log slow-state lines. Guest epochs; the daemon log is UTC. timed log: no clock step during the runs.
+
+Summary per run
+run 1 (200 kbit/s, pipe on 1795831704, off 1795831761): quality.slow 0 x41, 1 x79, never 2. Office page Slow connection 0 of 110 samples, Reconnecting 0. Home page chip from 1795831711 (7 s after the pipe) to 1795831791; cleared 31 s after removal. daemon.log slow-state lines: only f856c6d7 (home, joined first; office was d05b6d8d). Target while home was slow: 500000 -> 550000 -> 605000 -> 665500 -> 732050, cut back to 500000 (t=40, t=65, t=108); step went 2 -> 1 -> 0 by t=65.
+run 2 (200 kbit/s, on 1795831916, off 1795831973): quality.slow 0 x57, 1 x63, never 2. Office chip 0 of 110. Home chip 1795831922 (6 s) to 1795831985; cleared 13 s after removal. Slow-state lines: only aa4f0a7b (home; office 6fb82b93). Target climbed 561282 -> 2836967 in about 30 s (about 10 percent per 2 s) at step 0 while home stayed slow, then one cut to 500000 at t=59.
+run 3 (300 kbit/s, on 1795832119, off 1795832175): quality.slow 0 x41, 1 x79, never 2. Office chip 0 of 110. Home chip 1795832129 (10 s) to 1795832188; cleared 13 s after removal, then on again from 1795832211 with no pipe (the relay viewer is slow by itself in this VM, as in the 23-09 control). Slow-state lines: only ecea3ee0 (home; office 95c730e3). Target climbed to 732050, 1238758, 739253 with cuts back to about 500000 in between; step reached 0.
+Office receive side over all runs: video packetsLost 0, framesDropped 0, jitter buffer 89 to 317 ms, decode 6 to 14 ms. Guest CPU idle 0 to 19 percent during the runs, load average 3.6 to 8.6 (3 cores).
+
+Finding 2 re-check (Q-03-lone.stats, Q-03-lone.viewer-office): office Safari alone on loopback, Terminal line stream, no pipe, 180 s. Target 8000000 at the join, 1146994 at t=2, then climbed about 10 percent per 2 s back to 8000000 by t=49 (held to t=57). At t=58 cut to 4625538, at t=62 to 501680, and it then sat at exactly 501680 from t=62 to t=180 (118 s, step 1 at 15 fps from t=68), slow 0 throughout and the page never showed the chip. Receive side at the same time: video packetsLost 0, framesDropped 0, jitter buffer 110 to 174 ms, decode 6 to 8 ms; guest CPU 13 to 33 percent idle, load 3.2 to 5.4. So the floor trap's visible part (a clean viewer told slow) is gone, but a lone clean viewer can still sit at the floor for minutes after a cut, with no loss and no slow flag.
+
+Raw run output follows (shape lines and pfctl warnings trimmed).
+== Q-03r1 pipe 200 kbit/s
+motion on
+open home: p19-safari t=3 stats={"status":"connecting","state":"streaming","viewers":1,"framesDecoded":0,"frameWidth":0,"frameHeight":0,"bytesReceived":0,"cspViolations":0} title=Portty Desktop (debug fd=0 fw=0 csp=0 st=connecting)
+open office: p19-safari t=3 stats={"status":"connecting","state":"streaming","viewers":2,"framesDecoded":0,"frameWidth":0,"frameHeight":0,"bytesReceived":0,"cspViolations":0} title=Portty Desktop (debug fd=0 fw=0 csp=0 st=connecting)
+hook home: hooked  hook office: hooked
+recv before pipe: home {"audio":{"recv":2761,"lost":0},"video":{"recv":587,"fd":584,"dropped":0,"lost":30,"jb_ms":330,"dec_ms":9,"fw":2560}} office {"audio":{"recv":1584,"lost":0},"video":{"recv":428,"fd":422,"dropped":0,"lost":0,"jb_ms":148,"dec_ms":7,"fw":2560}}
+shape: pipe of 200 kbit/s at guest epoch 1795831704
+shape: dnctl list: [00001: 200.000 Kbit/s   20 ms   30 sl. 1 queues (1 buckets) droptail     mask: 0x00 0x00000000/0x0000 -> 0x00000000/0x0000 BKT Prot ___Source IP/port____ ____Dest. IP/port____ Tot_pkt/bytes Pkt/Byte Drp     mask: 0x00 0x00000000/0x0000 -> 0x00000000/0x0000 BKT Prot ___Source IP/port____ ____Dest. IP/port____ Tot_pkt/bytes Pkt/Byte Drp   0 udp    100.x.x.N/7444    100.x.x.N/50610    2      122  0    0   0 ]
+shape: anchor dummynet rules: 1
+shape: Status: Enabled for 0 days 00:00:00           Debug: Urgent
+recv mid pipe: home {"audio":{"recv":3892,"lost":451},"video":{"recv":613,"fd":613,"dropped":0,"lost":1085,"jb_ms":335,"dec_ms":9,"fw":2560}} office {"audio":{"recv":3161,"lost":0},"video":{"recv":842,"fd":841,"dropped":0,"lost":0,"jb_ms":153,"dec_ms":7,"fw":2560}}
+office load: { 5.29 2.65 2.96 }
+CPU usage: 31.74% user, 49.20% sys, 19.4% idle 
+shape: off at guest epoch 1795831761
+shape: dnctl list: []
+shape: anchor dummynet rules: 0
+shape: Status: Disabled for 0 days 00:00:00          Debug: Urgent
+recv after pipe: home {"audio":{"recv":6504,"lost":705},"video":{"recv":1275,"fd":1264,"dropped":0,"lost":1428,"jb_ms":454,"dec_ms":8,"fw":2560}} office {"audio":{"recv":6013,"lost":0},"video":{"recv":2010,"fd":2008,"dropped":0,"lost":0,"jb_ms":127,"dec_ms":7,"fw":2560}}
+office load: { 3.57 2.59 2.92 }
+CPU usage: 44.60% user, 55.39% sys, 0.0% idle 
+daemon.log since the run start (joins, leaves, slow state):
+2026/11/28 02:07:27.354643 INFO desktop: viewer joined viewer=f856c6d7 viewers=1
+2026/11/28 02:07:51.077674 INFO desktop: viewer joined viewer=d05b6d8d viewers=2
+2026/11/28 02:08:30.094778 INFO desktop: viewer slow state changed viewer=f856c6d7 slow=true
+2026/11/28 02:09:51.844836 INFO desktop: viewer slow state changed viewer=f856c6d7 slow=false
+close-viewer: done
+close-viewer: done
+motion off
+== Q-03r2 pipe 200 kbit/s
+motion on
+open home: p19-safari t=3 stats={"status":"streaming","state":"streaming","viewers":1,"framesDecoded":0,"frameWidth":0,"frameHeight":0,"bytesReceived":57074,"cspViolations":0} title=Portty Desktop (debug fd=0 fw=0 csp=0 st=streaming)
+open office: p19-safari t=3 stats={"status":"streaming","state":"streaming","viewers":2,"framesDecoded":21,"frameWidth":2560,"frameHeight":1440,"bytesReceived":119418,"cspViolations":0} title=Portty Desktop (debug fd=21 fw=2560 csp=0 st=streaming)
+hook home: hooked  hook office: hooked
+recv before pipe: home {"audio":{"recv":2815,"lost":0},"video":{"recv":621,"fd":615,"dropped":0,"lost":0,"jb_ms":279,"dec_ms":8,"fw":2560}} office {"audio":{"recv":1605,"lost":0},"video":{"recv":449,"fd":442,"dropped":0,"lost":0,"jb_ms":89,"dec_ms":6,"fw":2560}}
+shape: pipe of 200 kbit/s at guest epoch 1795831916
+shape: dnctl list: [00001: 200.000 Kbit/s   20 ms   30 sl. 1 queues (1 buckets) droptail     mask: 0x00 0x00000000/0x0000 -> 0x00000000/0x0000 BKT Prot ___Source IP/port____ ____Dest. IP/port____ Tot_pkt/bytes Pkt/Byte Drp     mask: 0x00 0x00000000/0x0000 -> 0x00000000/0x0000 BKT Prot ___Source IP/port____ ____Dest. IP/port____ Tot_pkt/bytes Pkt/Byte Drp   0 udp    100.x.x.N/7444    100.x.x.N/50847   66    73798 29 36134  36 ]
+shape: anchor dummynet rules: 1
+shape: Status: Enabled for 0 days 00:00:00           Debug: Urgent
+recv mid pipe: home {"audio":{"recv":4042,"lost":359},"video":{"recv":660,"fd":660,"dropped":0,"lost":1503,"jb_ms":371,"dec_ms":8,"fw":2560}} office {"audio":{"recv":3203,"lost":0},"video":{"recv":931,"fd":927,"dropped":0,"lost":0,"jb_ms":148,"dec_ms":7,"fw":2560}}
+office load: { 5.18 3.77 3.35 }
+CPU usage: 37.17% user, 53.84% sys, 8.97% idle 
+shape: off at guest epoch 1795831973
+shape: dnctl list: []
+shape: anchor dummynet rules: 0
+shape: Status: Disabled for 0 days 00:00:00          Debug: Urgent
+recv after pipe: home {"audio":{"recv":6560,"lost":695},"video":{"recv":1118,"fd":1110,"dropped":0,"lost":3034,"jb_ms":365,"dec_ms":9,"fw":2560}} office {"audio":{"recv":6036,"lost":0},"video":{"recv":2095,"fd":2092,"dropped":0,"lost":0,"jb_ms":149,"dec_ms":6,"fw":2560}}
+office load: { 4.82 3.87 3.41 }
+CPU usage: 37.23% user, 56.38% sys, 6.38% idle 
+daemon.log since the run start (joins, leaves, slow state):
+2026/11/28 02:10:58.273404 INFO desktop: viewer joined viewer=aa4f0a7b viewers=1
+2026/11/28 02:11:23.371461 INFO desktop: viewer joined viewer=6fb82b93 viewers=2
+2026/11/28 02:11:59.776167 INFO desktop: viewer slow state changed viewer=aa4f0a7b slow=true
+2026/11/28 02:13:05.769069 INFO desktop: viewer slow state changed viewer=aa4f0a7b slow=false
+close-viewer: done
+close-viewer: done
+motion off
+== Q-03r3 pipe 300 kbit/s
+motion on
+open home: p19-safari t=3 stats={"status":"streaming","state":"streaming","viewers":1,"framesDecoded":0,"frameWidth":0,"frameHeight":0,"bytesReceived":215129,"cspViolations":0} title=Portty Desktop (debug fd=0 fw=0 csp=0 st=streaming)
+open office: p19-safari t=3 stats={"status":"streaming","state":"streaming","viewers":2,"framesDecoded":12,"frameWidth":2560,"frameHeight":1440,"bytesReceived":93257,"cspViolations":0} title=Portty Desktop (debug fd=12 fw=2560 csp=0 st=streaming)
+hook home: hooked  hook office: hooked
+recv before pipe: home {"audio":{"recv":2763,"lost":0},"video":{"recv":752,"fd":745,"dropped":0,"lost":0,"jb_ms":281,"dec_ms":11,"fw":2560}} office {"audio":{"recv":1631,"lost":0},"video":{"recv":579,"fd":571,"dropped":0,"lost":0,"jb_ms":253,"dec_ms":14,"fw":2560}}
+shape: pipe of 300 kbit/s at guest epoch 1795832119
+shape: dnctl list: [00001: 300.000 Kbit/s   20 ms   30 sl. 1 queues (1 buckets) droptail     mask: 0x00 0x00000000/0x0000 -> 0x00000000/0x0000 BKT Prot ___Source IP/port____ ____Dest. IP/port____ Tot_pkt/bytes Pkt/Byte Drp     mask: 0x00 0x00000000/0x0000 -> 0x00000000/0x0000 BKT Prot ___Source IP/port____ ____Dest. IP/port____ Tot_pkt/bytes Pkt/Byte Drp   0 udp    100.x.x.N/7444    100.x.x.N/59881    1       61  0    0   0 ]
+shape: anchor dummynet rules: 1
+shape: Status: Enabled for 0 days 00:00:00           Debug: Urgent
+recv mid pipe: home {"audio":{"recv":4090,"lost":212},"video":{"recv":1015,"fd":892,"dropped":123,"lost":200,"jb_ms":970,"dec_ms":14,"fw":1920}} office {"audio":{"recv":3187,"lost":0},"video":{"recv":967,"fd":964,"dropped":0,"lost":0,"jb_ms":317,"dec_ms":11,"fw":2560}}
+office load: { 6.06 5.13 4.01 }
+CPU usage: 37.83% user, 51.35% sys, 10.81% idle 
+shape: off at guest epoch 1795832175
+shape: dnctl list: []
+shape: anchor dummynet rules: 0
+shape: Status: Disabled for 0 days 00:00:00          Debug: Urgent
+recv after pipe: home {"audio":{"recv":6673,"lost":464},"video":{"recv":1542,"fd":1345,"dropped":192,"lost":1082,"jb_ms":1209,"dec_ms":14,"fw":2560}} office {"audio":{"recv":5925,"lost":67},"video":{"recv":1868,"fd":1868,"dropped":0,"lost":0,"jb_ms":297,"dec_ms":14,"fw":2560}}
+office load: { 8.62 5.80 4.33 }
+CPU usage: 44.68% user, 55.31% sys, 0.0% idle 
+daemon.log since the run start (joins, leaves, slow state):
+2026/11/28 02:14:22.697128 INFO desktop: viewer joined viewer=ecea3ee0 viewers=1
+2026/11/28 02:14:46.070254 INFO desktop: viewer joined viewer=95c730e3 viewers=2
+2026/11/28 02:15:27.692756 INFO desktop: viewer slow state changed viewer=ecea3ee0 slow=true
+2026/11/28 02:16:27.193218 INFO desktop: viewer slow state changed viewer=ecea3ee0 slow=false
+2026/11/28 02:16:50.815627 INFO desktop: viewer slow state changed viewer=ecea3ee0 slow=true
+close-viewer: done
+close-viewer: done
+motion off
+== Q-03-lone (finding 2): office Safari alone, Terminal line stream, no pipe
+shape: dnctl list: []
+shape: anchor dummynet rules: 0
+motion on
+open office: p19-safari t=3 stats={"status":"streaming","state":"streaming","viewers":1,"framesDecoded":4,"frameWidth":2560,"frameHeight":1440,"bytesReceived":72219,"cspViolations":0} title=Portty Desktop (debug fd=4 fw=2560 csp=0 st=streaming)
+hook office: hooked
++30s recv office {"audio":{"recv":1744,"lost":0},"video":{"recv":372,"fd":371,"dropped":0,"lost":0,"jb_ms":138,"dec_ms":6,"fw":2560}} load { 5.38 5.85 4.55 } CPU usage: 25.39% user, 41.26% sys, 33.33% idle  
++60s recv office {"audio":{"recv":3294,"lost":0},"video":{"recv":634,"fd":633,"dropped":0,"lost":0,"jb_ms":110,"dec_ms":7,"fw":2560}} load { 5.25 5.72 4.55 } CPU usage: 35.29% user, 50.98% sys, 13.72% idle  
++90s recv office {"audio":{"recv":4865,"lost":0},"video":{"recv":841,"fd":840,"dropped":0,"lost":0,"jb_ms":174,"dec_ms":8,"fw":2560}} load { 3.88 5.34 4.46 } CPU usage: 34.0% user, 46.0% sys, 20.0% idle  
++120s recv office {"audio":{"recv":6393,"lost":0},"video":{"recv":1116,"fd":1115,"dropped":0,"lost":0,"jb_ms":157,"dec_ms":8,"fw":2560}} load { 3.45 5.10 4.40 } CPU usage: 30.0% user, 50.0% sys, 20.0% idle  
++150s recv office {"audio":{"recv":7921,"lost":0},"video":{"recv":1343,"fd":1343,"dropped":0,"lost":0,"jb_ms":143,"dec_ms":7,"fw":2560}} load { 3.16 4.88 4.34 } CPU usage: 31.37% user, 50.98% sys, 17.64% idle  
+close-viewer: done
+motion off

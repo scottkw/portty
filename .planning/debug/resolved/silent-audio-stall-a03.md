@@ -1,8 +1,8 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: "Fix a Portty desktop-share audio bug, failing test first. After sudo killall coreaudiod while a viewer listened, capture delivered no more audio and raised no error; audio packets went flat while video kept rising and /desktop/stats kept reading audio: ok (23-09 finding 3, VM row A-03)."
 created: 2026-11-27T00:00:00Z
-updated: 2026-11-27T19:30:00Z
+updated: 2026-11-28T03:00:00Z
 ---
 
 ## Current Focus
@@ -114,3 +114,4 @@ verification:
   not_verified_here: "the ObjC pc_audio_restart never ran (no capture allowed for this agent; DisplaySource.Start refuses under tests). Whether toggling capturesAudio re-creates a tap killed by a coreaudiod restart is for the VM re-run"
 vm_recheck: "A-03 re-run on a build with this fix: before the fault stats audio ok; within about 3 to 4 s of `sudo killall coreaudiod` (3 s bound + up to a 1 s tick) stats reads audio failed while framesDecoded keeps rising, viewers 1, no new capture run (no 'viewer joined', no keyframe wait); daemon log: 'desktop: audio failed' with err 'no audio from the capture for 3s', then 'desktop: restarting audio capture' retry_in=5s. Recovery: if the capturesAudio toggle works, 'desktop: audio recovered' and stats audio ok within about 1 s of the first restart (packetsReceived climbing about 50/s again); if it does not, further restarts log at about +5, +15, +35, +75, +135 s after the first, stats stays failed and video is unaffected (record the toggle as ineffective: next step would be re-adding the audio stream output or accepting failed-until-next-run)"
 files_changed: [internal/desktop/audio.go, internal/desktop/manager.go, internal/desktop/state.go, internal/desktop/audio_stall_test.go, internal/screencap/audio.go, internal/screencap/media_darwin.go, internal/screencap/media_darwin.m]
+vm_verified: "2026-11-28, build 23.10.2 (d11e1811), VM row A-03 re-run (23-VM-CHECKS.md, evidence/A-03-rerun.txt): sudo killall coreaudiod in portty-test with an unmuted home viewer; daemon.log audio failed (no audio from the capture for 3s) 4.2 s after the command, restarting audio capture retry_in=5s, audio recovered 0.57 s later (one restart); stats failed for one sample then ok; viewers 1, state streaming at all 200 samples, no new viewer joined; audio packets back to about 50/s, framesDecoded rising through the fault. The audio-only restart is effective after a coreaudiod restart. A-03 RESULT=PASS."

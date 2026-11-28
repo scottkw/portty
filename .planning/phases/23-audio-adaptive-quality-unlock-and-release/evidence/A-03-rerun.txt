@@ -1,0 +1,52 @@
+A-03 re-run evidence: build 23.10.2 (commit d11e1811, carries 4c29e9db: 3 s with no audio packets -> audio failed, audio-only capture restart with backoff 5/10/20/40/60 s). Home Safari viewer (portty-test-2) streaming, unmuted through the bar (element muted false, not paused), Terminal line stream on in the office; stats-log 200 (A-03r.stats); `sudo killall coreaudiod` inside portty-test at office epoch 1795832553.61 (02:22:33.6 UTC); receive stats (rig/js/recv.js) every 2 s for 20 s, then every 10 s for 2 min; daemon.log afterwards.
+
+Summary
+- Before: stats audio ok, viewers 1; viewer audio packetsReceived 1452.
+- coreaudiod pid 32231 -> 89733.
+- daemon.log: 02:22:37.854 WARN desktop: audio failed err="no audio from the capture for 3s"; 02:22:37.856 restarting audio capture retry_in=5s; 02:22:38.428 audio recovered. Fault to failed: 4.2 s after the killall command was issued (the command itself runs through sudo; the 3 s bound plus up to a 1 s tick). First restart to recovered: 0.57 s. Only one restart was needed (no further restart lines).
+- stats-log: audio ok t=1..12, failed at t=13 (one 1 s sample), ok from t=14 to t=200; viewers 1 at every sample, state streaming.
+- Viewer audio packetsReceived: 1452 before, 1488 (+2.9 s), 1529 (+5.4 s), 1657 (+7.8 s), then about 50 a second to 9296 at +162 s (lost 2). framesDecoded kept rising through the fault: 160, 187, 209, 227 ... 985; framesDropped 0 to 6.
+- No new capture run: no 'viewer joined' after the first join, no keyframe or capture lines in daemon.log, framesDecoded rising between every pair of reads.
+Result: audio failed was reported within about 4 s while video kept flowing, and the audio-only restart brought audio back on the first try.
+
+Raw run output follows.
+motion on
+open home: p19-safari t=3 stats={"status":"streaming","state":"streaming","viewers":1,"framesDecoded":12,"frameWidth":2560,"frameHeight":1440,"bytesReceived":239277,"cspViolations":0} title=Portty Desktop (debug fd=12 fw=2560 csp=0 st=streaming)
+hook: hooked
+safari-menu: click at guest epoch 1795832540.87
+null
+safari-menu: clicked [Unmute]
+element: {"muted":false,"paused":false,"audioTracks":1}
+stats before: {"goroutines":57,"viewers":1,"own_viewers":1,"state":"streaming","audio":"ok","quality":{"target_bps":500000,"fps":15,"long_edge":1920,"step":2,"slow":0,"no_feedback":0},"still":false,"unlock":{"state":"idle","failures":0,"relock_armed":false}}
+recv before fault (office epoch 1795832553.12): {"audio":{"recv":1452,"lost":0},"video":{"recv":161,"fd":160,"dropped":0,"lost":0,"jb_ms":93,"dec_ms":21,"fw":1920}}
+fault at office epoch 1795832553.61
+audio-fault: coreaudiod pid before: 32231
+audio-fault: coreaudiod pid after: 89733
+office epoch 1795832556.50 recv {"audio":{"recv":1488,"lost":0},"video":{"recv":190,"fd":187,"dropped":0,"lost":0,"jb_ms":132,"dec_ms":19,"fw":1280}}
+office epoch 1795832559.03 recv {"audio":{"recv":1529,"lost":0},"video":{"recv":210,"fd":209,"dropped":0,"lost":0,"jb_ms":154,"dec_ms":18,"fw":1280}}
+office epoch 1795832561.45 recv {"audio":{"recv":1657,"lost":0},"video":{"recv":230,"fd":227,"dropped":0,"lost":0,"jb_ms":165,"dec_ms":17,"fw":1280}}
+office epoch 1795832564.07 recv {"audio":{"recv":1780,"lost":0},"video":{"recv":237,"fd":235,"dropped":0,"lost":0,"jb_ms":169,"dec_ms":17,"fw":1280}}
+office epoch 1795832566.49 recv {"audio":{"recv":1901,"lost":0},"video":{"recv":252,"fd":251,"dropped":0,"lost":0,"jb_ms":173,"dec_ms":16,"fw":1280}}
+office epoch 1795832568.89 recv {"audio":{"recv":2024,"lost":0},"video":{"recv":263,"fd":263,"dropped":0,"lost":0,"jb_ms":175,"dec_ms":16,"fw":1280}}
+office epoch 1795832571.36 recv {"audio":{"recv":2144,"lost":0},"video":{"recv":275,"fd":272,"dropped":0,"lost":0,"jb_ms":175,"dec_ms":15,"fw":1280}}
+office epoch 1795832573.75 recv {"audio":{"recv":2265,"lost":0},"video":{"recv":285,"fd":284,"dropped":0,"lost":0,"jb_ms":176,"dec_ms":15,"fw":1280}}
+office epoch 1795832576.21 recv {"audio":{"recv":2393,"lost":0},"video":{"recv":297,"fd":297,"dropped":0,"lost":0,"jb_ms":175,"dec_ms":14,"fw":1920}}
+office epoch 1795832578.76 recv {"audio":{"recv":2515,"lost":0},"video":{"recv":307,"fd":307,"dropped":0,"lost":0,"jb_ms":175,"dec_ms":14,"fw":1920}}
+office epoch 1795832591.25 recv {"audio":{"recv":3146,"lost":0},"video":{"recv":365,"fd":363,"dropped":0,"lost":0,"jb_ms":170,"dec_ms":13,"fw":1920}} stats {"viewers":1,"state":"streaming","audio":"ok"}
+office epoch 1795832602.10 recv {"audio":{"recv":3683,"lost":0},"video":{"recv":410,"fd":409,"dropped":0,"lost":0,"jb_ms":165,"dec_ms":12,"fw":1280}} stats {"viewers":1,"state":"streaming","audio":"ok"}
+office epoch 1795832612.77 recv {"audio":{"recv":4216,"lost":0},"video":{"recv":451,"fd":451,"dropped":0,"lost":0,"jb_ms":160,"dec_ms":12,"fw":1280}} stats {"viewers":1,"state":"streaming","audio":"ok"}
+office epoch 1795832623.43 recv {"audio":{"recv":4748,"lost":0},"video":{"recv":486,"fd":486,"dropped":0,"lost":0,"jb_ms":153,"dec_ms":11,"fw":1280}} stats {"viewers":1,"state":"streaming","audio":"ok"}
+office epoch 1795832634.77 recv {"audio":{"recv":5345,"lost":0},"video":{"recv":590,"fd":588,"dropped":0,"lost":0,"jb_ms":141,"dec_ms":12,"fw":1280}} stats {"viewers":1,"state":"streaming","audio":"ok"}
+office epoch 1795832647.34 recv {"audio":{"recv":5948,"lost":0},"video":{"recv":727,"fd":726,"dropped":0,"lost":0,"jb_ms":145,"dec_ms":13,"fw":1280}} stats {"viewers":1,"state":"streaming","audio":"ok"}
+office epoch 1795832658.52 recv {"audio":{"recv":6510,"lost":0},"video":{"recv":789,"fd":785,"dropped":0,"lost":0,"jb_ms":172,"dec_ms":12,"fw":1280}} stats {"viewers":1,"state":"streaming","audio":"ok"}
+office epoch 1795832670.70 recv {"audio":{"recv":7105,"lost":0},"video":{"recv":824,"fd":819,"dropped":0,"lost":0,"jb_ms":177,"dec_ms":12,"fw":1280}} stats {"viewers":1,"state":"streaming","audio":"ok"}
+office epoch 1795832681.40 recv {"audio":{"recv":7641,"lost":0},"video":{"recv":867,"fd":865,"dropped":0,"lost":0,"jb_ms":208,"dec_ms":12,"fw":1280}} stats {"viewers":1,"state":"streaming","audio":"ok"}
+office epoch 1795832692.08 recv {"audio":{"recv":8116,"lost":2},"video":{"recv":894,"fd":894,"dropped":0,"lost":0,"jb_ms":214,"dec_ms":18,"fw":1280}} stats {"viewers":1,"state":"streaming","audio":"ok"}
+office epoch 1795832702.83 recv {"audio":{"recv":8734,"lost":2},"video":{"recv":950,"fd":939,"dropped":6,"lost":0,"jb_ms":221,"dec_ms":18,"fw":1280}} stats {"viewers":1,"state":"streaming","audio":"ok"}
+office epoch 1795832715.48 recv {"audio":{"recv":9296,"lost":2},"video":{"recv":999,"fd":985,"dropped":6,"lost":0,"jb_ms":258,"dec_ms":17,"fw":1280}} stats {"viewers":1,"state":"streaming","audio":"ok"}
+daemon.log since the run start (joins, leaves, audio):
+2026/11/28 02:22:03.980180 INFO desktop: viewer joined viewer=5c252576 viewers=1
+2026/11/28 02:22:37.854543 WARN desktop: audio failed err="no audio from the capture for 3s"
+2026/11/28 02:22:37.856066 INFO desktop: restarting audio capture retry_in=5s
+2026/11/28 02:22:38.427757 INFO desktop: audio recovered
+coreaudiod now: 89733

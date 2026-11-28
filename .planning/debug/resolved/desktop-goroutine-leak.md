@@ -1,8 +1,8 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: "Goroutine leak in the daemon desktop share: GET /desktop/stats showed 32 goroutines at daemon start and 1020 with no viewer connected after about 25 viewer joins and leaves over cross-VM WebRTC (relay path, dummynet, quality ladder stepping); ~16-20 per join/leave plus slow idle drift. No goroutine dump taken. (23-09-SUMMARY finding 4)"
 created: 2026-11-27T00:00:00Z
-updated: 2026-11-27T02:20:00Z
+updated: 2026-11-28T03:00:00Z
 ---
 
 ## Current Focus
@@ -142,3 +142,4 @@ verification:
   not_verified: "no VM rerun (not allowed here): the production rate is inferred, not measured; GUI-process CheckHealth polling (app.go:1711) is fixed by the same change but not measured"
   guardrail_verdict: accepted
 files_changed: [internal/tailnet/tailnet.go, internal/webserver/tailscale.go, internal/daemon/share.go, internal/tailnet/localapi_test.go, internal/desktop/goroutine_leak_test.go]
+vm_verified: "2026-11-28, build 23.10.2 (d11e1811), idle check G-idle (evidence/G-idle.txt): always-available on, no viewer, GUI quit, same daemon pid: goroutines 21 at t=0, 19 from t=60 s to t=600 s (flat; the pre-fix build gained about 15 a minute in the same state). No clock step in the guest timed log."

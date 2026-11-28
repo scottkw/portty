@@ -1,0 +1,71 @@
+Q-04 re-run evidence: home Safari viewer connected, Terminal line stream in the office stopped with `pkill -x yes` (nothing closed), `still-timed` polling `still` every 0.25 s.
+
+Batch 1 (build 23.10.2, commit d11e1811; office epochs 1795832790 to 1795832840):
+- run 1: not counted: `still` already read true before the stop (the stream had not yet reached the screen 15 s after `motion on`).
+- run 2: still false before the stop, true 1.13 s after it (poll 4).
+
+Concurrency event (not caused by this run): at 02:27:54 UTC another session installed build 23.10.3 on BOTH VMs (/Applications/Portty.app modified 02:27:54 in each, /health v23.10.3) and started the Portty GUI on portty-test (02:28:21); the daemon was replaced (pid 80947 -> 91582 at 02:28:23). Every earlier row of this re-run (G-idle, Q-03 runs 1 to 3, Q-03-lone, A-03) had finished before 02:27:54 on 23.10.2 (the A-03 viewer left at 02:27:23). This re-run did not redeploy over the other session's build.
+
+Batch 2 (ran across that install, so on build 23.10.3, commit not known to this run):
+- run 1: not counted: the stats route did not answer the pre-check (daemon being replaced), then `still` true 15.28 s after the stop while the stream restarted ("wake, restarting the stream once the display is awake" twice, viewer rejoined).
+- run 2: not counted: `still` true at the pre-check 20 s after `motion on` (stream not on screen yet); 4.23 s.
+- run 3: still false before, true 0.71 s after the stop (poll 3).
+- run 4: still false before, true 1.01 s after the stop (poll 4).
+
+Original runs (23.9.0): 0.97 s and 0.91 s (poll 4 each). Each poll costs about 0.25 s sleep plus one curl and jq on a loaded 3-core VM, so poll 4 lands at 0.9 to 1.13 s.
+
+Raw output follows.
+== batch 1
+viewer: {"status":"streaming","state":"streaming","viewers":1,"framesDecoded":1232,"frameWidth":1280,"frameHeight":720,"bytesReceived":16716926,"cspViolations":0}
+-- run 1
+motion off
+motion on
+still-timed: before the stop: {"viewers":1,"still":true,"step":3,"target_bps":550000}
+still-timed: motion stopped at office epoch 1795832809.031
+still-timed: still true 0.72 s after the stop (poll 3)
+still-timed: after: {"viewers":1,"still":true,"step":3,"target_bps":550000}
+-- run 2
+motion off
+motion on
+still-timed: before the stop: {"viewers":1,"still":false,"step":3,"target_bps":732050}
+still-timed: motion stopped at office epoch 1795832833.351
+still-timed: still true 1.13 s after the stop (poll 4)
+still-timed: after: {"viewers":1,"still":true,"step":3,"target_bps":732050}
+motion off
+close-viewer: done
+== batch 2
+open home: p19-safari t=3 stats={"status":"streaming","state":"streaming","viewers":1,"framesDecoded":11,"frameWidth":2560,"frameHeight":1440,"bytesReceived":168419,"cspViolations":0} title=Portty Desktop (debug fd=11 fw=2560 csp=0 st=streaming)
+-- run 1
+motion off
+motion on
+pre-check: 
+still-timed: before the stop: 
+still-timed: motion stopped at office epoch 1795832903.049
+still-timed: still true 15.28 s after the stop (poll 46)
+still-timed: after: {"viewers":1,"still":true,"step":0,"target_bps":8000000}
+-- run 2
+motion off
+motion on
+pre-check: {"viewers":1,"still":true}
+still-timed: before the stop: {"viewers":1,"still":false,"step":2,"target_bps":507910}
+still-timed: motion stopped at office epoch 1795832950.881
+still-timed: still true 4.23 s after the stop (poll 11)
+still-timed: after: {"viewers":1,"still":true,"step":0,"target_bps":500000}
+-- run 3
+motion off
+motion on
+pre-check: {"viewers":1,"still":false}
+still-timed: before the stop: {"viewers":1,"still":false,"step":0,"target_bps":1835677}
+still-timed: motion stopped at office epoch 1795832984.255
+still-timed: still true 0.71 s after the stop (poll 3)
+still-timed: after: {"viewers":1,"still":true,"step":0,"target_bps":1835677}
+-- run 4
+motion off
+motion on
+pre-check: {"viewers":1,"still":false}
+still-timed: before the stop: {"viewers":1,"still":false,"step":2,"target_bps":501000}
+still-timed: motion stopped at office epoch 1795833015.465
+still-timed: still true 1.01 s after the stop (poll 4)
+still-timed: after: {"viewers":1,"still":true,"step":2,"target_bps":501000}
+motion off
+close-viewer: done
