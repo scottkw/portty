@@ -39,19 +39,19 @@ key-decisions:
   - "Stopped after the Q-03 FAIL (DESK-07 behaviour the unit tests claim), as the standing decision requires"
 duration: 4h
 completed: 2026-11-27
-status: blocked
+status: partial
 estimate_tokens: 100000
 actuals:
-  tokens: 65000
-  tasks: 2
-  commits: 4
+  tokens: 73000
+  tasks: 3
+  commits: 5
 plan_head_before: 0b4515f1b90380601ffc9fdb4a0328738b880f19
-plan_head_after: 97fb63472822c86dde8c68bf20c71fa8de208219
+plan_head_after: ab09c738cca6fd708608d95d2654736ff2dc812a
 ---
 
 # Phase 23 Plan 09: Audio and adaptive quality in the VMs Summary
 
-**One local stats route plus a VM rig, and the first real-macOS evidence: stereo audio and live ladder steps work, but Q-03 (the slow chip must reach only the slow viewer) FAILED once in two runs and the plan stopped there with Q-04 and T-01 not run.**
+**One local stats route plus a VM rig, and the first real-macOS evidence: stereo audio, live ladder steps, still detection and the WKWebView sound mark work; Q-03 (the slow chip must reach only the slow viewer) FAILED once in two runs. The plan stopped there, then the orchestrator released the stop for the rows independent of Q-03 and Q-04 and T-01 were run (both PASS).**
 
 ## What was built
 
@@ -71,8 +71,8 @@ plan_head_after: 97fb63472822c86dde8c68bf20c71fa8de208219
 | Q-01 | PARTIAL | Safari's offer carries transport-wide-cc and no_feedback is 0; Chrome no_feedback 0 daemon-side, its own offer not read |
 | Q-02 | PASS | ladder to step 3 with a 300 kbit/s pipe, picture width 2560, 1920, 1280 on the live page, never Reconnecting, no reload, step 2 and 1.7 Mbit/s again after removal, no pipe left |
 | Q-03 | FAIL | the unshaped loopback viewer also showed Slow connection in run a (59 of 85 samples); not in run b; control without any pipe flagged only the relay viewer |
-| Q-04 | NOT-RUN | stopped at the Q-03 FAIL |
-| T-01 | NOT-RUN | stopped at the Q-03 FAIL |
+| Q-04 | PASS | `still` true 0.97 s and 0.91 s after the motion stopped (0.25 s poll), run after the orchestrator released the stop |
+| T-01 | PASS | real Portty.app: Unmute in WKWebView gave tab name `Desktop · OFFICE, playing sound`; hidden about 155 s: viewer dropped and mark cleared; shown again: sound and mark back on the reconnect |
 
 ## Decisions made on the user's behalf (standing decision, recorded in 23-VM-CHECKS.md "User checkpoint")
 
@@ -88,7 +88,7 @@ plan_head_after: 97fb63472822c86dde8c68bf20c71fa8de208219
 2. **[Rule 3 - scope]** `quality.go` and `unlock.go` got JSON tags only (outside the plan's file list); no behaviour changed.
 3. **[Rule 1 - criterion kept honest]** The plan's S-00 text "a target equal to the ceiling" cannot hold at steady state over the VMs' DERP relay; the criterion was written as "at the join" after an exploratory read, and the Notes in 23-VM-CHECKS.md say so.
 4. **[Rule 3 - tooling]** Q-02 shaping runs on traffic from portty-test inside portty-test-2 as planned. A pipe on the office VM's own loopback viewer was tried and matched nothing (pf does not see that traffic); removed from the rig. Chrome could not be scripted in its page world (AppleScript isolated world; a raw DevTools client got no answer); it was driven through the AX tree and read through the stats route instead.
-5. **[Stop condition]** The run stopped after Q-03 FAIL (DESK-07 behaviour the unit tests claim). Q-04 and T-01 were not run, so the plan's Task 3 verify (A-01, A-02, Q-01, Q-02, Q-03, T-01 all PASS) does not hold: PASS are A-01 and Q-02 only; A-02 and Q-01 PARTIAL; Q-03 FAIL; T-01 not run.
+5. **[Stop condition, then resumed]** The run stopped after Q-03 FAIL (DESK-07 behaviour the unit tests claim). The plan was resumed by the orchestrator after the Q-03 stop: it released the stop for the rows that do not depend on Q-03 and Q-03 stays RESULT=FAIL (carried to 23-15 as a release-blocker candidate, not re-run or fixed). Q-04 and T-01 were then run and PASS. The plan's Task 3 verify (A-01, A-02, Q-01, Q-02, Q-03, T-01 all PASS) still does not hold: PASS are A-01, Q-02, T-01 (and Q-04, S-00); A-02 and Q-01 PARTIAL; Q-03 FAIL.
 
 Auth gates: none. Checkpoint (Task 2) was handled in the VMs as decided.
 
@@ -102,7 +102,7 @@ Auth gates: none. Checkpoint (Task 2) was handled in the VMs as decided.
 
 ## Deferred real-Mac and later items
 
-For 23-12 (manual checklist) and 23-14 (owner session): sound through a real output device (M-162); Chrome's own offer, Unmute and packet flow on a real Mac (A-02, Q-01 Chrome half); the two-viewer slow-chip isolation on a direct link (Q-03); an audio route change on a real Mac (headphones or Bluetooth) to see whether sound survives and whether `audio failed` ever shows (A-03); Q-04 (still reads true within 1 s) and T-01 (WKWebView unmute in the app tab, the `, playing sound` tab mark, cleared after the 2-minute hidden pause), both runnable in the VMs as soon as the orchestrator releases the stop (the build, AX helper and key poster are already in portty-test-2).
+For 23-12 (manual checklist) and 23-14 (owner session): sound through a real output device (M-162); Chrome's own offer, Unmute and packet flow on a real Mac (A-02, Q-01 Chrome half); the two-viewer slow-chip isolation on a direct link (Q-03); an audio route change on a real Mac (headphones or Bluetooth) to see whether sound survives and whether `audio failed` ever shows (A-03). Q-04 and T-01 are done (VM PASS); the tab mark on a real Mac and its Mac-native look stay with the 23-14 owner session.
 
 New test files for 23-12: `internal/daemon/desktop_stats_test.go` (covers the stats route; Section 4 row candidates DCTL-07 and DESK-07 observability, path `internal/daemon/desktop_stats_test.go`). TESTING.md was not edited, as instructed.
 
@@ -116,7 +116,7 @@ None beyond the plan's register: the new route is daemon-socket only (T-23-23), 
 
 ## VM state at the end
 
-portty-test runs build 23.9.0 (commit 98ca0390, daemon pid 11018), always-available desktop on, no viewer connected, Terminal quit, no dummynet pipe, pf disabled. portty-test-2 has build 23.9.0 in /Applications (not running), `~/p22/axp22` and `~/p22/key` installed, Safari and Chrome closed, pf disabled, `dnctl list` empty. Neither VM was stopped or restarted; coreaudiod in portty-test was restarted once on purpose (A-03).
+portty-test runs build 23.9.0 (commit 98ca0390, daemon pid 11018), always-available desktop on, no viewer connected, Terminal quit, no dummynet pipe, pf disabled. portty-test-2 has build 23.9.0 in /Applications (Portty GUI quit after T-01, not running), `~/p22/axp22` and `~/p22/key` installed, Safari and Chrome closed, pf disabled, `dnctl list` empty. Neither VM was stopped or restarted; coreaudiod in portty-test was restarted once on purpose (A-03). The daemon showed 1171 goroutines with nobody connected at the end (finding 4).
 
 ## Self-Check: PASSED
 

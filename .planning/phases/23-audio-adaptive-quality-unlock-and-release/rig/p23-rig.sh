@@ -26,6 +26,7 @@
 #   tone-play                afplay ~/p23/tone.wav in the office, in the background; prints its start epoch
 #   motion on|off            Terminal printing a line stream (a moving screen) in the office
 #   audio-fault              restart coreaudiod in the office (sudo inside the VM)
+#   still-timed              stop the motion stream, poll `still` every 0.25 s, print the delay
 #   clock                    the office's epoch seconds
 # Home (the viewer VM) and the office's own Safari (WHO = home|office):
 #   open-viewer WHO          enable-desktop (link to both VMs), then Safari at link#debug (session kept)
@@ -136,6 +137,29 @@ cmd_motion() {
       vm 'pkill -x yes; osascript -e "tell application \"Terminal\" to quit" >/dev/null 2>&1; pkill -x Terminal; echo motion off' ;;
     *) die "usage: motion on|off" ;;
   esac
+}
+
+# still-timed: with a viewer connected and the Terminal line stream running (motion on), stop only the stream
+# (pkill -x yes: the screen stops changing at once, nothing closes) and poll `still` every 0.25 s inside the
+# office until it reads true (up to 30 s); prints the stats just before the stop and the delay in seconds.
+cmd_still_timed() {
+  vmsh <<'EOF'
+SOCK="$HOME/Library/Application Support/portty/daemon.sock"
+now() { perl -MTime::HiRes=time -e 'printf q(%.3f), time'; }
+st() { curl -s -m 3 --unix-socket "$SOCK" http://localhost/desktop/stats | jq -c '{viewers, still, step: .quality.step, target_bps: .quality.target_bps}'; }
+echo "still-timed: before the stop: $(st)"
+t0=$(now)
+pkill -x yes
+echo "still-timed: motion stopped at office epoch $t0"
+for i in $(seq 1 120); do
+  s=$(curl -s -m 3 --unix-socket "$SOCK" http://localhost/desktop/stats | jq -r '.still')
+  tn=$(now)
+  if [ "$s" = true ]; then echo "still-timed: still true $(perl -e "printf q(%.2f), $tn - $t0") s after the stop (poll $i)"; echo "still-timed: after: $(st)"; exit 0; fi
+  sleep 0.25
+done
+echo "still-timed: still did not read true within 30 s; last: $(st)"
+exit 0
+EOF
 }
 
 cmd_audio_fault() {
@@ -334,6 +358,7 @@ case "$sub" in
   tone-play) cmd_tone_play ;;
   motion) cmd_motion "$@" ;;
   audio-fault) cmd_audio_fault ;;
+  still-timed) cmd_still_timed ;;
   clock) cmd_clock ;;
   open-viewer) cmd_open_viewer "$@" ;;
   close-viewer) cmd_close_viewer "$@" ;;
