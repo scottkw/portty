@@ -100,9 +100,9 @@ func TestQuality_DecideRaiseNeedsHoldThenClimbs(t *testing.T) {
 	}
 }
 
-// Ladder: under 2 Mbps for 2 s the frame rate halves, then the picture shrinks in
-// two steps, one step per 10 s at most; recovery runs in reverse, each step after
-// a 10 s hold over 2.4 Mbps.
+// Ladder: a target under 2 Mbps for 2 s halves the frame rate, then the picture
+// shrinks in two steps, one step per 10 s at most; recovery runs in reverse once
+// the target has climbed back, each step after a 10 s hold over 2.4 Mbps.
 func TestQuality_DecideLadderDownThenBackUp(t *testing.T) {
 	clk := newPClock()
 	s := ladderState{Target: ceilingBps}
@@ -135,11 +135,16 @@ func TestQuality_DecideLadderDownThenBackUp(t *testing.T) {
 		t.Errorf("long edge %d at the bottom, want 1280", got)
 	}
 
-	// Room again: each step back needs the minimum over 2.4 Mbps for 10 s.
+	// Room again: the target climbs first (5 s hold, then about 10 percent per 2 s,
+	// past 2.4 Mbps at 23 s); each step back needs it over 2.4 Mbps for 10 s.
+	s = walk(s, clk, 8_000_000, 30*time.Second, step)
+	if s.Level != maxLevel {
+		t.Fatalf("level %d with the target at %d after 30 s of room, want %d until it has held over 2.4 Mbps for 10 s", s.Level, s.Target, maxLevel)
+	}
 	for _, level := range []int{2, 1, 0} {
-		s = walk(s, clk, 8_000_000, 11*time.Second, step)
+		s = walk(s, clk, 8_000_000, 10*time.Second+750*time.Millisecond, step)
 		if s.Level != level {
-			t.Fatalf("level %d after 11 more seconds of room, want %d", s.Level, level)
+			t.Fatalf("level %d with the target at %d, want %d (one step back per 10 s)", s.Level, s.Target, level)
 		}
 	}
 	if fpsFor(s.Level, 30) != 30 || ladderEdges[resStep(s.Level)] != 2560 {
@@ -147,25 +152,38 @@ func TestQuality_DecideLadderDownThenBackUp(t *testing.T) {
 	}
 }
 
-// A minimum that flaps never holds long enough to step; one that holds poor
-// long enough steps at most once per 10 s however it moves.
+// A minimum that flaps cannot make the ladder flap: the target follows it down
+// and climbs only after 5 s of room, so the ladder, which follows the target,
+// steps down at most once per 10 s and never back up while the flapping lasts.
 func TestQuality_DecideFlappingMakesNoStormOfSteps(t *testing.T) {
 	clk := newPClock()
 	s := ladderState{Target: ceilingBps}
-	// One second poor, one second fine: the 2 s hold never completes.
+	// One second poor, one second fine.
+	start, last := clk.Now(), s.Level
+	var downAt []time.Duration
 	for i := 0; i < 120; i++ {
 		est := 1_000_000
 		if i%2 == 1 {
 			est = 8_000_000
 		}
 		s = walk(s, clk, est, time.Second, 250*time.Millisecond)
+		if s.Level < last {
+			t.Fatalf("ladder stepped back up to %d while the minimum flapped (target %d)", s.Level, s.Target)
+		}
+		if s.Level != last {
+			downAt, last = append(downAt, clk.Now().Sub(start)), s.Level
+		}
 	}
-	if s.Level != 0 {
-		t.Fatalf("level %d after two minutes of flapping, want 0", s.Level)
+	for i := 1; i < len(downAt); i++ {
+		if gap := downAt[i] - downAt[i-1]; gap < stepHold {
+			t.Fatalf("steps %v apart while flapping, want at least %v", gap, stepHold)
+		}
 	}
-	// Poor for 2.5 s, fine for 2.5 s: steps may happen but never twice in 10 s.
+	// Poor for 2.5 s, fine for 2.5 s, from full quality: steps happen but never
+	// twice in 10 s.
+	s = ladderState{Target: ceilingBps}
 	var stepsAt []time.Duration
-	start, last := clk.Now(), s.Level
+	start, last = clk.Now(), s.Level
 	for i := 0; i < 240; i++ {
 		est := 1_000_000
 		if (i/10)%2 == 1 {
@@ -555,9 +573,10 @@ func TestQuality_CleanViewerNotSlowBesideASlowOne(t *testing.T) {
 
 // Finding 2 (the floor trap): a lone viewer on a clean link whose estimate was
 // cut to the floor by a short burst follows it down, and once its feedback is
-// good again it is never told slow and climbs back: the target past 4 Mbps and
-// the full picture within a minute. A real cut (under what it was sent) still
-// pulls the target down at once.
+// good again it is never told slow and climbs back: the target past 4 Mbps and,
+// once it has held over 2.4 Mbps for the ladder's three 10 s steps, the full
+// picture within 75 s. A real cut (under what it was sent) still pulls the target
+// down at once.
 func TestQuality_CleanViewerClimbsBackFromTheFloor(t *testing.T) {
 	qt := newQTest(t)
 	a := qt.sentViewer(t, "a", ceilingBps)
@@ -588,13 +607,13 @@ func TestQuality_CleanViewerClimbsBackFromTheFloor(t *testing.T) {
 
 	dip = false
 	a.est.cutting.Store(false)
-	out := tick(60 * time.Second)
+	out := tick(75 * time.Second)
 	if got := qt.told("a"); len(got) != 0 {
 		t.Errorf("a viewer with good feedback was told %v", got)
 	}
 	st := qt.m.QualityStats()
 	if st.TargetBps <= 4_000_000 || st.Step != 0 {
-		t.Fatalf("a minute after feedback was good again: target %d at step %d, want past 4 Mbps at step 0 (stuck at the floor)", st.TargetBps, st.Step)
+		t.Fatalf("75 s after feedback was good again: target %d at step %d, want past 4 Mbps at step 0 (stuck at the floor)", st.TargetBps, st.Step)
 	}
 
 	// A cut that still leaves room over what the viewer was sent does not limit
@@ -636,8 +655,9 @@ func pinnedGCC(est, recv500 int) int {
 // stays pinned to its additive cap. With bursty content (the date changing once a
 // second) a 500 ms window without the big frame holds 0.27 of the second, so the
 // estimate sits on the floor clamp, under what is sent, though GCC sees no
-// congestion. The target must climb back past 4 Mbps at full quality within a
-// minute, and a still screen, where nothing is measured, must not read that
+// congestion. The target must climb back past 4 Mbps within a minute and the
+// ladder, which follows it, reach full quality within 75 s; a still screen,
+// where nothing is measured, must not read that
 // pinned estimate as a limit (the lone run's still tick cut 8 M to 4.6 M).
 func TestQuality_PinnedEstimateDoesNotHoldTheTargetAtTheFloor(t *testing.T) {
 	qt := newQTest(t)
@@ -675,13 +695,13 @@ func TestQuality_PinnedEstimateDoesNotHoldTheTargetAtTheFloor(t *testing.T) {
 	}
 
 	a.est.cutting.Store(false) // the episode is over: GCC increases again, pinned by its cap
-	tick(60 * time.Second)
+	tick(75 * time.Second)
 	if got := qt.told("a"); len(got) != 0 {
 		t.Errorf("a viewer on a clean link was told %v", got)
 	}
 	st := qt.m.QualityStats()
 	if st.TargetBps <= 4_000_000 || st.Step != 0 {
-		t.Fatalf("a minute after the episode, GCC estimate %d (pinned, no congestion): target %d at step %d, want past 4 Mbps at step 0 (held at the floor)", a.est.rate.Load(), st.TargetBps, st.Step)
+		t.Fatalf("75 s after the episode, GCC estimate %d (pinned, no congestion): target %d at step %d, want past 4 Mbps at step 0 (held at the floor)", a.est.rate.Load(), st.TargetBps, st.Step)
 	}
 
 	// Still: next to nothing is sent, so nothing is measured and the viewer counts
@@ -710,6 +730,46 @@ func TestQuality_PinnedEstimateDoesNotHoldTheTargetAtTheFloor(t *testing.T) {
 	qt.run(10 * time.Second)
 	if got := qt.m.QualityStats().TargetBps; got != 510_000 {
 		t.Fatalf("target %d after 10 s of a still screen that began during a cut to 510000, want it held (lifted on no measurement)", got)
+	}
+}
+
+// A lossless 1.5 Mbps link: the encoder fills its target, and whenever that is
+// over the link GCC sees the queue grow and cuts to 85 percent of it; between
+// cuts it is not cutting, so its estimate counts as the ceiling. The target
+// saw-tooths under 2 Mbps, so the ladder steps down as on any slow link (frame
+// rate at 2 s, then the size, one step per 10 s), not stay at 2560 at 30 fps.
+func TestQuality_ConstrainedLinkStepsTheLadderDown(t *testing.T) {
+	qt := newQTest(t)
+	a := qt.sentViewer(t, "a", ceilingBps)
+	qt.m.noteSize(2560, 1600)
+	const link = 1_500_000
+	a.est.rate.Store(link * 85 / 100)
+	var stepsAt []time.Duration
+	start, last, peak := qt.clk.Now(), 0, 0
+	for e := time.Duration(0); e < 40*time.Second; e += 250 * time.Millisecond {
+		out := qt.m.QualityStats().TargetBps
+		a.send(t, out)
+		a.est.cutting.Store(out > link)
+		qt.q.tick()
+		qt.clk.Advance(250 * time.Millisecond)
+		st := qt.m.QualityStats()
+		if e > time.Second {
+			peak = max(peak, st.TargetBps)
+		}
+		if st.Step != last {
+			stepsAt, last = append(stepsAt, qt.clk.Now().Sub(start)), st.Step
+		}
+	}
+	if peak >= ladderBps {
+		t.Fatalf("target reached %d on a 1.5 Mbps link, want it held under it by GCC's cuts", peak)
+	}
+	if st := qt.m.QualityStats(); st.Step != maxLevel {
+		t.Fatalf("ladder at step %d (fps %d, long edge %d) after 40 s with the target under %d, want %d", st.Step, st.FPS, st.LongEdge, ladderBps, maxLevel)
+	}
+	for i := 1; i < len(stepsAt); i++ {
+		if gap := stepsAt[i] - stepsAt[i-1]; gap < stepHold {
+			t.Fatalf("ladder steps %v apart, want at least %v", gap, stepHold)
+		}
 	}
 }
 

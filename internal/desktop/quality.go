@@ -36,7 +36,7 @@ const (
 
 	upHold     = 5 * time.Second  // the minimum must stay over upRatio this long before the first raise
 	raiseEvery = 2 * time.Second  // then one raise per this
-	lowHold    = 2 * time.Second  // a minimum under ladderBps this long steps the ladder down
+	lowHold    = 2 * time.Second  // a target under ladderBps this long steps the ladder down
 	stepHold   = 10 * time.Second // at most one ladder step per this, either way
 
 	slowEnter       = 3 * time.Second // below the floor this long: left out of the minimum and told slow
@@ -151,8 +151,8 @@ type ladderState struct {
 
 	AboveSince time.Time // the minimum has been over upRatio times Target since then
 	LastRaise  time.Time
-	LowSince   time.Time // the minimum has been under ladderBps since then
-	OKSince    time.Time // the minimum has been over upRatio times ladderBps since then
+	LowSince   time.Time // the target has been under ladderBps since then
+	OKSince    time.Time // the target has been over upRatio times ladderBps since then
 	LastStep   time.Time
 }
 
@@ -169,8 +169,10 @@ type policyOutput struct{ Next ladderState }
 //
 // Bitrate: follow the minimum down at once when it falls under downRatio of the
 // target; follow it up about 10 percent per raiseEvery, and only after it has
-// stayed over upRatio of the target for upHold. Ladder: a minimum under ladderBps
-// for lowHold lowers the frame rate, then the picture size in two steps; a minimum
+// stayed over upRatio of the target for upHold. Ladder: it fits the picture to
+// the bitrate the encoder is asked for, the new target, not the minimum (which
+// is the ceiling between GCC's cuts on a slow link). A target under ladderBps for
+// lowHold lowers the frame rate, then the picture size in two steps; a target
 // over upRatio times ladderBps for stepHold restores them in reverse. Any two
 // steps are at least stepHold apart, so a flapping estimate cannot cause a storm
 // of keyframes (a size step makes one).
@@ -197,8 +199,8 @@ func decide(in policyInput) policyOutput {
 		s.AboveSince = time.Time{}
 	}
 
-	s.LowSince = sinceWhile(s.LowSince, now, m < ladderBps)
-	s.OKSince = sinceWhile(s.OKSince, now, float64(m) >= upRatio*ladderBps)
+	s.LowSince = sinceWhile(s.LowSince, now, s.Target < ladderBps)
+	s.OKSince = sinceWhile(s.OKSince, now, float64(s.Target) >= upRatio*ladderBps)
 	stepOK := s.LastStep.IsZero() || now.Sub(s.LastStep) >= stepHold
 	switch {
 	case stepOK && s.Level < maxLevel && !s.LowSince.IsZero() && now.Sub(s.LowSince) >= lowHold:
